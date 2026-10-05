@@ -9,3 +9,4 @@
 | C4a security scripts: bundle secret scan, header check, security headers, audit clean | #6 | merged |
 | C5a PWA check script, 180 icon, manifest id and lang | #7 | merged |
 | C7 ops: /api/health, keepalive and backup workflows, Operations docs | #8 | merged |
+| C8 handover docs: Maria guide, driver guide, runbook; team page copy | #9 | merged |
