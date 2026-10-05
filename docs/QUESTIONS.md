@@ -15,3 +15,9 @@ Proposed default: owner fixes the three values in ~/.zshenvmitrex AND in Vercel 
 
 5 ANSWERED 2026-10-05 (owner overrule): build OTP code entry so login works from the installed iPhone PWA. The link remains as a fallback. See DECISIONS "T2 OTP login".
 
+
+## 2026-10-05 C4 security headers: no full Content-Security-Policy
+next.config.ts sends X-Content-Type-Options, Referrer-Policy, X-Frame-Options DENY, Permissions-Policy (camera=(self), microphone=(), geolocation=()), HSTS, and a CSP containing ONLY frame-ancestors 'none'. A full CSP is not set because Next inline scripts would break without a nonce setup. Open question: adopt a nonce-based CSP via proxy.ts? Proposed default: no for v1; revisit after launch.
+
+## 2026-10-05 C4 npm audit --omit=dev
+Result: 0 vulnerabilities (0 high, 0 critical). No upgrades needed. Re-run before each release.

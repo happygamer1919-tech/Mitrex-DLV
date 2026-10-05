@@ -17,3 +17,5 @@ test-results
 playwright-report
 e2e/.auth
 apply-transcript.txt
+.next-*
+.claude/
