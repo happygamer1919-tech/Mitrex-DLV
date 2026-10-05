@@ -1,0 +1,314 @@
+"use client";
+
+import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
+import { Button, Card, Field, Input, Notice, Select, Textarea } from "@/components/ui";
+import { createLoad, updateLoad } from "@/lib/customer/actions";
+import {
+  EQUIPMENT_SIZES, validateLoad, type FieldErrors, type LoadFormValues,
+} from "@/lib/customer/validate";
+import type { Location, Timing } from "@/lib/types";
+
+type Props = {
+  mode: "create" | "edit";
+  loadId?: string;
+  locations: Location[];
+  initial: LoadFormValues;
+  today: string;
+};
+
+function Err({ msg }: { msg?: string }) {
+  if (!msg) return null;
+  return <p role="alert" className="mt-1 text-[13px] font-medium text-[#7A1F1F]">{msg}</p>;
+}
+
+function TimingSwitch({ value, onChange, name }: { value: Timing; onChange: (t: Timing) => void; name: string }) {
+  const opts: { v: Timing; label: string }[] = [
+    { v: "appointment", label: "Appointment" },
+    { v: "window", label: "Time window" },
+  ];
+  return (
+    <div role="radiogroup" aria-label={`${name} timing`} className="flex gap-2">
+      {opts.map((o) => (
+        <button
+          key={o.v}
+          type="button"
+          role="radio"
+          aria-checked={value === o.v}
+          onClick={() => onChange(o.v)}
+          className={`min-h-[48px] flex-1 rounded-full border px-4 text-[15px] font-bold cursor-pointer ${
+            value === o.v ? "border-ink bg-ink text-white" : "border-line bg-white text-ink"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CheckRow({ checked, onChange, children, disabled = false }:
+  { checked: boolean; onChange: (b: boolean) => void; children: React.ReactNode; disabled?: boolean }) {
+  return (
+    <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-[15px]">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-6 w-6 shrink-0 accent-[#020814]"
+      />
+      <span>{children}</span>
+    </label>
+  );
+}
+
+export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
+  const [v, setV] = useState<LoadFormValues>(initial);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const shippers = useMemo(() => locations.filter((l) => l.can_ship && l.is_active), [locations]);
+  const receivers = useMemo(() => locations.filter((l) => l.can_receive && l.is_active), [locations]);
+  const byId = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
+  const pickup = byId.get(v.pickup_location_id);
+  const delivery = byId.get(v.delivery_location_id);
+  const moffettLocked = Boolean(pickup?.requires_moffett || delivery?.requires_moffett);
+  const moffettOn = moffettLocked || v.moffett;
+  const moffettWhy = [pickup?.requires_moffett ? pickup.name : null, delivery?.requires_moffett ? delivery.name : null]
+    .filter(Boolean).join(" and ");
+
+  function set<K extends keyof LoadFormValues>(key: K, value: LoadFormValues[K]) {
+    setV((p) => ({ ...p, [key]: value }));
+    if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
+  }
+
+  function pickLocation(side: "pickup" | "delivery", id: string) {
+    const loc = byId.get(id);
+    setV((p) => ({
+      ...p,
+      [`${side}_location_id`]: id,
+      [`${side}_contact_name`]: loc?.default_contact_name ?? "",
+      [`${side}_contact_phone`]: loc?.default_contact_phone ?? "",
+      [`save_${side}_default`]: false,
+    }));
+    setErrors((e) => ({
+      ...e,
+      [`${side}_location_id`]: undefined,
+      [`${side}_contact_name`]: undefined,
+      [`${side}_contact_phone`]: undefined,
+      delivery_location_id: side === "delivery" ? undefined : e.delivery_location_id,
+    }));
+  }
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    const payload: LoadFormValues = { ...v, moffett: moffettOn };
+    const found = validateLoad(payload);
+    setErrors(found);
+    if (Object.keys(found).length > 0) {
+      setFormError("Please fix the highlighted fields.");
+      return;
+    }
+    startTransition(async () => {
+      const res = mode === "edit" && loadId ? await updateLoad(loadId, payload) : await createLoad(payload);
+      // On success the action redirects, so a returned value is always a failure.
+      if (res?.fieldErrors) setErrors(res.fieldErrors);
+      setFormError(res?.error ?? (res?.fieldErrors ? "Please fix the highlighted fields." : null));
+    });
+  }
+
+  function slot(side: "pickup" | "delivery", title: string) {
+    const timing = v[`${side}_timing`];
+    const dateKey = `${side}_date` as const;
+    const startKey = `${side}_time_start` as const;
+    const endKey = `${side}_time_end` as const;
+    return (
+      <div className="mt-4 space-y-3">
+        <p className="text-[13px] font-medium text-muted">{title} timing</p>
+        <TimingSwitch value={timing} onChange={(t) => set(`${side}_timing`, t)} name={title} />
+        <Err msg={errors[`${side}_timing`]} />
+        <Field label={`${title} date`}>
+          <Input type="date" min={today} value={v[dateKey]} aria-invalid={Boolean(errors[dateKey])}
+            onChange={(e) => set(dateKey, e.target.value)} />
+        </Field>
+        <Err msg={errors[dateKey]} />
+        {timing === "appointment" ? (
+          <>
+            <Field label="Appointment time (ET)">
+              <Input type="time" value={v[startKey]} aria-invalid={Boolean(errors[startKey])}
+                onChange={(e) => set(startKey, e.target.value)} />
+            </Field>
+            <Err msg={errors[startKey]} />
+          </>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Field label="Window from (ET)">
+                <Input type="time" value={v[startKey]} aria-invalid={Boolean(errors[startKey])}
+                  onChange={(e) => set(startKey, e.target.value)} />
+              </Field>
+              <Err msg={errors[startKey]} />
+            </div>
+            <div>
+              <Field label="Window to (ET)">
+                <Input type="time" value={v[endKey]} aria-invalid={Boolean(errors[endKey])}
+                  onChange={(e) => set(endKey, e.target.value)} />
+              </Field>
+              <Err msg={errors[endKey]} />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function contact(side: "pickup" | "delivery") {
+    const nameKey = `${side}_contact_name` as const;
+    const phoneKey = `${side}_contact_phone` as const;
+    const saveKey = `save_${side}_default` as const;
+    const locId = v[`${side}_location_id`];
+    return (
+      <div className="mt-4 space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Field label="Contact name">
+              <Input value={v[nameKey]} autoComplete="off" aria-invalid={Boolean(errors[nameKey])}
+                onChange={(e) => set(nameKey, e.target.value)} />
+            </Field>
+            <Err msg={errors[nameKey]} />
+          </div>
+          <div>
+            <Field label="Contact phone">
+              <Input type="tel" inputMode="tel" value={v[phoneKey]} autoComplete="off"
+                aria-invalid={Boolean(errors[phoneKey])} onChange={(e) => set(phoneKey, e.target.value)} />
+            </Field>
+            <Err msg={errors[phoneKey]} />
+          </div>
+        </div>
+        <CheckRow checked={v[saveKey]} disabled={!locId} onChange={(b) => set(saveKey, b)}>
+          Save as default for this location
+        </CheckRow>
+      </div>
+    );
+  }
+
+  if (shippers.length === 0 || receivers.length === 0) {
+    return (
+      <Notice tone="info">
+        There is no location available to {shippers.length === 0 ? "ship from" : "deliver to"} yet.
+        Request a new location on the <Link href="/locations" className="font-bold underline">Locations</Link> page.
+      </Notice>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="space-y-4">
+      {formError ? <Notice tone="error">{formError}</Notice> : null}
+
+      <Card>
+        <h2 className="mb-3 text-[20px] font-bold">Pickup</h2>
+        <Field label="Pickup location">
+          <Select value={v.pickup_location_id} aria-invalid={Boolean(errors.pickup_location_id)}
+            onChange={(e) => pickLocation("pickup", e.target.value)}>
+            <option value="">Select pickup location</option>
+            {shippers.map((l) => <option key={l.id} value={l.id}>{l.name} ({l.city})</option>)}
+          </Select>
+        </Field>
+        <Err msg={errors.pickup_location_id} />
+        {contact("pickup")}
+        {slot("pickup", "Pickup")}
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 text-[20px] font-bold">Delivery</h2>
+        <Field label="Delivery location">
+          <Select value={v.delivery_location_id} aria-invalid={Boolean(errors.delivery_location_id)}
+            onChange={(e) => pickLocation("delivery", e.target.value)}>
+            <option value="">Select delivery location</option>
+            {receivers.map((l) => <option key={l.id} value={l.id}>{l.name} ({l.city})</option>)}
+          </Select>
+        </Field>
+        <Err msg={errors.delivery_location_id} />
+        {contact("delivery")}
+        {slot("delivery", "Delivery")}
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 text-[20px] font-bold">Equipment</h2>
+        <div role="radiogroup" aria-label="Equipment size" className="grid grid-cols-4 gap-2">
+          {EQUIPMENT_SIZES.map((s) => {
+            const on = v.equipment_size === String(s);
+            return (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => set("equipment_size", String(s))}
+                className={`min-h-[56px] rounded-[16px] border text-[20px] font-bold cursor-pointer ${
+                  on ? "border-ink bg-ink text-white" : "border-line bg-white text-ink"
+                }`}
+              >
+                {s}
+                <span className="ml-0.5 text-[13px] font-medium">ft</span>
+              </button>
+            );
+          })}
+        </div>
+        <Err msg={errors.equipment_size} />
+        <div className="mt-3">
+          <CheckRow checked={moffettOn} disabled={moffettLocked} onChange={(b) => set("moffett", b)}>
+            Moffett (forklift on truck) needed
+          </CheckRow>
+          {moffettLocked ? (
+            <p className="text-[13px] text-muted">Required: {moffettWhy} needs a Moffett for unloading or loading.</p>
+          ) : null}
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 text-[20px] font-bold">Details</h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <Field label="Weight (lbs, optional)">
+              <Input inputMode="decimal" value={v.weight_lbs} aria-invalid={Boolean(errors.weight_lbs)}
+                onChange={(e) => set("weight_lbs", e.target.value)} />
+            </Field>
+            <Err msg={errors.weight_lbs} />
+          </div>
+          <div>
+            <Field label="Pieces (optional)">
+              <Input inputMode="numeric" value={v.pieces} aria-invalid={Boolean(errors.pieces)}
+                onChange={(e) => set("pieces", e.target.value)} />
+            </Field>
+            <Err msg={errors.pieces} />
+          </div>
+          <Field label="PO number (optional)">
+            <Input value={v.po_number} onChange={(e) => set("po_number", e.target.value)} />
+          </Field>
+        </div>
+        <div className="mt-3">
+          <Field label="Notes (optional)">
+            <Textarea rows={3} value={v.notes} onChange={(e) => set("notes", e.target.value)} />
+          </Field>
+          <Err msg={errors.notes} />
+        </div>
+      </Card>
+
+      <div className="flex flex-wrap gap-3">
+        <Button type="submit" big disabled={pending} className="w-full sm:w-auto">
+          {pending ? "Saving..." : mode === "edit" ? "Save changes" : "Request load"}
+        </Button>
+        {mode === "edit" && loadId ? (
+          <Link href={`/loads/${loadId}`}
+            className="inline-flex min-h-[56px] w-full items-center justify-center rounded-full border border-line px-5 text-[18px] font-bold sm:w-auto">
+            Back to load
+          </Link>
+        ) : null}
+      </div>
+    </form>
+  );
+}

@@ -1,5 +1,5 @@
-// Builds PWA icons from public/logo.png using only Node built-ins is not possible for PNG decode,
-// so this draws a simple solid icon: ink background, neon "D" block mark. Run: node scripts/make-icons.mjs
+// Draws the PWA icons (ink background, neon portal dot with ring) with Node built-ins only.
+// Run: node scripts/make-icons.mjs
 import { deflateSync } from "node:zlib";
 import { writeFileSync, mkdirSync } from "node:fs";
 

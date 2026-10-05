@@ -36,12 +36,6 @@ export function StopCard({ title, location, timing, date, start, end, contactNam
         <div className="text-[13px] font-medium text-muted">{timing === "appointment" ? "Appointment" : "Window"}</div>
         <div className="text-[16px] font-bold">{fmtSlot(timing, date, start, end)}</div>
       </div>
-      {location?.notes ? (
-        <div>
-          <div className="text-[13px] font-medium text-muted">Site notes</div>
-          <div className="whitespace-pre-line break-words text-[15px]">{location.notes}</div>
-        </div>
-      ) : null}
       <div className="space-y-2 pt-1">
         <a href={telHref(contactPhone)} className={`${btnClass("dark", true)} min-h-[64px] w-full flex-col !px-4 !py-2 leading-tight`}>
           <span className="text-[13px] font-medium text-white/80">Call {contactName}</span>

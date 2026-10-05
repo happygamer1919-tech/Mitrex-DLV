@@ -45,7 +45,10 @@ function checkSlot(
   if (timing !== "appointment" && timing !== "window") {
     errors[`${side}_timing`] = `Choose appointment or time window for ${label.toLowerCase()}.`;
   }
-  if (!DATE_RE.test(date)) errors[`${side}_date`] = `${label} date is required.`;
+  const parsed = DATE_RE.test(date) ? new Date(`${date}T00:00:00Z`) : null;
+  if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    errors[`${side}_date`] = `${label} date is required.`;
+  }
   else if (date < today) errors[`${side}_date`] = `${label} date cannot be in the past (Eastern time).`;
   if (!TIME_RE.test(start)) {
     errors[`${side}_time_start`] = timing === "window" ? `${label} window start is required.` : `${label} appointment time is required.`;
@@ -59,6 +62,14 @@ function checkSlot(
 // Shared by the browser form and the server actions. Returns an empty object when valid.
 export function validateLoad(v: LoadFormValues, today: string = todayEastern()): FieldErrors {
   const e: FieldErrors = {};
+  // Server actions receive arbitrary input: reject anything that is not the expected shape.
+  const bools: (keyof LoadFormValues)[] = ["save_pickup_default", "save_delivery_default", "moffett"];
+  for (const key of Object.keys(EMPTY_LOAD_FORM) as (keyof LoadFormValues)[]) {
+    const want = bools.includes(key) ? "boolean" : "string";
+    if (typeof (v as Record<string, unknown>)?.[key] !== want) {
+      return { notes: "The form data was invalid. Reload the page and try again." };
+    }
+  }
   if (!v.pickup_location_id) e.pickup_location_id = "Choose a pickup location.";
   if (!v.delivery_location_id) e.delivery_location_id = "Choose a delivery location.";
   if (v.pickup_location_id && v.pickup_location_id === v.delivery_location_id) {
@@ -76,11 +87,11 @@ export function validateLoad(v: LoadFormValues, today: string = todayEastern()):
   }
   if (v.weight_lbs.trim()) {
     const w = Number(v.weight_lbs);
-    if (!Number.isFinite(w) || w <= 0) e.weight_lbs = "Weight must be a number greater than 0.";
+    if (!Number.isFinite(w) || w <= 0 || w > 1000000) e.weight_lbs = "Weight must be a number greater than 0.";
   }
   if (v.pieces.trim()) {
     const p = Number(v.pieces);
-    if (!Number.isInteger(p) || p <= 0) e.pieces = "Pieces must be a whole number greater than 0.";
+    if (!Number.isInteger(p) || p <= 0 || p > 100000) e.pieces = "Pieces must be a whole number greater than 0.";
   }
   return e;
 }
