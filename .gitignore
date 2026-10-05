@@ -11,3 +11,4 @@ supabase/.branches
 .vercel
 next-env.d.ts
 tsconfig.tsbuildinfo
+.env*
