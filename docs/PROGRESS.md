@@ -6,3 +6,4 @@
 | OTP 8 digit fix | #3 | merged |
 | C0 state, CI, spec R-numbers, local guard, self-hosted font | #4 | merged |
 | C1 copy fix: contact-DLV only booked to at_delivery; Delivered and Cancelled notes | #5 | merged |
+| C4a security scripts: bundle secret scan, header check, security headers, audit clean | #6 | merged |
