@@ -52,7 +52,7 @@ export function InviteForm({
           ) : null}
         </div>
         <p className="text-[13px] text-muted">
-          The user signs in from the login page with this email (a sign-in link is emailed to them). No invitation email is sent.
+          The user signs in from the login page with this email (they request a sign-in code there). No invitation email is sent.
         </p>
         <Button type="submit" disabled={pending}>{pending ? "Adding..." : "Add user"}</Button>
         {state.error ? <Notice tone="error">{state.error}</Notice> : null}

@@ -5,11 +5,15 @@ import { InviteForm } from "@/components/admin/InviteForm";
 import { NameManager } from "@/components/admin/NameManager";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import type { Profile } from "@/lib/types";
 import { createCustomer, renameCustomer } from "@/lib/admin/org-actions";
-import { removeUser } from "@/lib/admin/user-actions";
+import { deactivateUser, reactivateUser, removeUser } from "@/lib/admin/user-actions";
 
 export const dynamic = "force-dynamic";
+
+type UserRow = {
+  id: string; email: string; full_name: string | null; role: string;
+  customer_id: string | null; carrier_id: string | null; is_active: boolean;
+};
 
 const ROLE_LABEL: Record<string, string> = {
   staff_admin: "Staff admin", staff_csr: "Staff CSR", customer: "Customer",
@@ -20,11 +24,11 @@ export default async function UsersPage() {
   const me = await requireAdmin();
   const supabase = await createClient();
   const [usersRes, customersRes, carriersRes] = await Promise.all([
-    supabase.from("profiles").select("id,email,full_name,role,customer_id,carrier_id").order("email"),
+    supabase.from("profiles").select("id,email,full_name,role,customer_id,carrier_id,is_active").order("email"),
     supabase.from("customers").select("id,name").order("name"),
     supabase.from("carriers").select("id,name,is_active").order("name"),
   ]);
-  const users = (usersRes.data ?? []) as Profile[];
+  const users = (usersRes.data ?? []) as UserRow[];
   const customers = (customersRes.data ?? []) as { id: string; name: string }[];
   const carriers = (carriersRes.data ?? []) as { id: string; name: string; is_active: boolean }[];
   const error = usersRes.error ?? customersRes.error ?? carriersRes.error;
@@ -55,14 +59,30 @@ export default async function UsersPage() {
                       {u.carrier_id ? `, ${kName.get(u.carrier_id) ?? "Unknown carrier"}` : ""}
                     </p>
                   </div>
+                  <span className={`rounded-full px-2.5 py-0.5 text-[13px] font-bold ${u.is_active ? "bg-neon/30" : "bg-line"}`}>
+                    {u.is_active ? "Active" : "Inactive"}
+                  </span>
                   {u.id === me.id ? (
                     <span className="text-[13px] text-muted">You</span>
-                  ) : (
+                  ) : u.is_active ? (
                     <ActionForm
-                      action={removeUser} fields={{ id: u.id }} label="Remove" variant="danger"
-                      confirm={`Remove ${u.email}? They lose access immediately.`}
-                      confirmLabel="Yes, remove" pendingLabel="Removing..." showOk={false}
+                      action={deactivateUser} fields={{ id: u.id }} label="Deactivate" variant="danger"
+                      confirm={`Deactivate ${u.email}? They can no longer sign in and lose access immediately.`}
+                      confirmLabel="Yes, deactivate" pendingLabel="Deactivating..." showOk={false}
                     />
+                  ) : (
+                    <div className="flex flex-wrap items-start gap-2">
+                      <ActionForm
+                        action={reactivateUser} fields={{ id: u.id }} label="Reactivate" variant="dark"
+                        confirm={`Reactivate ${u.email}? They can sign in again.`}
+                        confirmLabel="Yes, reactivate" pendingLabel="Reactivating..." showOk={false}
+                      />
+                      <ActionForm
+                        action={removeUser} fields={{ id: u.id }} label="Remove" variant="ghost"
+                        confirm={`Remove ${u.email} permanently? This cannot be undone.`}
+                        confirmLabel="Yes, remove" pendingLabel="Removing..." showOk={false}
+                      />
+                    </div>
                   )}
                 </li>
               ))}

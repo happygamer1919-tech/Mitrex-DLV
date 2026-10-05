@@ -12,3 +12,6 @@ Measured from ~/.zshenvmitrex (and the same URL shape in Vercel, Production):
 - SUPABASE_SERVICE_ROLE_KEY is a URL (starts with https:/), not a key (should start eyJ or sb_secret_).
 - DATABASE_URL_DIRECT is one token with no ":" "@" or "://": not a postgresql:// connection string (Supabase direct connection or session pooler URI, with the DB password).
 Proposed default: owner fixes the three values in ~/.zshenvmitrex AND in Vercel (Production), then runs the apply commands in README. Nothing was written to production.
+
+5 ANSWERED 2026-10-05 (owner overrule): build OTP code entry so login works from the installed iPhone PWA. The link remains as a fallback. See DECISIONS "T2 OTP login".
+

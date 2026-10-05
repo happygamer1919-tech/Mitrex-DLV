@@ -30,25 +30,26 @@ function navFor(p: Profile): NavItem[] {
   ];
 }
 
-export function AppHeader({ profile }: { profile: Profile }) {
+export function AppHeader({ profile, driver = false }: { profile: Profile; driver?: boolean }) {
   const nav = navFor(profile);
+  const h = driver ? "min-h-[48px]" : "min-h-[44px]";
   return (
     <header className="bg-ink text-white">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-        <Link href={homeFor(profile.role)} className="flex items-center gap-2 min-h-[44px]">
+        <Link href={homeFor(profile.role)} className={`flex items-center gap-2 ${h}`}>
           <span className="text-[22px] font-bold tracking-tight">DLV</span>
           <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-neon" />
           <span className="text-[13px] text-white/80">Mitrex shipping portal</span>
         </Link>
         <nav className="flex flex-1 flex-wrap items-center gap-1">
           {nav.map((n) => (
-            <Link key={n.href} href={n.href} className="inline-flex min-h-[44px] items-center rounded-full px-3 text-[15px] hover:bg-white/10">
+            <Link key={n.href} href={n.href} className={`inline-flex ${h} items-center rounded-full px-3 text-[15px] hover:bg-white/10`}>
               {n.label}
             </Link>
           ))}
         </nav>
         <form action="/auth/signout" method="post">
-          <button className="inline-flex min-h-[44px] items-center rounded-full border border-white/30 px-4 text-[14px]">
+          <button className={`inline-flex ${h} items-center rounded-full border border-white/30 px-4 text-[14px]`}>
             Sign out
           </button>
         </form>

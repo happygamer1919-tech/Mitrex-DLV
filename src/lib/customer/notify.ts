@@ -19,6 +19,7 @@ export async function notifyStaffOfRequest(args: {
     const { data } = await admin
       .from("profiles")
       .select("email")
+      .eq("is_active", true)
       .in("role", ["staff_admin", "staff_csr"]);
     const to = ((data ?? []) as { email: string }[]).map((r) => r.email).filter(Boolean);
     if (to.length === 0) return;

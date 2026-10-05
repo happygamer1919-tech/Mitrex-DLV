@@ -334,6 +334,113 @@ select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
 select rlstest.cnt('control: Maria reads timeline of own load', $q$select 1 from public.load_events where load_id = '30000000-0000-0000-0000-000000000002'$q$, 7);
 select rlstest.back();
 
+-- 9. Deactivation: an inactive profile is denied everywhere ---------------
+create function rlstest.loads_seen(p_uid uuid) returns bigint language plpgsql as $f$
+declare n bigint;
+begin
+  perform rlstest.as_user(p_uid);
+  select count(*) into n from public.loads;
+  perform rlstest.back();
+  return n;
+end $f$;
+create function rlstest.set_active(p_uid uuid, p_active boolean) returns void language sql security definer as $f$
+  update public.profiles set is_active = p_active where id = p_uid $f$;
+grant execute on all functions in schema rlstest to authenticated, anon;
+-- Fresh loads so earlier sections cannot have moved them: L5 requested, L6 booked (carrier A).
+select rlstest.mkload('30000000-0000-0000-0000-000000000005', 'requested', null);
+select rlstest.mkload('30000000-0000-0000-0000-000000000006', 'booked', '20000000-0000-0000-0000-00000000000a');
+
+do $t$
+declare
+  v_cust uuid := '00000000-0000-0000-0000-0000000000c1';
+  v_own  uuid := '00000000-0000-0000-0000-0000000000b1';
+  v_csr  uuid := '00000000-0000-0000-0000-0000000000a2';
+  v_adm  uuid := '00000000-0000-0000-0000-0000000000a1';
+  v_all bigint; v_before bigint; v_after bigint;
+begin
+  v_all := rlstest.su_count('select 1 from public.loads');
+  perform rlstest.rec('guard: loads exist for deactivation tests', case when v_all > 0 then 'OK' else 'VACUOUS' end);
+  perform rlstest.rec('profiles default is_active true',
+    case when not exists (select 1 from public.profiles where not is_active) then 'OK' else 'FAIL' end);
+
+  -- customer
+  v_before := rlstest.loads_seen(v_cust);
+  perform rlstest.rec('control: active customer sees loads', case when v_before > 0 then 'OK' else 'FAIL' end, 'seen=' || v_before);
+  perform rlstest.set_active(v_cust, false);
+  v_after := rlstest.loads_seen(v_cust);
+  perform rlstest.rec('inactive customer sees zero loads',
+    case when v_before > 0 and v_after = 0 then 'OK' else 'FAIL' end, 'before=' || v_before || ' after=' || v_after);
+  perform rlstest.as_user(v_cust);
+  perform rlstest.err('inactive customer cannot call set_load_status',
+    $q$select public.set_load_status('30000000-0000-0000-0000-000000000005', 'cancelled')$q$, 'not authorized');
+  perform rlstest.cnt('inactive customer cannot read profiles', 'select 1 from public.profiles', 0, 'select 1 from public.profiles');
+  perform rlstest.cnt('inactive customer cannot read customers', 'select 1 from public.customers', 0, 'select 1 from public.customers');
+  perform rlstest.back();
+  perform rlstest.set_active(v_cust, true);
+  perform rlstest.as_user(v_cust);
+  perform rlstest.ok('control: reactivated customer can call set_load_status',
+    $q$select public.set_load_status('30000000-0000-0000-0000-000000000005', 'cancelled')$q$);
+  perform rlstest.back();
+  perform rlstest.rec('control: reactivated customer sees loads again',
+    case when rlstest.loads_seen(v_cust) = v_before then 'OK' else 'FAIL' end);
+
+  -- carrier owner
+  v_before := rlstest.loads_seen(v_own);
+  perform rlstest.rec('control: active carrier owner sees loads', case when v_before > 0 then 'OK' else 'FAIL' end, 'seen=' || v_before);
+  perform rlstest.set_active(v_own, false);
+  v_after := rlstest.loads_seen(v_own);
+  perform rlstest.rec('inactive carrier owner sees zero loads',
+    case when v_before > 0 and v_after = 0 then 'OK' else 'FAIL' end, 'before=' || v_before || ' after=' || v_after);
+  perform rlstest.as_user(v_own);
+  perform rlstest.err('inactive carrier owner cannot advance a load',
+    $q$select public.set_load_status('30000000-0000-0000-0000-000000000006', 'at_pickup')$q$, 'not authorized');
+  perform rlstest.cnt('inactive carrier owner cannot read team profiles', 'select 1 from public.profiles', 0, 'select 1 from public.profiles');
+  perform rlstest.back();
+  perform rlstest.set_active(v_own, true);
+  perform rlstest.as_user(v_own);
+  perform rlstest.ok('control: reactivated carrier owner advances own load',
+    $q$select public.set_load_status('30000000-0000-0000-0000-000000000006', 'at_pickup')$q$);
+  perform rlstest.back();
+
+  -- staff
+  v_before := rlstest.loads_seen(v_csr);
+  perform rlstest.rec('control: active staff reads all loads', case when v_before = v_all and v_all > 0 then 'OK' else 'FAIL' end, 'seen=' || v_before || ' all=' || v_all);
+  perform rlstest.set_active(v_csr, false);
+  v_after := rlstest.loads_seen(v_csr);
+  perform rlstest.rec('inactive staff cannot read all loads',
+    case when v_all > 0 and v_after = 0 then 'OK' else 'FAIL' end, 'after=' || v_after);
+  perform rlstest.as_user(v_csr);
+  perform rlstest.err('inactive staff cannot set load status',
+    $q$select public.set_load_status('30000000-0000-0000-0000-000000000003', 'cancelled')$q$, 'not authorized');
+  perform rlstest.err('inactive staff cannot approve location requests',
+    $q$select public.approve_location_request(gen_random_uuid())$q$, 'staff only');
+  perform rlstest.cnt('inactive staff cannot read profiles', 'select 1 from public.profiles', 0, 'select 1 from public.profiles');
+  perform rlstest.back();
+  perform rlstest.set_active(v_csr, true);
+  perform rlstest.rec('control: reactivated staff reads all loads again',
+    case when rlstest.loads_seen(v_csr) = v_all then 'OK' else 'FAIL' end);
+
+  -- admin helpers and storage helper
+  perform rlstest.set_active(v_adm, false);
+  perform rlstest.as_user(v_adm);
+  perform rlstest.rec('inactive admin: dlv_is_admin false, dlv_role null, no doc access',
+    case when not public.dlv_is_admin() and public.dlv_role() is null
+          and not public.dlv_can_access_doc('30000000-0000-0000-0000-000000000006/pod/x.pdf', false) then 'OK' else 'FAIL' end);
+  perform rlstest.back();
+  perform rlstest.set_active(v_adm, true);
+  perform rlstest.as_user(v_adm);
+  perform rlstest.rec('control: active admin: dlv_is_admin true, doc access allowed',
+    case when public.dlv_is_admin() and public.dlv_role() = 'staff_admin'
+          and public.dlv_can_access_doc('30000000-0000-0000-0000-000000000006/pod/x.pdf', false) then 'OK' else 'FAIL' end);
+  perform rlstest.back();
+
+  -- authenticated cannot write profiles
+  perform rlstest.as_user(v_adm);
+  perform rlstest.err('authenticated cannot update profiles.is_active',
+    $q$update public.profiles set is_active = false where id = '00000000-0000-0000-0000-0000000000c1'$q$, 'permission denied');
+  perform rlstest.back();
+end $t$;
+
 -- Summary ----------------------------------------------------------------
 select name, outcome, detail from rlstest.res where outcome <> 'OK' order by n;
 select 'RLS_OK ' || count(*) filter (where outcome = 'OK') || ' OK / '

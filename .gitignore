@@ -12,3 +12,7 @@ supabase/.branches
 next-env.d.ts
 tsconfig.tsbuildinfo
 .env*
+.next-e2e
+test-results
+playwright-report
+e2e/.auth

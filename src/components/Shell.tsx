@@ -5,7 +5,7 @@ import type { Profile } from "@/lib/types";
 export function Shell({ profile, children, driver = false }: { profile: Profile; children: React.ReactNode; driver?: boolean }) {
   return (
     <div className={driver ? "min-h-screen bg-ink text-white" : "min-h-screen"}>
-      <AppHeader profile={profile} />
+      <AppHeader profile={profile} driver={driver} />
       <main className="mx-auto max-w-6xl px-4 py-5">{children}</main>
     </div>
   );

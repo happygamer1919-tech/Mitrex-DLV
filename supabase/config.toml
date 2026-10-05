@@ -19,8 +19,23 @@ site_url = "http://localhost:3000"
 additional_redirect_urls = ["http://localhost:3000/auth/callback"]
 
 [auth.email]
-enable_signup = false
+# Email provider must stay enabled for OTP login. New-user creation is blocked by [auth] enable_signup = false.
+enable_signup = true
 enable_confirmations = false
+otp_length = 6
+otp_expiry = 900
+
+[auth.email.template.magic_link]
+subject = "Your DLV sign-in code"
+content_path = "./supabase/templates/magic_link.html"
+
+[inbucket]
+enabled = true
+port = 54324
 
 [studio]
 enabled = false
+
+[auth.rate_limit]
+email_sent = 1000
+sign_in_sign_ups = 1000

@@ -38,8 +38,18 @@ export async function inviteUser(_prev: ActionState, fd: FormData): Promise<Acti
   }
 
   const admin = createAdminClient();
+  const refusal = "This email cannot be added. Use a different email address.";
+  // Scope consistency is checked against the database, never trusted from the form.
+  if (role === "customer") {
+    const { data: c } = await admin.from("customers").select("id").eq("id", customerId).maybeSingle();
+    if (!c) return { error: "That customer does not exist." };
+  }
+  if (role === "carrier_owner" || role === "carrier_driver") {
+    const { data: k } = await admin.from("carriers").select("id,is_active").eq("id", carrierId).maybeSingle();
+    if (!k || !k.is_active) return { error: "Choose an active carrier." };
+  }
   const { data: dup } = await admin.from("profiles").select("id").ilike("email", email.replace(/[\\%_]/g, "\\$&")).maybeSingle();
-  if (dup) return { error: "A user with that email already exists." };
+  if (dup) return { error: refusal };
 
   let userId: string | null = null;
   let created = false;
@@ -47,7 +57,7 @@ export async function inviteUser(_prev: ActionState, fd: FormData): Promise<Acti
   if (res.error || !res.data.user) {
     // An auth account without a profile (earlier failed invite) can be adopted.
     userId = await findAuthUserId(admin, email);
-    if (!userId) return { error: plainError(res.error, "Could not create the user.") };
+    if (!userId) return { error: "Could not create the user. Try again." };
   } else {
     userId = res.data.user.id;
     created = true;
@@ -63,7 +73,7 @@ export async function inviteUser(_prev: ActionState, fd: FormData): Promise<Acti
   });
   if (error) {
     if (created) await admin.auth.admin.deleteUser(userId);
-    return { error: plainError(error, "Could not save the user profile.") };
+    return { error: error.code === "23505" ? refusal : "Could not save the user profile. Nothing was created." };
   }
   revalidatePath("/admin/users");
   return { ok: `User created. ${email} can now sign in from the login page.` };
@@ -76,6 +86,10 @@ export async function removeUser(_prev: ActionState, fd: FormData): Promise<Acti
   if (id === me.id) return { error: "You cannot remove your own account." };
 
   const admin = createAdminClient();
+  const { data: target } = await admin.from("profiles").select("role,is_active").eq("id", id).maybeSingle();
+  if (target?.role === "staff_admin" && target.is_active && (await activeAdminCount(admin, id)) === 0) {
+    return { error: "You cannot remove the last active staff admin." };
+  }
   // Deleting the auth user cascades to the profile. It fails if the user created loads.
   const { error } = await admin.auth.admin.deleteUser(id);
   if (error) {
@@ -85,4 +99,57 @@ export async function removeUser(_prev: ActionState, fd: FormData): Promise<Acti
   await admin.from("profiles").delete().eq("id", id);
   revalidatePath("/admin/users");
   return { ok: "User removed." };
+}
+
+const BAN_FOREVER = "876000h";
+
+async function activeAdminCount(admin: ReturnType<typeof createAdminClient>, excludeId: string): Promise<number> {
+  const { count } = await admin.from("profiles").select("id", { count: "exact", head: true })
+    .eq("role", "staff_admin").eq("is_active", true).neq("id", excludeId);
+  return count ?? 0;
+}
+
+// Deactivate (active=false) or reactivate (active=true). Two layers: the profile flag
+// (denies every policy and function) and an auth ban (no new code, link or refresh).
+async function setActive(fd: FormData, active: boolean): Promise<ActionState> {
+  const me = await requireAdmin();
+  const id = str(fd, "id");
+  if (!UUID.test(id)) return { error: "User not found." };
+  if (!active && id === me.id) return { error: "You cannot deactivate your own account." };
+
+  const admin = createAdminClient();
+  const { data: target } = await admin.from("profiles").select("id,role,is_active").eq("id", id).maybeSingle();
+  if (!target) return { error: "User not found." };
+  if (target.is_active === active) return { ok: active ? "User is already active." : "User is already inactive." };
+  if (!active && target.role === "staff_admin" && (await activeAdminCount(admin, id)) === 0) {
+    return { error: "You cannot deactivate the last active staff admin." };
+  }
+
+  if (active) {
+    // Unban first so a failure leaves the user inactive rather than active but banned.
+    const { error: banErr } = await admin.auth.admin.updateUserById(id, { ban_duration: "none" });
+    if (banErr) return { error: "Could not reactivate this user. Nothing was changed." };
+    const { error } = await admin.from("profiles").update({ is_active: true }).eq("id", id);
+    if (error) return { error: "Could not reactivate this user. Try again." };
+    revalidatePath("/admin/users");
+    return { ok: "User reactivated. They can sign in again." };
+  }
+
+  const { error } = await admin.from("profiles").update({ is_active: false }).eq("id", id);
+  if (error) return { error: "Could not deactivate this user. Nothing was changed." };
+  const { error: banErr } = await admin.auth.admin.updateUserById(id, { ban_duration: BAN_FOREVER });
+  if (banErr) {
+    await admin.from("profiles").update({ is_active: true }).eq("id", id);
+    return { error: "Could not deactivate this user. Nothing was changed." };
+  }
+  revalidatePath("/admin/users");
+  return { ok: "User deactivated. They can no longer sign in." };
+}
+
+export async function deactivateUser(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  return setActive(fd, false);
+}
+
+export async function reactivateUser(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  return setActive(fd, true);
 }

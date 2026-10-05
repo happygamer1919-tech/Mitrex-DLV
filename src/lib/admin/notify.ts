@@ -30,7 +30,7 @@ export async function notifyCarrierAssigned(loadId: string): Promise<number> {
   if (!l || !l.carrier_id) return 0;
 
   const admin = createAdminClient();
-  const { data: users } = await admin.from("profiles").select("email").eq("carrier_id", l.carrier_id);
+  const { data: users } = await admin.from("profiles").select("email").eq("carrier_id", l.carrier_id).eq("is_active", true);
   const to = ((users ?? []) as { email: string }[]).map((u) => u.email).filter(Boolean);
   if (to.length === 0) return 0;
 

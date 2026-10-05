@@ -14,7 +14,7 @@ Stack: Next.js (App Router, TypeScript), Tailwind, Supabase (Postgres, magic-lin
 | carrier_owner | own carrier loads (booked and later) | status buttons, POD, ETA, manage drivers |
 | carrier_driver | same as owner | status buttons, POD, ETA |
 
-Login is magic link only. Public signup is off. Users are created by invite (server side, service role).
+Login is by emailed 6 digit code (works from the installed iPhone PWA), with the emailed link as a fallback. Public signup is off. Users are created by invite (server side, service role).
 
 ## Environment variable names
 
@@ -77,6 +77,23 @@ Without the flag the script only runs against a local Supabase. It is idempotent
 
 1. Vercel project `mitrex-dlv`, domain `portal.dlvlogistics.com`, all env names above set for Production.
 2. Supabase Auth: Site URL `https://portal.dlvlogistics.com`; Redirect URLs include `https://portal.dlvlogistics.com/auth/callback`; public signup disabled; SMTP is Resend.
-3. Magic links use PKCE: open the link in the same browser that requested it.
+3. Login is code entry: the user types the 6 digit code from the email, so it works inside the installed iPhone PWA. The emailed link is only a fallback and, being PKCE, must open in the browser that requested it. The code needs the production email template below.
 4. Realtime: `loads` and `load_events` are added to the `supabase_realtime` publication by migration 0004.
 5. Storage bucket `documents` is private and created by migration 0004. Access is enforced by storage RLS (`dlv_can_access_doc`).
+
+## Owner step: production email template
+
+Login sends a 6 digit code. Supabase only includes the code if the template contains it. In Supabase Dashboard > Authentication > Email Templates > Magic Link, the body must contain both `{{ .ConfirmationURL }}` and `{{ .Token }}`. Paste this body (subject: `Your DLV sign-in code`):
+
+```html
+<h2>Your DLV sign-in code</h2>
+<p>Enter this 6 digit code in the DLV portal:</p>
+<p style="font-size:32px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
+<p>The code expires soon. Or tap the link to sign in on this device:</p>
+<p><a href="{{ .ConfirmationURL }}">Sign in to DLV</a></p>
+<p>If you did not ask for this, ignore this email.</p>
+```
+
+Also check Authentication > Providers > Email: OTP length 6 and expiry 900 seconds or similar. The Confirm signup template is irrelevant (invite only, public signup off). The code is what works from the installed iPhone PWA, because an emailed link opens in Safari and the PWA does not receive the session.
+
+Local: `supabase start` serves the same template (supabase/templates/magic_link.html) and a mail catcher (Mailpit) at http://127.0.0.1:54324.

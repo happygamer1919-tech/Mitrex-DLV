@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 
 const BAD = String.fromCharCode(8212, 8211).split("");
-const SKIP = new Set(["node_modules", ".next", ".git", ".unlazy", ".vercel", "supabase/.temp"]);
+const SKIP = new Set(["node_modules", ".next", ".next-e2e", ".git", ".unlazy", ".vercel", ".temp", "test-results", "playwright-report", ".auth"]);
 const EXT = new Set([".ts", ".tsx", ".js", ".mjs", ".css", ".json", ".md", ".sql", ".toml", ".webmanifest", ".html", ".txt", ".example", ".yml", ".yaml", ".svg", ""]);
 const root = process.argv[2] || ".";
 const hits = [];

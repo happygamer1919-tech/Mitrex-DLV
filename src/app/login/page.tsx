@@ -14,7 +14,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <div className="text-[13px] text-muted">Mitrex shipping portal</div>
         </div>
       </div>
-      <LoginForm initialError={error ? "That sign-in link is invalid or expired. Request a new one." : null} />
+      <LoginForm initialError={error ? "That sign-in link is invalid or expired. Request a new one, or use a code." : null} />
     </main>
   );
 }
