@@ -1,7 +1,10 @@
 {
+  "id": "/",
   "name": "DLV Mitrex shipping portal",
   "short_name": "DLV",
   "description": "Book loads and follow live status.",
+  "lang": "en",
+  "categories": ["business", "productivity", "logistics"],
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
