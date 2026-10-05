@@ -1,0 +1,43 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: typecheck
+        run: npx tsc --noEmit
+      - name: no dashes
+        run: node scripts/check-no-dashes.mjs
+      - name: build
+        run: npm run build
+
+  rls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: start local Supabase
+        run: supabase start -x studio,imgproxy,vector,logflare,edge-runtime
+      - name: reset (migrations and seed)
+        run: supabase db reset
+      - name: RLS suite
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/rls.sql | tee rls.out
+          grep -E "RLS_OK [0-9]+ OK / [0-9]+ VACUOUS / 0 FAIL" rls.out
