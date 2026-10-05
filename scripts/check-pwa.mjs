@@ -140,9 +140,11 @@ async function runtime() {
   assertLocalUrl("NEXT_PUBLIC_SUPABASE_URL", env.NEXT_PUBLIC_SUPABASE_URL);
   const next = join(ROOT, "node_modules", ".bin", "next");
   if (!REUSE || !existsSync(join(ROOT, dist, "BUILD_ID"))) {
-    try { execFileSync(next, ["build"], { cwd: ROOT, env, stdio: "pipe" }); }
+    try { execFileSync(next, ["build"], { cwd: ROOT, env, stdio: "pipe", maxBuffer: 256 * 1024 * 1024 }); }
     catch (e) { fail("next build failed: " + String(e.stdout || e.message).split("\n").slice(-8).join(" | ")); return; }
   }
+  // A foreign process already on the port would answer the probes and fake a pass: refuse.
+  try { await fetch(`http://127.0.0.1:${PORT}/`, { redirect: "manual" }); fail(`port ${PORT} is already in use, refusing to test another process`); return; } catch {}
   const server = spawn(next, ["start", "-p", String(PORT), "-H", "127.0.0.1"], { cwd: ROOT, env, stdio: "ignore" });
   const base = `http://127.0.0.1:${PORT}`;
   try {
