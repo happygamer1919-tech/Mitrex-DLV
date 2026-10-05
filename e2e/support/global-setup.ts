@@ -1,15 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
-import { chromium, type FullConfig } from "@playwright/test";
+import { chromium, webkit, type FullConfig } from "@playwright/test";
 import { mkdirSync } from "node:fs";
-import { localEnv } from "./env";
+import { BASE_URL, localEnv } from "./env";
+import { assertLocalUrl } from "./guard";
 import { clearMail, latestCode } from "./mail";
 import { CARRIER_A, CARRIER_B, USERS, stateFile, type Who } from "./users";
 
-// Creates the e2e users (idempotent) and signs each in through the real code login UI once,
-// saving a storage state per role so the scenarios start authenticated.
+// Creates the e2e users (idempotent) and signs each in through the real code login UI once per
+// project (engine), saving e2e/.auth/<project>-<who>.json so the scenarios start authenticated.
 export default async function globalSetup(config: FullConfig) {
   const env = localEnv();
-  const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SERVICE_ROLE_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY, {
+  assertLocalUrl(env.NEXT_PUBLIC_SUPABASE_URL, "supabase url");
+  assertLocalUrl(BASE_URL, "base url");
+  const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   });
 
@@ -51,21 +54,30 @@ export default async function globalSetup(config: FullConfig) {
   }
 
   mkdirSync("e2e/.auth", { recursive: true });
-  const base = config.projects[0].use.baseURL!;
-  const browser = await chromium.launch();
-  for (const who of Object.keys(USERS) as Who[]) {
-    await clearMail();
-    const ctx = await browser.newContext({ baseURL: base });
-    const page = await ctx.newPage();
-    await page.goto("/login");
-    const sentAt = Date.now();
-    await page.getByTestId("login-email").fill(USERS[who].email);
-    await page.getByTestId("login-send").click();
-    const code = await latestCode(USERS[who].email, sentAt);
-    await page.getByTestId("login-code").fill(code);
-    await page.waitForURL((u) => u.pathname !== "/login", { timeout: 20_000 });
-    await ctx.storageState({ path: stateFile(who) });
-    await ctx.close();
+  for (const project of config.projects) {
+    const engine = project.use.defaultBrowserType === "webkit" ? webkit : chromium;
+    const browser = await engine.launch();
+    for (const who of Object.keys(USERS) as Who[]) {
+      await clearMail();
+      const ctx = await browser.newContext({
+        viewport: project.use.viewport ?? undefined,
+        userAgent: project.use.userAgent,
+        deviceScaleFactor: project.use.deviceScaleFactor,
+        isMobile: project.use.isMobile,
+        hasTouch: project.use.hasTouch,
+        baseURL: BASE_URL,
+      });
+      const page = await ctx.newPage();
+      await page.goto("/login");
+      const sentAt = Date.now();
+      await page.getByTestId("login-email").fill(USERS[who].email);
+      await page.getByTestId("login-send").click();
+      const code = await latestCode(USERS[who].email, sentAt);
+      await page.getByTestId("login-code").fill(code);
+      await page.waitForURL((u) => u.pathname !== "/login", { timeout: 20_000 });
+      await ctx.storageState({ path: stateFile(project.name, who) });
+      await ctx.close();
+    }
+    await browser.close();
   }
-  await browser.close();
 }

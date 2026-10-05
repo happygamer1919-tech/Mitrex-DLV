@@ -136,6 +136,8 @@ test("carrier walks the status buttons; ETA and POD are required", async ({ brow
 test("Maria sees status and ETA", async ({ browser }) => {
   const { ctx, page } = await as(browser, "maria");
   await page.goto(`/loads/${loadId}`);
+  // "Delivered" is also a progress label, so assert the authoritative status and the POD link too.
+  expect((await adminClient().from("loads").select("status").eq("id", loadId).single()).data?.status).toBe("delivered");
   await expect(page.getByText("Delivered").first()).toBeVisible();
   await expect(page.getByRole("link", { name: /View POD/ })).toBeVisible();
   const note = page.getByTestId("load-state-note");

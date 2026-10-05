@@ -1,8 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
-import { localEnv } from "./e2e/support/env";
+import { E2E_PORT, localEnv } from "./e2e/support/env";
 
 const env = localEnv();
-const PORT = 3200;
+const PORT = E2E_PORT; // default 3200, override with E2E_PORT
 
 export default defineConfig({
   testDir: "./e2e",
@@ -15,7 +15,10 @@ export default defineConfig({
   reporter: [["list"]],
   globalSetup: "./e2e/support/global-setup.ts",
   use: { baseURL: `http://localhost:${PORT}`, trace: "retain-on-failure" },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "webkit", use: { ...devices["iPhone 13"] } },
+  ],
   webServer: {
     command: `npx next build && npx next start -p ${PORT}`,
     url: `http://localhost:${PORT}/login`,
@@ -25,6 +28,8 @@ export default defineConfig({
       ...env,
       NEXT_DIST_DIR: ".next-e2e",
       NEXT_PUBLIC_SITE_URL: `http://localhost:${PORT}`,
+      // The running local stack sends 8 digit codes (GOTRUE_MAILER_OTP_LENGTH), whatever config.toml says.
+      NEXT_PUBLIC_OTP_LENGTH: process.env.E2E_OTP_LENGTH ?? "8",
       RESEND_API_KEY: "",
       NOTIFY_FROM: "",
     },
