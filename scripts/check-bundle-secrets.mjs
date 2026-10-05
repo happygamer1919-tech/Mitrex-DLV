@@ -116,6 +116,9 @@ async function fetchPages(stack) {
   const child = spawn("npx", ["next", "start", "-p", String(PORT), "-H", "127.0.0.1"], { env, stdio: "ignore" });
   const pages = [];
   try {
+    if (await fetch(`http://127.0.0.1:${PORT}/login`).then(() => true, () => false)) {
+      throw new Error(`port ${PORT} is already in use`);
+    }
     let up = false;
     for (let i = 0; i < 60 && !up; i++) {
       try {

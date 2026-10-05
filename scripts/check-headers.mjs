@@ -37,6 +37,12 @@ if (!existsSync(join(DIST, "BUILD_ID"))) {
   execSync("npx next build", { env, stdio: ["ignore", "ignore", "inherit"] });
 }
 
+// Refuse to test a foreign process that already holds the port.
+if (await fetch(`http://127.0.0.1:${PORT}/login`).then(() => true, () => false)) {
+  console.error(`REFUSED: port ${PORT} is already in use`);
+  process.exit(2);
+}
+
 const child = spawn("npx", ["next", "start", "-p", String(PORT), "-H", "127.0.0.1"], { env, stdio: "ignore" });
 let headers;
 try {
