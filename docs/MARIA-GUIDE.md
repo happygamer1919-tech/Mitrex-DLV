@@ -4,10 +4,9 @@ Portal: https://portal.dlvlogistics.com . All times are Eastern (ET).
 
 ## Sign in
 1. Open the portal and enter your email. Tap **Send code**.
-2. Open the email "Your DLV sign-in code" and type the 6 digit code. It signs you in by itself on the last digit.
-3. No email after 30 seconds? Tap **Resend code** (it counts down from 30 first). Check spam.
+2. Open the email "Your DLV sign-in code" and type the 8 digit code. It signs you in by itself on the last digit (or tap **Sign in**).
+3. No email after 30 seconds? Tap **Resend code** (it counts down from 30 first). Check spam. A wrong or expired code also needs **Resend code**.
 4. The email also has a link. It works too, but open it in the same browser where you asked for the code.
-5. A wrong or expired code shows "That code is wrong or has expired." Tap **Resend code**.
 
 ## Book a load
 1. Tap **Book a load** in the top menu.
@@ -33,7 +32,7 @@ Portal: https://portal.dlvlogistics.com . All times are Eastern (ET).
 - **Delivered**: done. The POD is available.
 - **Cancelled**: the load will not move.
 
-Use the status buttons on the **Loads** page to filter. Pages update by themselves.
+Pages update by themselves.
 
 ## Find ETA, BOL and POD
 Open the load from the **Loads** list.

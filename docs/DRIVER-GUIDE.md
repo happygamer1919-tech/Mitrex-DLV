@@ -15,7 +15,7 @@ Open the app from your home screen from now on.
 
 ## Sign in
 1. Enter your email and tap **Send code**.
-2. Open the email and type the 6 digit code in the app. Do not use the email link inside the installed app.
+2. Open the email and type the 8 digit code in the app (or tap **Sign in**). Do not use the email link inside the installed app.
 3. No email? Tap **Resend code** after the 30 second countdown.
 4. Wrong or expired code: tap **Resend code**.
 

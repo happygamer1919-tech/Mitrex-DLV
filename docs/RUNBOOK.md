@@ -54,7 +54,7 @@ Do one key at a time. For each: create the new value, update everywhere below, r
 
 ## After every deploy
 1. Open https://portal.dlvlogistics.com. It must load the login page.
-2. Request a sign-in code. The email must arrive with a 6 digit code.
+2. Request a sign-in code. The email must arrive with an 8 digit code.
 3. Sign in as staff. The board loads.
 4. Open one load. Documents and Timeline show.
 5. Check Vercel > Deployments says Ready, with no errors in the logs.
