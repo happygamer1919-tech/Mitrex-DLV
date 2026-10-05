@@ -8,7 +8,7 @@
   --color-card: #ffffff;
   --color-line: #cfe6d9;
   --color-muted: #4e5f57;
-  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-jakarta), var(--font-jakarta-ext), ui-sans-serif, system-ui, sans-serif;
   --radius-card: 16px;
   --radius-input: 12px;
 }
