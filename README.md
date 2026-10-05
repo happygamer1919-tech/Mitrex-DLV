@@ -97,3 +97,32 @@ Login sends a sign-in code (8 digits on hosted Supabase). Supabase only includes
 Also check Authentication > Providers > Email: OTP length 6 and expiry 900 seconds or similar. The Confirm signup template is irrelevant (invite only, public signup off). The code is what works from the installed iPhone PWA, because an emailed link opens in Safari and the PWA does not receive the session.
 
 Local: `supabase start` serves the same template (supabase/templates/magic_link.html) and a mail catcher (Mailpit) at http://127.0.0.1:54324.
+
+## Operations
+
+### Keepalive
+
+Supabase free tier projects pause after a period of inactivity. `.github/workflows/keepalive.yml` runs every 3 days (06:00 UTC) and calls `https://portal.dlvlogistics.com/api/health`. That endpoint is public, runs one trivial query with the service role client, returns `{"ok":true}` (200) or `{"ok":false}` (503), and exposes no data. The job fails if the response is not 200 or the body lacks `"ok":true`. No secrets needed.
+
+### Backup
+
+`.github/workflows/backup.yml` runs weekly (Sunday 04:00 UTC). It runs `pg_dump` from the `postgres:17` Docker image (custom format) and uploads `dlv-backup-<date>` as a workflow artifact kept for 14 days. The job fails if the secret is missing or the dump is under 10 KB.
+
+Included: the `public` schema (schema and data) and the `auth` schema (including `auth.users`, so logins can be restored).
+Not included: Storage files (the private `documents` bucket). A pg_dump holds only storage metadata rows, not file contents. Back those up separately (Supabase dashboard download or the Storage API).
+
+Restore (into a new or empty Postgres 17 database; download the artifact from the run page and unzip it first):
+
+```
+pg_restore --no-owner --no-privileges --dbname "$TARGET_DATABASE_URL" dlv-backup.dump
+```
+
+Add `--clean --if-exists` to overwrite existing objects. Restoring into Supabase may report errors for objects Supabase already manages in `auth`; review them before relying on the result.
+
+### Owner action (once)
+
+Add a GitHub repository secret named `DATABASE_URL_DIRECT` (Settings > Secrets and variables > Actions > New repository secret). Use the Session pooler connection URI from Supabase (Connect > Session pooler), with the database password filled in.
+
+### Run manually
+
+GitHub repository > Actions tab > pick `keepalive` or `backup` > Run workflow.

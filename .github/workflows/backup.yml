@@ -1,0 +1,50 @@
+name: backup
+
+on:
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL_DIRECT: ${{ secrets.DATABASE_URL_DIRECT }}
+    steps:
+      - name: Check secret is set
+        run: |
+          if [ -z "$DATABASE_URL_DIRECT" ]; then
+            echo "::error::GitHub secret DATABASE_URL_DIRECT is missing. Add it under Settings > Secrets and variables > Actions (Session pooler URI)."
+            exit 1
+          fi
+
+      - name: Dump database with pg_dump 17
+        run: |
+          docker run --rm -e DATABASE_URL_DIRECT postgres:17 \
+            sh -c 'pg_dump --no-owner --no-privileges --schema=public --schema=auth --format=custom "$DATABASE_URL_DIRECT"' \
+            > dlv-backup.dump
+
+      - name: Check dump is sane
+        run: |
+          size=$(wc -c < dlv-backup.dump)
+          echo "dump size: $size bytes"
+          if [ "$size" -lt 10240 ]; then
+            echo "::error::Backup is empty or smaller than 10 KB. Treating as failed."
+            exit 1
+          fi
+
+      - name: Get date
+        id: date
+        run: echo "d=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dlv-backup-${{ steps.date.outputs.d }}
+          path: dlv-backup.dump
+          retention-days: 14
+          if-no-files-found: error
