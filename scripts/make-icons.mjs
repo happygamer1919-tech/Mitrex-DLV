@@ -21,7 +21,8 @@ function chunk(type, data) {
 function png(size, safe) {
   const INK = [2, 8, 20], NEON = [43, 255, 136];
   const raw = Buffer.alloc((size * 3 + 1) * size);
-  // neon rounded dot (the portal mark) plus a ring, centred; maskable keeps it inside the safe zone
+  // neon rounded dot (the portal mark) plus a ring, centred. Maskable construction: the mark's outer radius is
+  // 26 percent of the side (52 percent diameter), inside the 80 percent safe zone (circle of radius 40 percent).
   const cx = size / 2, cy = size / 2;
   const rOuter = size * (safe ? 0.26 : 0.34), rInner = rOuter * 0.62;
   for (let y = 0; y < size; y++) {
@@ -47,4 +48,6 @@ mkdirSync("public/icons", { recursive: true });
 writeFileSync("public/icons/icon-192.png", png(192, false));
 writeFileSync("public/icons/icon-512.png", png(512, false));
 writeFileSync("public/icons/icon-maskable-512.png", png(512, true));
+// iOS home screen icon: full-bleed opaque square (iOS rounds the corners itself).
+writeFileSync("public/icons/apple-touch-icon-180.png", png(180, false));
 console.log("icons written");

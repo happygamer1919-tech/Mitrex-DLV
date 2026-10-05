@@ -24,7 +24,10 @@ export const metadata: Metadata = {
   description: "Book loads and follow live status.",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "DLV", statusBarStyle: "black-translucent" },
-  icons: { icon: "/icons/icon-192.png", apple: "/icons/icon-192.png" },
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon-180.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = { themeColor: "#020814", width: "device-width", initialScale: 1 };
