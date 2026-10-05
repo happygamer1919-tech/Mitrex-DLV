@@ -1,0 +1,20 @@
+name: keepalive
+
+on:
+  schedule:
+    - cron: "0 6 */3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping portal health endpoint
+        run: |
+          body="$(curl --fail --silent --show-error --max-time 30 https://portal.dlvlogistics.com/api/health)"
+          echo "$body"
+          echo "$body" | grep -q '"ok":true'
