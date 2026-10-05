@@ -29,3 +29,6 @@
 - Server actions (deactivateUser, reactivateUser, inviteUser, removeUser) call requireAdmin first. Deactivate refuses self and the last active staff_admin; remove also refuses the last active staff_admin. If the ban call fails after the flag was set, the flag is rolled back.
 - inviteUser validates scope against the database (customer exists, carrier exists and is active), lowercases the email, and returns one generic message for a duplicate email. Auth user is created with email_confirm true; it is deleted if the profile insert fails.
 - Follow-up for other owners: src/app/team/actions.ts (owner adds drivers) and notify.ts files read profiles through the service role and do not yet filter is_active, so an inactive user could still be emailed or listed there.
+
+## 2026-10-05 OTP length
+- Hosted Supabase sends 8 digit codes (project default); the first build assumed 6 and rejected real codes. The form now auto-submits at 8 digits, has a Sign in button that accepts 6 to 8 digits, and no longer states a digit count in the copy. Local config otp_length is 8 to match production, and the e2e mail reader accepts 6 to 8 digits. Supersedes the "6 digit" wording in the OTP LOGIN entry above.

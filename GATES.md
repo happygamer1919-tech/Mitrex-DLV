@@ -34,7 +34,7 @@ Scope: OTP code login that works from an installed PWA, verified admin user mana
   EXPECT: PREFLIGHT_OK
   EVIDENCE: automatic-evidence=v1; definition-sha256=068d27e228f10898d9668f1598ff024c998ed840088966e907a5d5be37731b4d; exit=0; EXPECT=matched; output-sha256=8bd8e45d566a1ba6160a65f7847443ba312164e95a83fe2cd6569327adff8be2; output-bytes=156; shell=/bin/sh; cwd=/Users/ivan/Documents/Projects/GitHub/Mitrex-DLV; path=b81828cf6b01/17 entries
 
-- [ ] G7: production has the 19 seeded locations
+- [x] G7: production has the 19 seeded locations
   CHECK: sh -c 'set -o allexport; . ~/.zshenvmitrex; set +o allexport; psql "$DATABASE_URL_DIRECT" -tA -c "select count(*) from public.locations"'
   EXPECT: /^19$/m
-  EVIDENCE: pending
+  EVIDENCE: automatic-evidence=v1; definition-sha256=423a8065e61e004e924381546d0ca67a1ae4466b69fabb48b4ed9bf544320b09; exit=0; EXPECT=matched; output-sha256=a9742eb8ee320e006666aef25ae9aeed948247f3125c9cafa7cf97b7e7467dd5; output-bytes=3; shell=/bin/sh; cwd=/Users/ivan/Documents/Projects/GitHub/Mitrex-DLV; path=b81828cf6b01/17 entries
