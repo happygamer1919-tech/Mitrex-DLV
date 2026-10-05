@@ -9,7 +9,7 @@ const hits = [];
 
 function walk(dir) {
   for (const name of readdirSync(dir)) {
-    if (SKIP.has(name) || name === "package-lock.json") continue;
+    if (SKIP.has(name) || name.startsWith(".next") || name === ".claude" || name === "package-lock.json") continue;
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) walk(p);
