@@ -65,7 +65,8 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
   const pods = signed.filter((s) => s.doc.kind === "pod");
 
   const editable = l.status === "requested";
-  const frozen = l.status !== "requested" && l.status !== "cancelled";
+  // The "contact DLV" message applies only while dispatch owns the load (booked through at delivery).
+  const frozen = ["booked", "at_pickup", "loading", "enroute", "at_delivery"].includes(l.status);
 
   return (
     <Shell profile={profile}>
@@ -82,7 +83,17 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
           <CancelLoad loadId={l.id} loadNumber={l.load_number} />
         </div>
       ) : null}
-      {frozen ? <p className="mb-4 text-[15px] font-medium">Contact DLV to change this load</p> : null}
+      {frozen ? <p data-testid="load-state-note" className="mb-4 text-[15px] font-medium">Contact DLV to change this load</p> : null}
+      {l.status === "delivered" ? (
+        <p data-testid="load-state-note" className="mb-4 text-[15px] font-medium">
+          Delivered{l.delivered_at ? ` on ${fmtDateTime(l.delivered_at)}` : ""}
+        </p>
+      ) : null}
+      {l.status === "cancelled" ? (
+        <p data-testid="load-state-note" className="mb-4 text-[15px] font-medium">
+          Cancelled{l.cancelled_at ? ` on ${fmtDateTime(l.cancelled_at)}` : ""}
+        </p>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <div className="space-y-4">

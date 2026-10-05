@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminClient, as, isoDate, PNG_1X1 } from "./support/helpers";
+import { adminClient, as, insertBookedLoad, isoDate, PNG_1X1 } from "./support/helpers";
 import { CARRIER_A } from "./support/users";
 
 test.describe.configure({ mode: "serial" });
@@ -63,6 +63,14 @@ test("staff assigns carrier A and marks booked", async ({ browser }) => {
   await page.getByRole("button", { name: "Mark booked" }).click();
   await expect(page.getByText("Booked").first()).toBeVisible();
   await expect(page.getByText("BOL pending").first()).toBeVisible();
+  await ctx.close();
+});
+
+test("Maria sees the contact-DLV message while the load is booked", async ({ browser }) => {
+  const { ctx, page } = await as(browser, "maria");
+  await page.goto(`/loads/${loadId}`);
+  await expect(page.getByTestId("load-state-note")).toHaveText("Contact DLV to change this load");
+  await expect(page.getByRole("link", { name: "Edit load" })).toHaveCount(0);
   await ctx.close();
 });
 
@@ -130,9 +138,31 @@ test("Maria sees status and ETA", async ({ browser }) => {
   await page.goto(`/loads/${loadId}`);
   await expect(page.getByText("Delivered").first()).toBeVisible();
   await expect(page.getByRole("link", { name: /View POD/ })).toBeVisible();
+  const note = page.getByTestId("load-state-note");
+  await expect(note).toHaveCount(1);
+  await expect(note).toContainText(/^Delivered on /);
+  await expect(page.getByText("Contact DLV to change this load")).toHaveCount(0);
   await expect(page.getByText(/^ETA$/).first()).toBeVisible();
   const eta = (await adminClient().from("loads").select("eta").eq("id", loadId).single()).data?.eta;
   expect(eta).toBeTruthy();
   await expect(page.getByText(CARRIER_A).first()).toBeVisible();
+  await ctx.close();
+});
+
+test("cancelled load shows Cancelled, not the contact-DLV message", async ({ browser }) => {
+  const id = await insertBookedLoad(`CXL-${Date.now()}`, "cancelled");
+  const { ctx, page } = await as(browser, "maria");
+  await page.goto(`/loads/${id}`);
+  await expect(page.getByTestId("load-state-note")).toContainText(/^Cancelled on /);
+  await expect(page.getByText("Contact DLV to change this load")).toHaveCount(0);
+  await ctx.close();
+});
+
+test("requested load shows no state note and offers Edit", async ({ browser }) => {
+  const id = await insertBookedLoad(`REQ-${Date.now()}`, "requested");
+  const { ctx, page } = await as(browser, "maria");
+  await page.goto(`/loads/${id}`);
+  await expect(page.getByTestId("load-state-note")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Edit load" })).toBeVisible();
   await ctx.close();
 });
