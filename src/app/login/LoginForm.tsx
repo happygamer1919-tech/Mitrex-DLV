@@ -14,6 +14,11 @@ function isNetwork(e: AuthErr) {
   return e.status === 0 || /fetch|network/i.test(`${e.name ?? ""} ${e.message ?? ""}`);
 }
 
+// Hosted Supabase sends 8 digit codes by default. The code auto-submits at OTP_LENGTH; the
+// Sign in button accepts anything from MIN_CODE_LENGTH so a project set to 6 digits also works.
+const OTP_LENGTH = 8;
+const MIN_CODE_LENGTH = 6;
+
 export function LoginForm({ initialError }: { initialError: string | null }) {
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
@@ -113,9 +118,9 @@ export function LoginForm({ initialError }: { initialError: string | null }) {
   }
 
   function onCodeChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+    const digits = e.target.value.replace(/\D/g, "").slice(0, OTP_LENGTH);
     setCode(digits);
-    if (digits.length === 6) void verify(digits);
+    if (digits.length === OTP_LENGTH) void verify(digits);
   }
 
   function useDifferentEmail() {
@@ -131,10 +136,10 @@ export function LoginForm({ initialError }: { initialError: string | null }) {
       <Card>
         <h1 className="mb-1 text-[20px] font-bold">Enter your code</h1>
         <p className="mb-4 break-words text-[15px] text-muted">
-          If {email} has access, a 6 digit code is on its way. You can also tap the link in the email.
+          If {email} has access, a sign-in code is on its way. You can also tap the link in the email.
         </p>
         <div className="space-y-4">
-          <Field label="6 digit code">
+          <Field label="Sign-in code">
             <input
               ref={codeRef}
               data-testid="login-code"
@@ -142,14 +147,23 @@ export function LoginForm({ initialError }: { initialError: string | null }) {
               inputMode="numeric"
               autoComplete="one-time-code"
               pattern="[0-9]*"
-              maxLength={6}
+              maxLength={OTP_LENGTH}
               value={code}
               disabled={busy}
               onChange={onCodeChange}
-              aria-label="6 digit code"
-              className="w-full min-h-[56px] rounded-[12px] border border-line bg-white px-3 text-center text-[32px] font-bold tracking-[0.3em] text-ink"
+              aria-label="Sign-in code"
+              className="w-full min-h-[56px] rounded-[12px] border border-line bg-white px-3 text-center text-[28px] font-bold tracking-[0.2em] text-ink"
             />
           </Field>
+          <Button
+            type="button"
+            data-testid="login-verify"
+            disabled={busy || code.length < MIN_CODE_LENGTH}
+            onClick={() => void verify(code)}
+            className="min-h-[48px] w-full"
+          >
+            Sign in
+          </Button>
           {busy ? <Notice tone="info">Checking code...</Notice> : null}
           {error ? <div data-testid="login-error"><Notice tone="error">{error}</Notice></div> : null}
           <Button
@@ -173,7 +187,7 @@ export function LoginForm({ initialError }: { initialError: string | null }) {
   return (
     <Card>
       <h1 className="mb-1 text-[20px] font-bold">Sign in</h1>
-      <p className="mb-4 text-[15px] text-muted">Enter your email and we send you a 6 digit code. Access is by invitation.</p>
+      <p className="mb-4 text-[15px] text-muted">Enter your email and we send you a sign-in code. Access is by invitation.</p>
       <form onSubmit={onSend} className="space-y-4">
         <Field label="Email">
           <Input
