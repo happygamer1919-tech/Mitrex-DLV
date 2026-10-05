@@ -1,0 +1,13 @@
+node_modules
+.next
+.env
+.env.*
+!.env.example
+.unlazy/
+.unlazy-hook-state.json
+supabase/.temp
+supabase/.branches
+*.log
+.vercel
+next-env.d.ts
+tsconfig.tsbuildinfo
