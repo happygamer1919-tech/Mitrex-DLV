@@ -1,6 +1,6 @@
 import { MAIL_API } from "./env";
 
-// Reads the newest 6 digit code sent to an address from the local mail catcher (Mailpit API).
+// Reads the newest sign-in code sent to an address from the local mail catcher (Mailpit API).
 export async function latestCode(to: string, notBeforeMs: number, timeoutMs = 30_000): Promise<string> {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
@@ -12,7 +12,7 @@ export async function latestCode(to: string, notBeforeMs: number, timeoutMs = 30
         const full = await fetch(`${MAIL_API}/message/${msg.ID}`);
         if (!full.ok) continue;
         const m = (await full.json()) as { Text?: string; HTML?: string };
-        const hit = /\b(\d{6})\b/.exec(`${m.Text ?? ""} ${m.HTML ?? ""}`);
+        const hit = /\b(\d{6,8})\b/.exec(`${m.Text ?? ""} ${m.HTML ?? ""}`);
         if (hit) return hit[1];
       }
     }

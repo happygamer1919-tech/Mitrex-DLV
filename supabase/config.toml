@@ -22,7 +22,7 @@ additional_redirect_urls = ["http://localhost:3000/auth/callback"]
 # Email provider must stay enabled for OTP login. New-user creation is blocked by [auth] enable_signup = false.
 enable_signup = true
 enable_confirmations = false
-otp_length = 6
+otp_length = 8
 otp_expiry = 900
 
 [auth.email.template.magic_link]

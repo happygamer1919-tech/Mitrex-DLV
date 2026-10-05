@@ -14,7 +14,7 @@ Stack: Next.js (App Router, TypeScript), Tailwind, Supabase (Postgres, magic-lin
 | carrier_owner | own carrier loads (booked and later) | status buttons, POD, ETA, manage drivers |
 | carrier_driver | same as owner | status buttons, POD, ETA |
 
-Login is by emailed 6 digit code (works from the installed iPhone PWA), with the emailed link as a fallback. Public signup is off. Users are created by invite (server side, service role).
+Login is by emailed sign-in code (works from the installed iPhone PWA), with the emailed link as a fallback. Public signup is off. Users are created by invite (server side, service role).
 
 ## Environment variable names
 
@@ -77,17 +77,17 @@ Without the flag the script only runs against a local Supabase. It is idempotent
 
 1. Vercel project `mitrex-dlv`, domain `portal.dlvlogistics.com`, all env names above set for Production.
 2. Supabase Auth: Site URL `https://portal.dlvlogistics.com`; Redirect URLs include `https://portal.dlvlogistics.com/auth/callback`; public signup disabled; SMTP is Resend.
-3. Login is code entry: the user types the 6 digit code from the email, so it works inside the installed iPhone PWA. The emailed link is only a fallback and, being PKCE, must open in the browser that requested it. The code needs the production email template below.
+3. Login is code entry: the user types the sign-in code from the email, so it works inside the installed iPhone PWA. The emailed link is only a fallback and, being PKCE, must open in the browser that requested it. The code needs the production email template below.
 4. Realtime: `loads` and `load_events` are added to the `supabase_realtime` publication by migration 0004.
 5. Storage bucket `documents` is private and created by migration 0004. Access is enforced by storage RLS (`dlv_can_access_doc`).
 
 ## Owner step: production email template
 
-Login sends a 6 digit code. Supabase only includes the code if the template contains it. In Supabase Dashboard > Authentication > Email Templates > Magic Link, the body must contain both `{{ .ConfirmationURL }}` and `{{ .Token }}`. Paste this body (subject: `Your DLV sign-in code`):
+Login sends a sign-in code (8 digits on hosted Supabase). Supabase only includes the code if the template contains it. In Supabase Dashboard > Authentication > Email Templates > Magic Link, the body must contain both `{{ .ConfirmationURL }}` and `{{ .Token }}`. Paste this body (subject: `Your DLV sign-in code`):
 
 ```html
 <h2>Your DLV sign-in code</h2>
-<p>Enter this 6 digit code in the DLV portal:</p>
+<p>Enter this sign-in code in the DLV portal:</p>
 <p style="font-size:32px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
 <p>The code expires soon. Or tap the link to sign in on this device:</p>
 <p><a href="{{ .ConfirmationURL }}">Sign in to DLV</a></p>
