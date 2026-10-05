@@ -25,7 +25,7 @@ export function isoDate(daysAhead: number): string {
 }
 
 // Inserts a booked load for E2E carrier A directly (service role, no JWT, triggers allow it).
-export async function insertBookedLoad(po: string): Promise<string> {
+export async function insertBookedLoad(po: string, status: "booked" | "requested" | "cancelled" | "delivered" = "booked"): Promise<string> {
   const db = adminClient();
   const [{ data: cust }, { data: car }, { data: maria }, { data: pu }, { data: de }] = await Promise.all([
     db.from("customers").select("id").eq("name", "Mitrex").single(),
@@ -40,7 +40,9 @@ export async function insertBookedLoad(po: string): Promise<string> {
     delivery_timing: "appointment", delivery_date: isoDate(2), delivery_time_start: "14:00",
     pickup_contact_name: "Pat", pickup_contact_phone: "416-555-0101",
     delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102",
-    po_number: po, status: "booked", carrier_id: car!.id,
+    po_number: po, status, carrier_id: status === "requested" ? null : car!.id,
+    ...(status === "cancelled" ? { cancelled_at: new Date().toISOString() } : {}),
+    ...(status === "delivered" ? { delivered_at: new Date().toISOString(), eta: new Date().toISOString() } : {}),
   }).select("id").single();
   if (error) throw error;
   return data.id as string;
