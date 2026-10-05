@@ -57,7 +57,7 @@ export async function addDriver(emailInput: string, nameInput: string): Promise<
   }
 
   revalidatePath("/team");
-  return { ok: true, message: `${fullName || email} was added. They can sign in with that email using the one-time link on the login page.` };
+  return { ok: true, message: `${fullName || email} was added. They can sign in with that email: on the login page they request a code and type it in.` };
 }
 
 export async function removeDriver(profileId: string): Promise<TeamResult> {

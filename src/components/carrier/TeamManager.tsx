@@ -98,7 +98,7 @@ export function TeamManager({ members }: { members: Member[] }) {
     <div className="space-y-6">
       <Card className="text-ink">
         <h2 className="mb-1 text-[20px] font-bold">Add a driver</h2>
-        <p className="mb-4 text-[15px] text-muted">Drivers see the same loads your company sees. They sign in with a one-time email link.</p>
+        <p className="mb-4 text-[15px] text-muted">Drivers see the same loads your company sees. They sign in with a code sent to their email.</p>
         <form onSubmit={submit} className="space-y-4" noValidate>
           <Field label="Driver email">
             <Input
