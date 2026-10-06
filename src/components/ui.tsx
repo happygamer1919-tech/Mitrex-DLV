@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode, ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type { ReactNode, Ref, ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
 
 const CHIP: Record<LoadStatus, string> = {
@@ -61,7 +61,7 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   );
 }
 export const Input = (p: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={`${FIELD} ${p.className ?? ""}`} />;
-export const Select = (p: SelectHTMLAttributes<HTMLSelectElement>) => <select {...p} className={`${FIELD} ${p.className ?? ""}`} />;
+export const Select = (p: SelectHTMLAttributes<HTMLSelectElement> & { ref?: Ref<HTMLSelectElement> }) => <select {...p} className={`${FIELD} ${p.className ?? ""}`} />;
 export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...p} className={`${FIELD} py-2 ${p.className ?? ""}`} />;
 
 export function PageTitle({ children }: { children: ReactNode }) {

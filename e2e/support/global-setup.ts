@@ -4,11 +4,13 @@ import { mkdirSync } from "node:fs";
 import { BASE_URL, localEnv } from "./env";
 import { assertLocalUrl } from "./guard";
 import { clearMail, latestCode } from "./mail";
+import { startMailMock } from "./mail-mock";
 import { CARRIER_A, CARRIER_B, USERS, stateFile, type Who } from "./users";
 
 // Creates the e2e users (idempotent) and signs each in through the real code login UI once per
 // project (engine), saving e2e/.auth/<project>-<who>.json so the scenarios start authenticated.
 export default async function globalSetup(config: FullConfig) {
+  const mock = await startMailMock(); // Resend stand-in for the notification emails (see e2e/emails.spec.ts)
   const env = localEnv();
   assertLocalUrl(env.NEXT_PUBLIC_SUPABASE_URL, "supabase url");
   assertLocalUrl(BASE_URL, "base url");
@@ -86,4 +88,5 @@ export default async function globalSetup(config: FullConfig) {
     }
     await browser.close();
   }
+  return async () => { await new Promise<void>((r) => mock.close(() => r())); };
 }
