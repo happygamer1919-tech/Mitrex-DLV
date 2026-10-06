@@ -2,7 +2,7 @@ import { MAIL_API } from "./env";
 import { assertLocalUrl } from "./guard";
 
 // Reads the newest numeric login code sent to an address from the local mail catcher (Mailpit API).
-// The local stack sends a 6 digit code (supabase/config.toml otp_length = 6).
+// The local stack sends an 8 digit code (supabase/config.toml otp_length = 8).
 export async function latestCode(to: string, notBeforeMs: number, timeoutMs = 30_000, fudgeMs = 2000): Promise<string> {
   assertLocalUrl(MAIL_API, "mail api");
   const end = Date.now() + timeoutMs;

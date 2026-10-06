@@ -28,8 +28,6 @@ export default defineConfig({
       ...env,
       NEXT_DIST_DIR: ".next-e2e",
       NEXT_PUBLIC_SITE_URL: `http://localhost:${PORT}`,
-      // The running local stack sends 8 digit codes (GOTRUE_MAILER_OTP_LENGTH), whatever config.toml says.
-      NEXT_PUBLIC_OTP_LENGTH: process.env.E2E_OTP_LENGTH ?? "8",
       RESEND_API_KEY: "",
       NOTIFY_FROM: "",
     },

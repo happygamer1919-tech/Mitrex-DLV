@@ -86,6 +86,8 @@ export async function insertLoad(opts: {
     delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102",
     po_number: opts.po, notes: opts.notes ?? null, status,
     carrier_id: withCarrier ? car!.id : null, eta,
+    ...(status === "cancelled" ? { cancelled_at: new Date().toISOString() } : {}),
+    ...(status === "delivered" ? { delivered_at: new Date().toISOString() } : {}),
   }).select("id,load_number").single();
   if (error) throw error;
   return { id: data.id as string, loadNumber: data.load_number as string };
