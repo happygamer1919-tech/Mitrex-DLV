@@ -185,7 +185,8 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
         const ins = await supabase
           .from("load_documents")
           .insert({ load_id: loadId, kind: "pod", storage_path: path, uploaded_by: userId });
-        if (ins.error) {
+        // 23505: this photo's row already exists (an earlier attempt's insert landed late). That is a saved POD.
+        if (ins.error && ins.error.code !== "23505") {
           return { ok: false as const, error: "The photo could not be saved. Tap Try again. The load is not marked delivered." };
         }
         setPodDone(true);

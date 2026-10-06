@@ -349,7 +349,8 @@ test("server refuses a stale or replayed request (expectedFrom): friendly messag
 
 test("safeNext: hostile and valid values (unit level)", () => {
   for (const bad of ["//evil.test", "/\\evil.test", "https://evil.test", "javascript:alert(1)", "/%5Cevil.test", "/%2F%2Fevil.test",
-    "/login", "/login?next=/x", "/auth/callback", "/auth/signout", "", "evil", "/a\nb", "http://evil.test/x"]) {
+    "/login", "/login?next=/x", "/auth/callback", "/auth/signout", "", "evil", "/a\nb", "http://evil.test/x",
+    "/\t/evil.test", "/%09/evil.test", "/%0d%0aevil", "///evil.test", "/\\/evil.test", " //evil.test", "%2F%2Fevil.test", "/%5cevil.test"]) {
     expect(safeNext(bad), `rejects ${JSON.stringify(bad)}`).toBeNull();
   }
   for (const good of ["/my-loads", "/my-loads/abc?tab=1", "/admin/loads/1?x=a%20b", "/book"]) {
@@ -520,6 +521,39 @@ test("dead network during the POD photo upload: watchdog, no stray rows; a late 
   await hole.land();
   await retry.click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect.poll(() => status(id)).toBe("delivered");
+  expect(await podRows(id)).toHaveLength(1);
+  expect(await podFiles(id)).toHaveLength(1);
+  await ctx.close();
+});
+
+test("POD row insert held past the watchdog, retry inserts, then the held one lands: still exactly one POD row", async ({ browser }) => {
+  const { id } = await seed({ po: uniq("PODRACE"), status: "at_delivery" });
+  const { ctx, page } = await asNet(browser, "carrierA");
+  const held: Route[] = [];
+  let hold = true;
+  await page.route("**/rest/v1/load_documents*", async (route) => {
+    if (hold && route.request().method() === "POST") { held.push(route); return; }
+    return route.fallback();
+  });
+  await openFresh(page, `/my-loads/${id}`);
+  await NEXT_STEP(page).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.locator('input[type="file"]').setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await dialog.getByTestId("pod-submit").click();
+  await expect(dialog.getByRole("alert")).toContainText("taking too long", { timeout: 12_000 });
+  expect(held).toHaveLength(1);
+  hold = false;
+  const status_hole = blackhole(); // the retry's status call is parked, so the load is still at_delivery when the old insert lands
+  onAction(page, status_hole.behaviour);
+  await dialog.getByTestId("pod-retry").click();
+  await expect.poll(async () => (await podRows(id)).length).toBe(1); // the retry's insert
+  await held[0].continue(); // the abandoned insert finally arrives while the load is still open
+  await page.waitForTimeout(1000);
+  expect(await podRows(id)).toHaveLength(1); // the unique path index turned it away
+  expect(await status(id)).toBe("at_delivery");
+  modes.get(page)!.action = null;
+  await status_hole.land();
   await expect.poll(() => status(id)).toBe("delivered");
   expect(await podRows(id)).toHaveLength(1);
   expect(await podFiles(id)).toHaveLength(1);
