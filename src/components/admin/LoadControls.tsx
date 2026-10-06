@@ -82,6 +82,9 @@ export function EtaForm({ loadId, etaLocal }: { loadId: string; etaLocal: string
 const MAX_BYTES = 15 * 1024 * 1024;
 const ALLOWED = ["pdf", "png", "jpg", "jpeg", "webp", "heic"];
 
+// Some browsers leave file.type empty (heic on non-Apple platforms); the bucket only accepts listed mime types.
+const MIME_BY_EXT: Record<string, string> = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", heic: "image/heic" };
+
 export function BolUpload({ loadId }: { loadId: string }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -104,7 +107,7 @@ export function BolUpload({ loadId }: { loadId: string }) {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) { setError("Your session expired. Sign in again."); return; }
       const path = `${loadId}/bol/${crypto.randomUUID()}.${ext}`;
-      const up = await supabase.storage.from("documents").upload(path, file, { contentType: file.type || undefined });
+      const up = await supabase.storage.from("documents").upload(path, file, { contentType: file.type || MIME_BY_EXT[ext] });
       if (up.error) { setError(up.error.message); return; }
       const ins = await supabase.from("load_documents").insert({
         load_id: loadId, kind: "bol", storage_path: path, uploaded_by: auth.user.id,
