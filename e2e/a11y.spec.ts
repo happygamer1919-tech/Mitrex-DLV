@@ -81,20 +81,110 @@ test.describe("contrast ratios (measured)", () => {
   });
 });
 
+// Contrast from the colors the browser actually rendered (not the constants above). Reads the real foreground and the
+// first opaque background up the ancestor chain, converting any CSS color syntax through a canvas pixel.
+async function renderedPair(loc: Locator): Promise<{ fg: string; bg: string }> {
+  return loc.first().evaluate((el) => {
+    const px = (c: string): [number, number, number, number] => {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 1;
+      const g = cv.getContext("2d", { willReadFrequently: true })!;
+      g.clearRect(0, 0, 1, 1);
+      g.fillStyle = "#000";
+      g.fillStyle = c;
+      g.fillRect(0, 0, 1, 1);
+      const d = g.getImageData(0, 0, 1, 1).data;
+      return [d[0], d[1], d[2], d[3] / 255];
+    };
+    const hex = (v: number[]) => "#" + v.slice(0, 3).map((x) => Math.round(x).toString(16).padStart(2, "0")).join("");
+    const layers: [number, number, number, number][] = [];
+    for (let n: Element | null = el; n; n = n.parentElement) {
+      const b = px(getComputedStyle(n).backgroundColor);
+      if (b[3] > 0) layers.push(b);
+      if (b[3] === 1) break;
+    }
+    let base: number[] = [255, 255, 255];
+    for (const l of layers.reverse()) base = [0, 1, 2].map((i) => l[i] * l[3] + base[i] * (1 - l[3]));
+    const f = px(getComputedStyle(el).color);
+    const fg = [0, 1, 2].map((i) => f[i] * f[3] + base[i] * (1 - f[3]));
+    return { fg: hex(fg), bg: hex(base) };
+  });
+}
+
+test("contrast measured from rendered colors", async ({ browser }) => {
+  const rows: string[] = [];
+  const check = (name: string, got: { fg: string; bg: string }, expectFg: string, expectBg: string, min: number) => {
+    const r = ratio(got.fg, got.bg);
+    rows.push(`${name}: ${got.fg} on ${got.bg} = ${r.toFixed(2)}`);
+    expect(got.fg.toLowerCase(), `${name}: rendered fg matches the token constant`).toBe(expectFg.toLowerCase());
+    expect(got.bg.toLowerCase(), `${name}: rendered bg matches the token constant`).toBe(expectBg.toLowerCase());
+    expect(r, `${name}: rendered ratio`).toBeGreaterThanOrEqual(min);
+  };
+  const seeded: Record<string, string> = {};
+  for (const st of ["requested", "booked", "at_pickup", "loading", "enroute", "at_delivery", "delivered", "cancelled"] as const) {
+    seeded[st] = (await insertLoad({ po: uniq(`A11Y-C-${st}`), status: st })).loadNumber;
+  }
+  const label: Record<string, string> = { requested: "Requested", booked: "Booked", at_pickup: "At pickup", loading: "Loading", enroute: "Enroute", at_delivery: "At delivery", delivered: "Delivered", cancelled: "Cancelled" };
+  const chipPair: Record<string, [string, string]> = {
+    requested: CHIPS.Requested, booked: CHIPS.Booked, at_pickup: CHIPS["At pickup / Loading"], loading: CHIPS["At pickup / Loading"],
+    enroute: CHIPS.Enroute, at_delivery: CHIPS["At delivery"], delivered: CHIPS.Delivered, cancelled: CHIPS.Cancelled,
+  };
+  await session(browser, "maria", async (page) => {
+    await page.goto("/loads");
+    await expect(page.locator("h1")).toHaveText(/My loads/);
+    for (const st of Object.keys(seeded)) {
+      const chip = page.locator(`xpath=//*[normalize-space(text())="${seeded[st]}"]/ancestor::*[.//span[contains(@class,"rounded-full")]][1]//span[contains(@class,"rounded-full") and normalize-space(.)="${label[st]}"]`).first();
+      await expect(chip, `chip for ${st} is on the page`).toBeVisible();
+      const [bg, fg] = chipPair[st];
+      check(`chip ${label[st]} (rendered)`, await renderedPair(chip), fg, bg, 4.5);
+    }
+    // Body text and muted text on mint, rendered.
+    check("ink text on mint (rendered h1)", await renderedPair(page.locator("h1")), INK, MINT, 4.5);
+    await page.goto(`/loads/${(await insertLoad({ po: uniq("A11Y-M"), status: "booked" })).id}`);
+    check("muted on card (rendered dt)", await renderedPair(page.locator("dt.text-muted").first()), MUTED, WHITE, 4.5);
+    await page.goto("/book");
+    check("amber button text (rendered Request load)", await renderedPair(page.getByRole("button", { name: "Request load" })), "#2B1500", AMBER, 4.5);
+    // Tokens that no page renders as text today (neon): render the compiled utility classes and the custom property.
+    const tok = await page.evaluate(() => {
+      const d = document.createElement("div");
+      d.innerHTML = '<button id="n1" class="bg-neon text-ink">x</button><div id="n2" class="bg-ink"><span id="n3" style="color:var(--color-neon)">x</span></div><p id="n4" class="text-muted">x</p>';
+      document.body.appendChild(d);
+      const root = getComputedStyle(document.documentElement);
+      return { vars: ["--color-ink", "--color-neon", "--color-mint", "--color-amber", "--color-muted", "--color-line", "--color-card"].map((v) => root.getPropertyValue(v).trim().toLowerCase()) };
+    });
+    expect(tok.vars).toEqual([INK, NEON, MINT, AMBER, MUTED, LINE, "#fff"].map((c) => c.toLowerCase()));
+    check("ink text on neon button (rendered class)", await renderedPair(page.locator("#n1")), INK, NEON, 4.5);
+    check("neon text on ink (rendered)", await renderedPair(page.locator("#n3")), NEON, INK, 4.5);
+    check("muted on mint (rendered)", await renderedPair(page.locator("#n4")), MUTED, MINT, 4.5);
+  });
+  console.log("CONTRAST rendered (need 4.5)\n  " + rows.join("\n  "));
+});
+
 // ---- page scanning --------------------------------------------------------------------------------
 
 const tally = { pages: 0 };
 const summary: string[] = [];
 
-async function scan(page: Page, label: string, opts: { driver?: boolean } = {}) {
+// Every scan proves the page reached its intended state first (a login redirect or an error page would pass axe
+// trivially): the URL path, the single h1 text, optional visible text (status chip, load number) and an open dialog.
+type Marker = { path: RegExp; h1: RegExp; text?: string | RegExp; dialog?: boolean; driver?: boolean };
+
+async function scan(page: Page, label: string, m: Marker) {
+  const opts = m;
   await page.waitForLoadState("networkidle");
+  await expect(page.locator("h1").first(), `${label}: h1 marker`).toHaveText(m.h1);
+  expect(new URL(page.url()).pathname, `${label}: url marker`).toMatch(m.path);
+  if (m.text !== undefined) await expect(page.locator("main, [role=dialog]").getByText(m.text, { exact: typeof m.text === "string" }).filter({ visible: true }).first(), `${label}: text marker`).toBeVisible();
+  if (m.dialog) await expect(page.getByRole("dialog"), `${label}: dialog open`).toBeVisible();
+  else await expect(page.getByRole("dialog"), `${label}: no dialog expected`).toHaveCount(0);
   tally.pages += 1;
   const problems: string[] = [];
 
   const res = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-  const hard = res.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+  // heading-order is moderate in axe but was fixed on /locations (h3 under h1), so it is held to zero as well.
+  const hard = res.violations.filter((v) => v.impact === "serious" || v.impact === "critical" || v.id === "heading-order");
   for (const v of hard) problems.push(`axe ${v.impact} ${v.id} (${v.nodes.length}): ${v.nodes[0]?.target.join(" ")}`);
-  const soft = res.violations.filter((v) => !(v.impact === "serious" || v.impact === "critical")).map((v) => `${v.id}:${v.impact}`);
+  const soft = res.violations.filter((v) => !hard.includes(v)).map((v) => `${v.id}:${v.impact}`);
   summary.push(`${label}: ${soft.length ? soft.join(", ") : "none"}`);
 
   const facts = await page.evaluate((minH) => {
@@ -141,11 +231,11 @@ test("login: email step and code step", async ({ browser }) => {
   const { ctx, page } = await anon(browser);
   await page.setViewportSize(VIEWPORT);
   await page.goto("/login");
-  await scan(page, "/login (email)");
+  await scan(page, "/login (email)", { path: /^\/login$/, h1: /Sign in/ });
   await page.getByTestId("login-email").fill("maria@e2e.test");
   await page.getByTestId("login-send").click();
   await expect(page.getByTestId("login-code")).toBeVisible();
-  await scan(page, "/login (code step)");
+  await scan(page, "/login (code step)", { path: /^\/login$/, h1: /Enter your code/, text: /code/i });
   await ctx.close();
 });
 
@@ -156,44 +246,45 @@ test("customer pages and states", async ({ browser }) => {
   const cancelled = await insertLoad({ po: uniq("A11Y-CXL"), status: "cancelled" });
   await session(browser, "maria", async (page) => {
     await page.goto("/book");
-    await scan(page, "/book (empty)");
+    await scan(page, "/book (empty)", { path: /^\/book$/, h1: /Book a load/ });
     await page.getByLabel("Delivery location").selectOption({ label: "SAMIH (Scarborough)" });
     await expect(page.getByLabel(/Moffett/)).toBeDisabled();
-    await scan(page, "/book (SAMIH, Moffett locked)");
+    await scan(page, "/book (SAMIH, Moffett locked)", { path: /^\/book$/, h1: /Book a load/ });
     await page.goto("/book");
     await page.getByRole("button", { name: "Request load" }).click();
     await expect(page.locator('[role="alert"]').first()).toBeVisible();
-    await scan(page, "/book (validation errors)");
+    await scan(page, "/book (validation errors)", { path: /^\/book$/, h1: /Book a load/ });
 
     await page.goto("/loads");
-    await scan(page, "/loads (with loads)");
+    await scan(page, "/loads (with loads)", { path: /^\/loads$/, h1: /My loads/, text: requested.loadNumber });
     for (const [name, l] of [["requested", requested], ["booked", booked], ["delivered", delivered], ["cancelled", cancelled]] as const) {
       await page.goto(`/loads/${l.id}`);
-      await scan(page, `/loads/[id] (${name})`);
+      await scan(page, `/loads/[id] (${name})`, { path: new RegExp(`^/loads/${l.id}$`), h1: new RegExp(l.loadNumber), text: name[0].toUpperCase() + name.slice(1) });
     }
     await page.goto(`/loads/${requested.id}/edit`);
-    await scan(page, "/loads/[id]/edit");
+    await scan(page, "/loads/[id]/edit", { path: new RegExp(`^/loads/${requested.id}/edit$`), h1: new RegExp(`Edit ${requested.loadNumber}`) });
     await page.goto("/locations");
-    await scan(page, "/locations");
+    await scan(page, "/locations", { path: /^\/locations$/, h1: /Locations/ });
   });
 });
 
 test("staff pages", async ({ browser }) => {
   const l = await insertLoad({ po: uniq("A11Y-ADM"), status: "booked", pickupDate: isoDate(0) });
   await session(browser, "admin", async (page) => {
-    for (const [path, label] of [
-      ["/admin", "/admin"],
-      ["/admin/calendar?view=week", "/admin/calendar (week)"],
-      ["/admin/calendar?view=month", "/admin/calendar (month)"],
-      [`/admin/loads/${l.id}`, "/admin/loads/[id]"],
-      ["/admin/locations", "/admin/locations"],
-      ["/admin/requests", "/admin/requests"],
-      ["/admin/carriers", "/admin/carriers"],
-      ["/admin/users", "/admin/users"],
-      ["/admin/export", "/admin/export"],
+    for (const [path, label, h1, pathRe, text] of [
+      ["/admin", "/admin", /Load board/, /^\/admin$/, l.loadNumber],
+      ["/admin/calendar?view=week", "/admin/calendar (week)", /Calendar/, /^\/admin\/calendar$/, l.loadNumber],
+      ["/admin/calendar?view=month", "/admin/calendar (month)", /Calendar/, /^\/admin\/calendar$/, l.loadNumber],
+      [`/admin/loads/${l.id}`, "/admin/loads/[id]", new RegExp(l.loadNumber), new RegExp(`^/admin/loads/${l.id}$`), "Booked"],
+      ["/admin/locations", "/admin/locations", /Locations/, /^\/admin\/locations$/, undefined],
+      ["/admin/requests", "/admin/requests", /Location requests/, /^\/admin\/requests$/, undefined],
+      ["/admin/carriers", "/admin/carriers", /Carriers/, /^\/admin\/carriers$/, "E2E Carrier A"],
+      ["/admin/users", "/admin/users", /Users/, /^\/admin\/users$/, "admin@e2e.test"],
+      ["/admin/export", "/admin/export", /Export loads/, /^\/admin\/export$/, undefined],
     ] as const) {
       await page.goto(path);
-      await scan(page, label);
+      if (label.includes("calendar")) await expect(page).toHaveURL(label.includes("(week)") ? /view=week/ : /view=month/);
+      await scan(page, label, { path: pathRe, h1, text });
     }
   });
 });
@@ -205,25 +296,25 @@ test("carrier driver pages and modals", async ({ browser }) => {
   const atDel = await insertLoad({ po: uniq("A11Y-DA"), status: "at_delivery" });
   await session(browser, "carrierA", async (page) => {
     await page.goto("/my-loads");
-    await scan(page, "/my-loads", { driver: true });
+    await scan(page, "/my-loads", { path: /^\/my-loads$/, h1: /My loads/, text: booked.loadNumber, driver: true });
     await page.goto(`/my-loads/${booked.id}`);
-    await scan(page, "/my-loads/[id] (booked)", { driver: true });
+    await scan(page, "/my-loads/[id] (booked)", { path: new RegExp(`^/my-loads/${booked.id}$`), h1: new RegExp(booked.loadNumber), text: "Booked", driver: true });
     await page.goto(`/my-loads/${enroute.id}`);
-    await scan(page, "/my-loads/[id] (enroute)", { driver: true });
+    await scan(page, "/my-loads/[id] (enroute)", { path: new RegExp(`^/my-loads/${enroute.id}$`), h1: new RegExp(enroute.loadNumber), text: "Enroute", driver: true });
     await page.getByRole("button", { name: "Update ETA" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await scan(page, "/my-loads/[id] (Update ETA modal)", { driver: true });
+    await scan(page, "/my-loads/[id] (Update ETA modal)", { path: new RegExp(`^/my-loads/${enroute.id}$`), h1: new RegExp(enroute.loadNumber), dialog: true, driver: true });
     await page.goto(`/my-loads/${loading.id}`);
     await page.getByTestId("next-step").click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await scan(page, "/my-loads/[id] (Enroute ETA modal)", { driver: true });
+    await scan(page, "/my-loads/[id] (Enroute ETA modal)", { path: new RegExp(`^/my-loads/${loading.id}$`), h1: new RegExp(loading.loadNumber), dialog: true, driver: true });
     await page.goto(`/my-loads/${atDel.id}`);
-    await scan(page, "/my-loads/[id] (at_delivery)", { driver: true });
+    await scan(page, "/my-loads/[id] (at_delivery)", { path: new RegExp(`^/my-loads/${atDel.id}$`), h1: new RegExp(atDel.loadNumber), text: "At delivery", driver: true });
     await page.getByTestId("next-step").click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await scan(page, "/my-loads/[id] (POD modal)", { driver: true });
+    await scan(page, "/my-loads/[id] (POD modal)", { path: new RegExp(`^/my-loads/${atDel.id}$`), h1: new RegExp(atDel.loadNumber), dialog: true, driver: true });
     await page.goto("/team");
-    await scan(page, "/team", { driver: true });
+    await scan(page, "/team", { path: /^\/team$/, h1: /Team/, driver: true });
   });
 });
 
