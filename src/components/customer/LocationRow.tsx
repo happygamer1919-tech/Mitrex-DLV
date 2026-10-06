@@ -28,7 +28,7 @@ export function LocationRow({ location }: { location: Location }) {
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="text-[18px] font-bold break-words">{location.name}</h3>
+          <h2 className="text-[18px] font-bold break-words">{location.name}</h2>
           <p className="text-[15px] text-muted break-words">
             {location.address_line}, {location.city}, {location.province}
             {location.postal_code ? ` ${location.postal_code}` : ""}

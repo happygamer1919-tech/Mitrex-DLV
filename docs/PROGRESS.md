@@ -13,3 +13,4 @@
 | C2 e2e coverage, chromium + webkit iPhone 13; Realtime auth fix; carrier list fix | #10 | merged |
 | C3 failure UX: POD retry, double-tap safe, session return path, no stuck buttons; migration 0006 local only | #11 | merged |
 | C4b storage RLS tests (310 OK), path traversal hardening migration 0007 (local only), bucket limits | #12 | merged |
+| C5b accessibility: axe on 25 states, measured contrast, focus ring fix | #13 | merged |
