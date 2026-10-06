@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { adminClient, as, isoDate, uniq } from "./support/helpers";
 import { makeLocation, retireLocations, type TestLocation } from "./support/book";
-import { stripTruckLine, buildLastContacts, parseFromParam } from "../src/lib/customer/requestAgain";
+import { stripTruckLine, buildLastContacts, parseFromParam, requestAgainValues } from "../src/lib/customer/requestAgain";
 
 // R20 and R22: Completed filter, Request again (/book?from=<delivered load>), last contact hints.
 // Everything is asserted against the database (service role) as well as the page.
@@ -146,6 +146,15 @@ test("pure helpers: the Truck i of N line is stripped only when it is the exact 
   expect(buildLastContacts(rows).pickup.L.name).toBe("New");
   expect(buildLastContacts(rows.slice().reverse()).pickup.L.name).toBe("New");
   expect(buildLastContacts(rows).delivery.M.loadNumber).toBe("MTX-1");
+  // Equal created_at (one multi-truck booking): the higher load number wins, whatever the input order.
+  const tie = rows.map((r) => ({ ...r, created_at: "2030-01-01T00:00:00Z" }));
+  expect(buildLastContacts(tie).pickup.L.loadNumber).toBe("MTX-2");
+  expect(buildLastContacts(tie.slice().reverse()).pickup.L.loadNumber).toBe("MTX-2");
+  expect(buildLastContacts([{ ...tie[0], load_number: "MTX-9" }, { ...tie[1], load_number: "MTX-10" }]).pickup.L.loadNumber).toBe("MTX-10");
+  // An equipment size that is no longer offered is not copied.
+  const src = { ...tie[0], equipment_size: 48, moffett: false, pickup_timing: "appointment", delivery_timing: "window", weight_lbs: null, pieces: null, po_number: null, notes: null } as never;
+  expect(requestAgainValues(src, { pickupOk: true, deliveryOk: true }).equipment_size).toBe("");
+  expect(requestAgainValues({ ...(src as object), equipment_size: 53 } as never, { pickupOk: true, deliveryOk: true }).equipment_size).toBe("53");
 });
 
 test("the Completed filter lists delivered loads only, newest first with the delivered date, each with Request again", async ({ browser }) => {
