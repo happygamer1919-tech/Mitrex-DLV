@@ -21,3 +21,4 @@
 | Owner contact details in guides and runbook; sign-in failure troubleshooting | #18 | merged |
 | Multi-truck booking (1 to 10 loads per submission, one staff email); no migration | #19 | merged |
 | Acceptance fixes: drop-area uploads, POD optional (migration 0011), 26/36/53 ft only (migration 0012); apply pack 3 | #20 | merged |
+| Production migrations 0011 and 0012 applied (POD optional, 26/36/53 ft); pack 3 result | #21 | merged |
