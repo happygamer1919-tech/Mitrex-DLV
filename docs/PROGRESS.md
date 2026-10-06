@@ -10,3 +10,4 @@
 | C5a PWA check script, 180 icon, manifest id and lang | #7 | merged |
 | C7 ops: /api/health, keepalive and backup workflows, Operations docs | #8 | merged |
 | C8 handover docs: Maria guide, driver guide, runbook; team page copy | #9 | merged |
+| C2 e2e coverage, chromium + webkit iPhone 13; Realtime auth fix; carrier list fix | #10 | merged |
