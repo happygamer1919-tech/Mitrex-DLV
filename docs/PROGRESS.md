@@ -17,3 +17,4 @@
 | C6 data integrity: last-admin guard, one event per status change, updated_at; APPLY-PACK for 0006-0010 (NOT applied) | #14 | merged |
 | C9 final audit: SPEC-COVERAGE 37 of 37, new e2e specs (220 runs), DST ETA fix, Safari select fix | #15 | merged |
 | Final gate evidence (15 of 16; G14 blocked by production DB password) | #16 | merged |
+| Production migrations 0006-0010 applied (post-check 25 of 25); acceptance checklist M1-M7; default branch fixed | #17 | merged |
