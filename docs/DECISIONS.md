@@ -94,3 +94,11 @@
 - Applied under the owner's explicit authorization, before the app deploy. POD is now optional at delivery and can be uploaded afterwards; new loads accept only 26, 36 and 53 ft. Result in docs/APPLY-PACK-3.md.
 - Owner acceptance run: M1, M4, M5, M6, M7 confirmed. M2 issue: the staff BOL file picker did not open for the owner (not reproducible in headless Chromium); replaced by the DropZone component. M3 feedback: POD optional.
 
+
+## DLV-022 Request again and last contact (defaults, owner may change)
+- Request again is offered for DELIVERED loads only. Cancelled loads have no button (a cancelled load never moved, and repeating it is a fresh booking). Changing it is one condition in src/app/book/page.tsx, src/app/loads/page.tsx and src/app/loads/[id]/page.tsx.
+- Copied: pickup and delivery location, contacts, equipment size, Moffett, weight, pieces, PO number, notes (editable). A first notes line "Truck i of N" is removed, because the new booking writes its own. Left empty: every date and time. The appointment or window choice is kept.
+- /book?from=<load id> is untrusted input: strict lowercase uuid, read with the customer's own session (RLS) plus the customer id and status delivered; anything else opens an empty form with no message. Booking goes through the unchanged createLoad path, so nothing new needs securing on the server.
+- A location that is no longer active or can no longer ship or receive is left unselected (with its contact) instead of copied.
+- "Completed" is a separate quick filter (/loads?view=completed, sorted by delivered date, newest first). The existing per status chips, including Delivered, stay.
+- Last contact hint: computed from the customer's 200 most recent loads (session client), grouped in code by pickup or delivery location, newest created_at wins. No migration, no new table. A location whose last load is older than the 200 most recent loads shows the saved default contact message. Selecting a location still fills the saved default contact first (existing behaviour); the hint offers the last contact as a button, it does not overwrite the fields on its own.

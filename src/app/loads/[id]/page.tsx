@@ -90,6 +90,11 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
           Delivered{l.delivered_at ? ` on ${fmtDateTime(l.delivered_at)}` : ""}
         </p>
       ) : null}
+      {l.status === "delivered" ? (
+        <div className="mb-4">
+          <LinkButton href={`/book?from=${l.id}`} variant="primary" big>Request again</LinkButton>
+        </div>
+      ) : null}
       {l.status === "cancelled" ? (
         <p data-testid="load-state-note" className="mb-4 text-[15px] font-medium">
           Cancelled{l.cancelled_at ? ` on ${fmtDateTime(l.cancelled_at)}` : ""}

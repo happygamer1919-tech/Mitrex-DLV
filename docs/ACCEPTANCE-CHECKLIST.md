@@ -55,5 +55,11 @@ Kaja owner on a phone (any mobile browser is fine).
 - [ ] You land on your home page inside the app, and you were never thrown into Safari.
 - [ ] Close the app completely and open it again: still signed in.
 
+## M8. Request again
+- [ ] Maria: **Loads**, tap **Completed**. Delivered loads are listed newest first, each with its delivered date and a **Request again** button. A cancelled or open load has no such button.
+- [ ] Tap **Request again** on one. The booking form opens with the same locations, contacts, truck size, weight, pieces, PO and notes, and a note "Copied from MTX-nnnn. Choose the new dates and times." Every date and time is empty.
+- [ ] Choose new dates and times, change one contact name, tap **Request load**. The new load shows the same details and the changed contact (use a TEST- PO number, and cancel it afterwards).
+- [ ] On **Book a load**, choose a pickup location you used before. Under the contact a line shows "Last contact at ...". Tap **Use last contact** and the line changes to "Same as last time".
+
 ## After testing
 - [ ] Tell engineering the results (M1 to M7: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).

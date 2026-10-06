@@ -12,12 +12,17 @@ export const dynamic = "force-dynamic";
 
 const STATUSES = Object.keys(STATUS_LABEL) as LoadStatus[];
 
-export default async function LoadsPage({ searchParams }: { searchParams: Promise<{ status?: string; booked?: string }> }) {
-  const { status, booked } = await searchParams;
+export default async function LoadsPage({ searchParams }: { searchParams: Promise<{ status?: string; booked?: string; view?: string }> }) {
+  const { status, booked, view } = await searchParams;
   const profile = await requireCustomer();
-  const filter = STATUSES.find((s) => s === status) ?? null;
+  const completed = view === "completed"; // quick filter: delivered loads, newest delivery first
+  const filter = completed ? null : STATUSES.find((s) => s === status) ?? null;
   const supabase = await createClient();
-  let q = supabase.from("loads").select(LOAD_SELECT).order("created_at", { ascending: false }).limit(300);
+  let q = supabase.from("loads").select(LOAD_SELECT);
+  q = completed
+    ? q.eq("status", "delivered").order("delivered_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false })
+    : q.order("created_at", { ascending: false });
+  q = q.limit(300);
   if (filter) q = q.eq("status", filter);
   const { data, error } = await q;
   const loads = (data ?? []) as unknown as LoadWithRefs[];
@@ -55,7 +60,8 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
         </div>
       ) : null}
       <nav aria-label="Filter by status" className="mb-4 flex gap-2 overflow-x-auto pb-1">
-        <Link href="/loads" className={chip(!filter)}>All</Link>
+        <Link href="/loads" className={chip(!filter && !completed)}>All</Link>
+        <Link href="/loads?view=completed" className={chip(completed)}>Completed</Link>
         {STATUSES.map((s) => (
           <Link key={s} href={`/loads?status=${s}`} className={chip(filter === s)}>{STATUS_LABEL[s]}</Link>
         ))}
@@ -64,15 +70,15 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
       {!error && loads.length === 0 ? (
         <Card className="text-center">
           <p className="mb-3 text-[16px]">
-            {filter ? `No ${STATUS_LABEL[filter].toLowerCase()} loads.` : "You have no loads yet."}
+            {completed ? "No completed loads yet." : filter ? `No ${STATUS_LABEL[filter].toLowerCase()} loads.` : "You have no loads yet."}
           </p>
           <LinkButton href="/book">Book your first load</LinkButton>
         </Card>
       ) : null}
       <ul className="space-y-3">
         {loads.map((l) => (
-          <li key={l.id}>
-            <Link href={`/loads/${l.id}`} className="block rounded-[16px] border border-line bg-card p-4 hover:border-ink">
+          <li key={l.id} className="rounded-[16px] border border-line bg-card hover:border-ink">
+            <Link href={`/loads/${l.id}`} className="block rounded-[16px] p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[18px] font-bold">{l.load_number}</span>
                 <StatusChip status={l.status} />
@@ -83,9 +89,17 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
               <p className="text-[15px] text-muted">
                 Pickup: {fmtSlot(l.pickup_timing, l.pickup_date, l.pickup_time_start, l.pickup_time_end)}
               </p>
+              {l.status === "delivered" && l.delivered_at ? (
+                <p data-testid="delivered-date" className="text-[15px] font-medium">Delivered {fmtDateTime(l.delivered_at)}</p>
+              ) : null}
               {l.eta ? <p className="text-[15px] font-medium">ETA {fmtDateTime(l.eta)}</p> : null}
               {l.carrier ? <p className="text-[15px] text-muted">Carrier: {l.carrier.name}</p> : null}
             </Link>
+            {l.status === "delivered" ? (
+              <div className="px-4 pb-4">
+                <LinkButton href={`/book?from=${l.id}`} variant="dark">Request again</LinkButton>
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>

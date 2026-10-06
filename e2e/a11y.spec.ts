@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { anon, as, insertLoad, isoDate, uniq } from "./support/helpers";
+import { makeLocation, retireLocations } from "./support/book";
 import type { Who } from "./support/users";
 
 // C5b accessibility gate. Run with: npx playwright test e2e/a11y.spec.ts --project=chromium
@@ -269,6 +270,25 @@ test("customer pages and states", async ({ browser }) => {
     await scan(page, "/loads/[id]/edit", { path: new RegExp(`^/loads/${requested.id}/edit$`), h1: new RegExp(`Edit ${requested.loadNumber}`) });
     await page.goto("/locations");
     await scan(page, "/locations", { path: /^\/locations$/, h1: /Locations/ });
+
+    // Request again: the Completed filter, the copied form with its notice, and the last contact hint states.
+    await page.goto("/loads?view=completed");
+    await scan(page, "/loads (Completed filter)", { path: /^\/loads$/, h1: /My loads/, text: delivered.loadNumber });
+    await page.goto(`/book?from=${delivered.id}`);
+    await scan(page, "/book (Request again)", { path: /^\/book$/, h1: /Book a load/, text: `Copied from ${delivered.loadNumber}. Choose the new dates and times.` });
+    await page.getByLabel("Contact name").nth(0).fill("Someone Else");
+    await expect(page.getByTestId("pickup-use-last")).toBeVisible();
+    await scan(page, "/book (last contact hint with Use last contact)", { path: /^\/book$/, h1: /Book a load/, text: /Last contact at/ });
+    await page.getByTestId("pickup-use-last").click();
+    await scan(page, "/book (last contact, same as last time)", { path: /^\/book$/, h1: /Book a load/, text: /Same as last time/ });
+    const fresh = await makeLocation({ prefix: "E2E-A11Y-RA", contactName: "Dflt Name", contactPhone: "416-555-0100" });
+    try {
+      await page.goto("/book");
+      await page.getByLabel("Pickup location").selectOption({ label: fresh.label });
+      await scan(page, "/book (no earlier load, default contact)", { path: /^\/book$/, h1: /Book a load/, text: "No earlier load here. Using the saved default contact." });
+    } finally {
+      await retireLocations([fresh.id]);
+    }
   });
 });
 
