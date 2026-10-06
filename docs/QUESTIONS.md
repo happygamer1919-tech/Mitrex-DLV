@@ -35,3 +35,9 @@ Proposed default: manual gate M1 after the production apply. The owner books one
 ## C9 M2 Realtime on production infrastructure (2026-10-05)
 R19 is proved locally (e2e/realtime.spec.ts: Realtime frames carry the change within 5 s without a reload, and the 15 second poll is covered by e2e/admin-board.spec.ts). Realtime on the hosted Supabase project (publication from migration 0004, websocket reachable from portal.dlvlogistics.com, the user JWT accepted) cannot be tested from the local stack.
 Proposed default: manual gate M2 after the production apply. Open /loads as Maria and /admin as staff on production, mark a load booked from a second browser and see the first page change within 5 seconds without a reload. If it does not, the 15 second poll still updates it.
+
+## Owner answers 2026-10-06
+- All proposed defaults accepted (duplicate booking protection, per-customer location contacts, CSP, magic-link return path, TRUNCATE gap, Realtime and Resend as manual gates M1 and M2).
+- Migrations 0006 to 0010: applied (see docs/APPLY-PACK.md, Production result).
+- Open for the owner: the phone and email placeholder lines in the guides and runbook (see docs/ACCEPTANCE-CHECKLIST.md for the checks).
+
