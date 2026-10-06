@@ -237,6 +237,14 @@ test("a failing email service (HTTP 500) does not fail the booking or the assign
 
     // Staff can still assign and book while the service is down; the screen says no email went out.
     const { ctx, page } = await as(browser, "admin");
+    const late = await insertLoad({ po: uniq("MAIL-500B"), status: "booked", carrier: false });
+    parked.push(late.id);
+    await page.goto(`/admin/loads/${late.id}`);
+    await page.getByLabel("Carrier").first().selectOption({ label: CARRIER_A });
+    await page.getByRole("button", { name: "Save carrier" }).click();
+    await expect(page.getByText("Carrier assigned. No email was sent.", { exact: true })).toBeVisible();
+    expect((await db().from("loads").select("carrier_id").eq("id", late.id).single()).data?.carrier_id).toBe(carrierAId);
+    expect(await emailsFor(late.loadNumber, 1)).toHaveLength(1); // attempted, refused by the mock
     await page.goto(`/admin/loads/${id}`);
     await page.getByLabel("Carrier").first().selectOption({ label: CARRIER_A });
     await page.getByRole("button", { name: "Save carrier" }).click();
