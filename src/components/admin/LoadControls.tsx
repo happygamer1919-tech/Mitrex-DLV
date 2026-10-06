@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
@@ -34,12 +34,19 @@ export function AssignCarrierForm({
 export function StatusOverrideForm({ loadId, current }: { loadId: string; current: LoadStatus }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(overrideStatus, {});
   const [status, setStatus] = useState<LoadStatus | "">("");
+  const statusRef = useRef<HTMLSelectElement>(null);
+  // React resets the form after every action. WebKit then blanks a controlled select (its DOM value
+  // goes back to the disabled placeholder) while state still holds the choice, so a second submit is
+  // blocked by the browser's required check. Put the choice back after each result.
+  useEffect(() => {
+    if (statusRef.current && status) statusRef.current.value = status;
+  }, [state, status]);
   const options = (Object.keys(STATUS_LABEL) as LoadStatus[]).filter((s) => s !== current);
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="load_id" value={loadId} />
       <Field label="New status">
-        <Select name="status" required value={status} onChange={(e) => setStatus(e.target.value as LoadStatus)}>
+        <Select ref={statusRef} name="status" required value={status} onChange={(e) => setStatus(e.target.value as LoadStatus)}>
           <option value="" disabled>Choose a status</option>
           {options.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
         </Select>

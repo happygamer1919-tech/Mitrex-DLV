@@ -52,7 +52,8 @@ function Row({ loc }: { loc: Location }) {
   const [editing, setEditing] = useState(false);
   const close = () => setEditing(false);
   return (
-    <Card className={loc.needs_review ? "border-amber border-2" : ""}>
+    // A plain div, not Card: Card already sets border-line, and two border colors on one element leave the winner to CSS order.
+    <div className={`rounded-[16px] bg-card p-4 ${loc.needs_review ? "border-2 border-amber" : "border border-line"}`}>
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <p className="break-words text-[16px] font-bold">{loc.name}</p>
@@ -95,7 +96,7 @@ function Row({ loc }: { loc: Location }) {
         </div>
       </div>
       {editing ? <div className="mt-4 border-t border-line pt-4"><LocationForm location={loc} onDone={close} onCancel={close} /></div> : null}
-    </Card>
+    </div>
   );
 }
 

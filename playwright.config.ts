@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { E2E_PORT, localEnv } from "./e2e/support/env";
+import { MAIL_MOCK_URL } from "./e2e/support/mail-mock";
 
 const env = localEnv();
 const PORT = E2E_PORT; // default 3200, override with E2E_PORT
@@ -28,8 +29,10 @@ export default defineConfig({
       ...env,
       NEXT_DIST_DIR: ".next-e2e",
       NEXT_PUBLIC_SITE_URL: `http://localhost:${PORT}`,
-      RESEND_API_KEY: "",
-      NOTIFY_FROM: "",
+      // Notification emails go to a local mock of the Resend API (started by e2e/support/global-setup.ts).
+      RESEND_API_KEY: "re_test_local",
+      RESEND_BASE_URL: MAIL_MOCK_URL,
+      NOTIFY_FROM: "DLV <noreply@mock.test>",
       NEXT_PUBLIC_ACTION_TIMEOUT_MS: "4000", // watchdog for the e2e server only (default 25000)
     },
   },

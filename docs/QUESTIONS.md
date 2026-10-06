@@ -27,3 +27,11 @@ If a booking request is slow, the 25 second watchdog frees the button, and the r
 
 ## C3: magic-link fallback does not carry the return path (2026-10-06)
 The emailed link fallback lands on the role home, not the original page; only the code login returns to the original path. Proposed default: leave (the code is the primary login).
+
+## C9 M1 real Resend delivery (2026-10-05)
+The notification emails (R21, R31) are proved end to end against a local mock of the Resend API (e2e/emails.spec.ts: recipients, subject, body, links, no mail to Maria, a failing service does not fail the booking). A real message from the real Resend account to a real inbox is not proved by any automated test and needs the production RESEND_API_KEY and a verified sending domain.
+Proposed default: manual gate M1 after the production apply. The owner books one test load as Maria on production and confirms that every staff address receives "New load requested MTX-nnnn", then assigns a carrier and confirms the carrier users receive "Load MTX-nnnn assigned to you". Until then R21 and R31 are covered by the mock only.
+
+## C9 M2 Realtime on production infrastructure (2026-10-05)
+R19 is proved locally (e2e/realtime.spec.ts: Realtime frames carry the change within 5 s without a reload, and the 15 second poll is covered by e2e/admin-board.spec.ts). Realtime on the hosted Supabase project (publication from migration 0004, websocket reachable from portal.dlvlogistics.com, the user JWT accepted) cannot be tested from the local stack.
+Proposed default: manual gate M2 after the production apply. Open /loads as Maria and /admin as staff on production, mark a load booked from a second browser and see the first page change within 5 seconds without a reload. If it does not, the 15 second poll still updates it.

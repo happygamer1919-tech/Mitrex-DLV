@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { Button, Card, Field, Input, Notice, Select } from "@/components/ui";
 import { inviteUser } from "@/lib/admin/user-actions";
 import type { ActionState } from "@/lib/admin/state";
@@ -18,6 +18,9 @@ export function InviteForm({
   const [state, action, pending] = useActionState<ActionState, FormData>(inviteUser, {});
   const [role, setRole] = useState("staff_csr");
   const [key, setKey] = useState(0);
+  const roleRef = useRef<HTMLSelectElement>(null);
+  // WebKit blanks a controlled select when React resets the form after an action; put the role back.
+  useEffect(() => { if (roleRef.current) roleRef.current.value = role; }, [state, role]);
   useEffect(() => { if (state.ok) { setKey((k) => k + 1); setRole("staff_csr"); } }, [state.ok]);
   const needsCustomer = role === "customer";
   const needsCarrier = role === "carrier_owner" || role === "carrier_driver";
@@ -30,7 +33,7 @@ export function InviteForm({
           <Field label="Email"><Input name="email" type="email" required autoComplete="off" /></Field>
           <Field label="Full name"><Input name="full_name" required maxLength={120} /></Field>
           <Field label="Role">
-            <Select name="role" value={role} onChange={(e) => setRole(e.target.value)}>
+            <Select ref={roleRef} name="role" value={role} onChange={(e) => setRole(e.target.value)}>
               {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </Select>
           </Field>

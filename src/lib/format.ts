@@ -30,7 +30,10 @@ export function fmtSlot(timing: "appointment" | "window", date: string, start: s
     : `${base}${fmtTime(start)} to ${fmtTime(end)} ET (window)`;
 }
 
-// Eastern wall-clock "YYYY-MM-DDTHH:mm" (datetime-local value) -> UTC ISO string
+// Eastern wall-clock "YYYY-MM-DDTHH:mm" (datetime-local value) -> UTC ISO string.
+// Resolves the offset by trying the offsets in force a day either side, so wall times shortly after a
+// DST change are not shifted by an hour. An ambiguous time (the repeated hour in autumn) resolves to its
+// first occurrence (EDT). A time that does not exist (the skipped hour in spring) moves forward.
 export function easternLocalToIso(local: string): string {
   const [datePart, timePart] = local.split("T");
   const [y, mo, d] = datePart.split("-").map(Number);
@@ -40,10 +43,17 @@ export function easternLocalToIso(local: string): string {
     timeZone: TZ, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit",
   });
-  const parts = Object.fromEntries(fmt.formatToParts(new Date(guess)).map((p) => [p.type, p.value]));
-  const asEt = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute);
-  const offset = guess - asEt;
-  return new Date(guess + offset).toISOString();
+  const offsetAt = (ms: number) => {
+    const parts = Object.fromEntries(fmt.formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+    return Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute) - ms;
+  };
+  const DAY = 86_400_000;
+  const before = offsetAt(guess - DAY);
+  const candidates = [...new Set([before, offsetAt(guess + DAY)])]
+    .map((o) => guess - o)
+    .filter((t) => guess - t === offsetAt(t))
+    .sort((a, b) => a - b);
+  return new Date(candidates.length > 0 ? candidates[0] : guess - before).toISOString();
 }
 
 // UTC ISO -> Eastern "YYYY-MM-DDTHH:mm" for datetime-local

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { as, insertLoad, loadRow, uniq } from "./support/helpers";
+import { as, forceStatus, insertLoad, loadRow, uniq } from "./support/helpers";
 import { CARRIER_A } from "./support/users";
 
 test("Maria's list shows Booked within 5 s of staff booking, without a reload", async ({ browser }) => {
@@ -31,4 +31,20 @@ test("Maria's list shows Booked within 5 s of staff booking, without a reload", 
   expect(hit, `frames: ${JSON.stringify(frames.map((f) => f.slice(0, 300)).slice(-6))}`).toBe(true);
   await staff.ctx.close();
   await maria.ctx.close();
+});
+
+// R19 fallback: with the Realtime socket blocked, the 15 second poll alone brings the change to an open page.
+test("Realtime blocked: the 15 s poll still shows Booked on an open page without a reload", async ({ browser }) => {
+  const { id } = await insertLoad({ po: uniq("RTPOLL"), status: "requested" });
+  const { ctx, page } = await as(browser, "maria");
+  await page.routeWebSocket(/.*/, () => {}); // the socket never connects and never delivers a frame
+  await page.goto("/loads");
+  const card = page.locator(`a[href="/loads/${id}"]`);
+  await expect(card).toContainText("Requested");
+  await forceStatus(id, "booked");
+  expect((await loadRow(id)).status).toBe("booked");
+  // No goto, no reload: only the interval (15 s) can repaint the page now. 40 s leaves room for one slow tick.
+  await expect(card).toContainText("Booked", { timeout: 40_000 });
+  await expect(card).not.toContainText("Requested");
+  await ctx.close();
 });
