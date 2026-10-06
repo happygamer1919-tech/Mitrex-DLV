@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
-import { adminClient, uniq } from "./support/helpers";
+import { adminClient, isoDate, uniq } from "./support/helpers";
 import { DB_URL, localEnv } from "./support/env";
 import { assertLocalUrl } from "./support/guard";
 
@@ -96,6 +96,86 @@ test("supabase/seed.sql is idempotent: applying it again changes no row id and a
   expect(after).toHaveLength(19);
   expect(key(after)).toEqual(key(before));
   expect((await adminClient().from("customers").select("id").eq("name", "Mitrex")).data).toEqual(customersBefore);
+});
+
+// R8 measured on the live local database: every public table has RLS on, and anon and PUBLIC hold no table privilege.
+test("every public table has row level security on and anon holds no table privilege", async () => {
+  assertLocalUrl(DB_URL, "db url");
+  const q = (sql: string) => {
+    const r = spawnSync("psql", [DB_URL, "-At", "-v", "ON_ERROR_STOP=1", "-c", sql], { encoding: "utf8" });
+    expect(r.status, `psql failed: ${(r.stderr ?? "").slice(0, 200)}`).toBe(0);
+    return r.stdout.trim().split("\n").filter(Boolean);
+  };
+  const tables = q("select c.relname || '|' || c.relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind in ('r','p') order by 1");
+  // The eight tables of the schema are all there (so the check below is not vacuous) and every one has RLS on.
+  expect(tables.map((t) => t.split("|")[0])).toEqual(expect.arrayContaining([
+    "carriers", "customers", "load_documents", "load_events", "loads", "location_requests", "locations", "profiles",
+  ]));
+  expect(tables.filter((t) => !t.endsWith("|true"))).toEqual([]);
+  expect(q("select grantee || ' ' || table_name || ' ' || privilege_type from information_schema.role_table_grants where table_schema = 'public' and grantee in ('anon', 'PUBLIC')")).toEqual([]);
+  // Control: authenticated is granted narrowly (some privileges, so the query above can find grants at all).
+  expect(q("select count(*) from information_schema.role_table_grants where table_schema = 'public' and grantee = 'authenticated'")[0]).not.toBe("0");
+});
+
+// R11 measured on the live local database: the columns exist and every constraint refuses its bad row.
+test("loads carry the specified columns, MTX numbering and constraints; each bad row is refused and a valid one accepted", async () => {
+  const db = adminClient();
+  assertLocalUrl(DB_URL, "db url");
+  const r = spawnSync("psql", [DB_URL, "-At", "-v", "ON_ERROR_STOP=1", "-c",
+    "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'loads'"], { encoding: "utf8" });
+  expect(r.status).toBe(0);
+  const have = r.stdout.split("\n").filter(Boolean);
+  for (const c of [
+    "load_number", "customer_id", "equipment_size", "moffett", "weight_lbs", "pieces", "po_number", "notes",
+    "pickup_timing", "pickup_date", "pickup_time_start", "pickup_time_end",
+    "delivery_timing", "delivery_date", "delivery_time_start", "delivery_time_end",
+    "pickup_contact_name", "pickup_contact_phone", "delivery_contact_name", "delivery_contact_phone",
+    "status", "carrier_id", "eta", "booked_at", "delivered_at", "cancelled_at", "created_at", "updated_at",
+  ]) expect(have, c).toContain(c);
+
+  const [{ data: cust }, { data: maria }, { data: pu }, { data: de }] = await Promise.all([
+    db.from("customers").select("id").eq("name", "Mitrex").single(),
+    db.from("profiles").select("id").eq("email", "maria@e2e.test").single(),
+    db.from("locations").select("id").eq("name", "Mitrex").single(),
+    db.from("locations").select("id").eq("name", "Howden").single(),
+  ]);
+  const po = uniq("R11");
+  const day = isoDate(5);
+  const good = {
+    customer_id: cust!.id, created_by: maria!.id, pickup_location_id: pu!.id, delivery_location_id: de!.id,
+    equipment_size: 48, pickup_timing: "appointment", pickup_date: day, pickup_time_start: "08:00",
+    delivery_timing: "window", delivery_date: day, delivery_time_start: "13:00", delivery_time_end: "16:00",
+    pickup_contact_name: "Pat", pickup_contact_phone: "416-555-0101",
+    delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102", po_number: po,
+  };
+  const bad: [string, Record<string, unknown>][] = [
+    ["equipment 30", { equipment_size: 30 }],
+    ["weight 0", { weight_lbs: 0 }],
+    ["pieces 0", { pieces: 0 }],
+    ["appointment with an end time", { pickup_time_end: "09:00" }],
+    ["window without an end time", { delivery_time_end: null }],
+    ["window ending before it starts", { delivery_time_end: "12:00" }],
+    ["unknown timing", { pickup_timing: "whenever" }],
+    ["same pickup and delivery location", { delivery_location_id: pu!.id }],
+    ["delivery before pickup", { delivery_date: isoDate(4) }],
+    ["blank contact name", { pickup_contact_name: "   " }],
+    ["unknown status", { status: "teleported" }],
+  ];
+  for (const [label, patch] of bad) {
+    const res = await db.from("loads").insert({ ...good, ...patch, po_number: `${po}-${label}` }).select("id");
+    expect(res.error, `${label} must be refused`).not.toBeNull();
+  }
+  expect((await db.from("loads").select("id").like("po_number", `${po}-%`)).data).toEqual([]);
+
+  // Control: the same row without any defect is accepted, gets an MTX number, and keeps its contact snapshot and timing.
+  const ok = await db.from("loads").insert(good).select("id,load_number,status,delivery_timing,delivery_time_end,pickup_contact_name,delivery_contact_phone").single();
+  expect(ok.error).toBeNull();
+  expect(ok.data!.load_number).toMatch(/^MTX-\d{4,}$/);
+  expect(ok.data).toMatchObject({
+    status: "requested", delivery_timing: "window", delivery_time_end: "16:00:00",
+    pickup_contact_name: "Pat", delivery_contact_phone: "416-555-0102",
+  });
+  await db.from("loads").update({ status: "cancelled" }).eq("id", ok.data!.id);
 });
 
 // ---- scripts/seed-users.mjs -------------------------------------------------------------------
