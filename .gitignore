@@ -20,3 +20,4 @@ apply-transcript.txt
 .next-*
 .claude/
 apply-transcript-2.txt
+apply-transcript-*.txt
