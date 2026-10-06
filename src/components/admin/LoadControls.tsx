@@ -102,7 +102,10 @@ export function StaffUpload({ loadId, kind }: { loadId: string; kind: "bol" | "p
   const [ok, setOk] = useState("");
   const KIND = kind === "bol" ? "BOL" : "POD";
 
+  const inflight = useRef(false); // synchronous lock: a double click or double tap uploads once
+
   async function upload() {
+    if (inflight.current) return;
     setError("");
     setOk("");
     if (!file) { setError("Choose a file first."); return; }
@@ -110,6 +113,7 @@ export function StaffUpload({ loadId, kind }: { loadId: string; kind: "bol" | "p
     if (!ALLOWED.includes(ext)) { setError("Use a PDF or an image (png, jpg, webp, heic)."); return; }
     if (file.size > MAX_BYTES) { setError("The file is larger than 15 MB."); return; }
 
+    inflight.current = true;
     setBusy(true);
     try {
       const supabase = createClient();
@@ -130,6 +134,7 @@ export function StaffUpload({ loadId, kind }: { loadId: string; kind: "bol" | "p
       setOk(`${KIND} uploaded.`);
       router.refresh();
     } finally {
+      inflight.current = false;
       setBusy(false);
     }
   }

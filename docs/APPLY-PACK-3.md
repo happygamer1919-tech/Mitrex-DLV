@@ -187,7 +187,8 @@ select count(*) from pg_policies where schemaname in ('public','storage');
 SQL
   ) || exit 1; rec PRE_policies "$v"
 
-  if [[ $bad -ne 0 ]]; then echo "PRECHECK_FAIL (do not apply)"; exit 1; fi
+  if [[ $bad -ne 0 ]]; then print -r -- "PRECHECK_RESULT=FAIL" >> "$STATE"; echo "PRECHECK_FAIL (do not apply)"; exit 1; fi
+  print -r -- "PRECHECK_RESULT=OK" >> "$STATE" || exit 1
   echo "PRECHECK_OK (state saved in $STATE)"
 )
 ```
@@ -205,6 +206,7 @@ Block B. One transaction per migration (`--single-transaction`), stops at the fi
   [[ -n "$DATABASE_URL_DIRECT" ]] || { echo "FAIL: DATABASE_URL_DIRECT is not set"; exit 1; }
   DIR="${DLV_APPLY_DIR:-$HOME/dlv-apply-3}"
   [[ -f "$DIR/state.env" ]] || { echo "FAIL: run the pre-check (block A) first"; exit 1; }
+  grep -qx 'PRECHECK_RESULT=OK' "$DIR/state.env" || { echo "FAIL: the last pre-check (block A) did not end in PRECHECK_OK. Do not apply. Fix the cause and run block A again."; exit 1; }
   files=(
     0011_pod_optional.sql
     0012_equipment_sizes_26_36_53.sql
@@ -436,4 +438,5 @@ Rehearsed on the LOCAL stack only (127.0.0.1:54322), never production. Method: `
 | Re-run of B then C | APPLY_OK and POSTCHECK_OK (idempotent). |
 | Negative arm: rollback block for 0011, then C | ROLLBACK_0011_OK, then POSTCHECK_FAIL on exactly the 2 checks about 0011 (set_load_status text, dlv_can_access_doc). B then C again: exit 0 and POSTCHECK_OK. |
 | Negative arm: a 48 ft load at the 0010 state | Block A printed the STOP message that asks the owner what to do with the load, plus FAIL on "loads outside 26, 36, 53", and PRECHECK_FAIL (do not apply). Block B run anyway: 0011 applied, 0012 raised "0012 refused: 1 load(s) still have equipment_size 48 ..." and rolled back as one transaction (old CHECK still the only equipment CHECK). After the load was changed to 36 ft: PRECHECK_OK, APPLY_OK, POSTCHECK_OK. |
+| Review hardening (reviewer rerun from `--last 2`) | Block A now records `PRECHECK_RESULT=OK` or `FAIL` in the state file and block B refuses to run unless the last pre-check said OK (before, a failed pre-check left a state file and block B would still apply 0011). Reran A, B, C verbatim under `zsh -f` with the local URL: with a 48 ft load A printed PRECHECK_FAIL and B printed "the last pre-check (block A) did not end in PRECHECK_OK"; 0012 run directly refused with "0012 refused: 1 load(s) still have equipment_size 48" and changed nothing; after the load was changed A, B, C gave PRECHECK_OK, APPLY_OK, POSTCHECK_OK, and a second B run was idempotent. |
 | Functional check at the applied state (rolled back) | As staff, set_load_status to delivered on an at_delivery load with no POD row returned status delivered. The carrier side of the same rule (POD upload after delivered, never on another carrier's load, never a BOL, never a customer) is asserted by supabase/tests/rls.sql section 12. |

@@ -176,6 +176,37 @@ test("the carrier POD upload uses the same drop area with the camera on phones, 
   await ctx.close();
 });
 
+test("a double click on Upload and a double drop store one BOL; a failed upload shows the error and the retry stores one", async ({ browser }) => {
+  const po = uniq("DZTWICE");
+  const { id } = await insertLoad({ po, status: "booked" });
+  // Service workers blocked and the router installed before the first navigation, so WebKit cannot slip a request past it.
+  const { ctx, page } = await as(browser, "admin", undefined, { serviceWorkers: "block" });
+  let fail = true;
+  await page.route("**/*", (r) => (fail && r.request().method() === "POST" && r.request().url().includes("/storage/v1/object/documents/") ? r.abort("failed") : r.fallback()));
+  await page.goto(`/admin/loads/${id}`);
+  const zone = bolZone(page);
+  const bytes = [...pdfBytes(po)];
+  // Double drop of the same file: still one chosen file.
+  await dropFile(page, zone, { name: `a-${po}.pdf`, type: "application/pdf", bytes });
+  await dropFile(page, zone, { name: `a-${po}.pdf`, type: "application/pdf", bytes });
+  await expect(page.getByTestId("upload-bol").getByTestId("dropzone-file")).toHaveCount(1);
+
+  // The first attempt fails at the network: the error shows and nothing is stored.
+  const upload = page.getByRole("button", { name: "Upload BOL" });
+  await upload.click();
+  await expect(page.getByTestId("upload-bol").getByRole("alert")).toBeVisible();
+  expect((await adminClient().from("load_documents").select("id").eq("load_id", id)).data).toEqual([]);
+
+  // Retry with two synchronous clicks: exactly one stored BOL.
+  fail = false;
+  await upload.evaluate((b: HTMLButtonElement) => { b.click(); b.click(); });
+  await expect(page.getByText("BOL uploaded.")).toBeVisible();
+  await expect.poll(async () => (await adminClient().from("load_documents").select("id").eq("load_id", id)).data?.length).toBe(1);
+  await page.waitForTimeout(1000);
+  expect((await adminClient().from("load_documents").select("id").eq("load_id", id)).data).toHaveLength(1);
+  await ctx.close();
+});
+
 test("pure file rules: extension, size, empty file and byte formatting", () => {
   const rule = { exts: ["pdf", "png"], maxBytes: 100 };
   expect(extOf("A.B.PDF")).toBe("pdf");
