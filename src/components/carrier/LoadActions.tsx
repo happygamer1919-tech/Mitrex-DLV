@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Field, Input, Notice } from "@/components/ui";
@@ -8,6 +8,12 @@ import { compressImage } from "@/lib/carrier/image";
 import { NEXT_LABEL, NEXT_STATUS } from "@/lib/carrier/loads";
 import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
 import { advanceLoad, updateEta } from "@/app/my-loads/[id]/actions";
+import { failure, goToLogin, withTimeout } from "@/lib/client/action-guard";
+
+// One attempt of a mutation. After the watchdog fires the attempt is cancelled: its late result is
+// ignored and it must not start another step (so a retry cannot double up a POD).
+type Attempt = { cancelled: boolean };
+type Result = { ok: true } | { ok: false; error: string; code?: "auth" | "stale" };
 
 type Props = {
   loadId: string;
@@ -54,6 +60,9 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [podDone, setPodDone] = useState(hasPod);
+  const [failed, setFailed] = useState(false);
+  const podPath = useRef<string | null>(null); // one storage path per chosen photo, reused by every retry
+  const inflight = useRef(false); // synchronous double tap lock; `busy` only disables after a render
 
   useEffect(() => {
     if (hasPod) setPodDone(true);
@@ -75,7 +84,9 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
 
   function open(kind: Exclude<ModalKind, null>) {
     setError(null);
+    setFailed(false);
     setFile(null);
+    podPath.current = null;
     setEtaValue(kind === "eta" ? (etaLocal ?? defaultEtaLocal) : defaultEtaLocal);
     setModal(kind);
   }
@@ -86,20 +97,41 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
     setError(null);
   }
 
-  async function run(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, closeOnOk = true) {
+  async function run(fn: (attempt: Attempt) => Promise<Result>, closeOnOk = true) {
+    if (inflight.current) return;
+    inflight.current = true;
+    const attempt: Attempt = { cancelled: false };
     setBusy(true);
     setError(null);
     try {
-      const res = await fn();
+      const res = await withTimeout(fn(attempt));
       if (!res.ok) {
+        if (res.code === "auth") {
+          goToLogin();
+          return;
+        }
         setError(res.error);
+        setFailed(true);
+        if (res.code === "stale") {
+          setModal(null);
+          router.refresh();
+        }
         return;
       }
+      setFailed(false);
       if (closeOnOk) setModal(null);
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong. Try again.");
+      attempt.cancelled = true;
+      const f = failure(e);
+      if (f.sessionExpired) {
+        goToLogin();
+        return;
+      }
+      setError(f.message);
+      setFailed(true);
     } finally {
+      inflight.current = false;
       setBusy(false);
     }
   }
@@ -109,7 +141,7 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
     if (!target) return;
     if (target === "enroute") return open("enroute");
     if (target === "delivered") return open("pod");
-    void run(() => advanceLoad(loadId, target), false);
+    void run(() => advanceLoad(loadId, target, status), false);
   }
 
   function confirmEnroute(e: React.FormEvent) {
@@ -118,7 +150,7 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
       setError("Enter the delivery ETA before you leave.");
       return;
     }
-    void run(() => advanceLoad(loadId, "enroute", etaValue));
+    void run(() => advanceLoad(loadId, "enroute", status, etaValue));
   }
 
   function saveEta(e: React.FormEvent) {
@@ -136,21 +168,31 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
       setError("Take a photo of the signed POD to mark this load delivered.");
       return;
     }
-    await run(async () => {
+    await run(async (attempt) => {
       if (file) {
         const blob = await compressImage(file, 1600, 0.8);
-        const path = `${loadId}/pod/${crypto.randomUUID()}.jpg`;
+        // Same path on every retry of this photo: if an earlier attempt's upload landed late, the retry
+        // finds it ("already exists") instead of storing a second copy. Carriers cannot delete objects,
+        // so a fresh path per attempt would leave orphans behind.
+        const path = (podPath.current ??= `${loadId}/pod/${crypto.randomUUID()}.jpg`);
         const supabase = createClient();
         const up = await supabase.storage.from("documents").upload(path, blob, { contentType: "image/jpeg", upsert: false });
-        if (up.error) return { ok: false as const, error: `Photo upload failed: ${up.error.message}` };
+        const exists = up.error && (/already exists|duplicate/i.test(up.error.message) || String((up.error as { statusCode?: string }).statusCode) === "409");
+        if (up.error && !exists) {
+          return { ok: false as const, error: "The photo did not upload. Check your connection and tap Try again. The load is not marked delivered." };
+        }
+        if (attempt.cancelled) return { ok: false as const, error: "Cancelled." }; // the watchdog gave up on this attempt
         const ins = await supabase
           .from("load_documents")
           .insert({ load_id: loadId, kind: "pod", storage_path: path, uploaded_by: userId });
-        if (ins.error) return { ok: false as const, error: `Could not save the POD: ${ins.error.message}` };
+        if (ins.error) {
+          return { ok: false as const, error: "The photo could not be saved. Tap Try again. The load is not marked delivered." };
+        }
         setPodDone(true);
         setFile(null);
       }
-      return advanceLoad(loadId, "delivered");
+      if (attempt.cancelled) return { ok: false as const, error: "Cancelled." };
+      return advanceLoad(loadId, "delivered", status);
     });
   }
 
@@ -172,6 +214,7 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
         type="button"
         onClick={onBigButton}
         disabled={busy}
+        data-testid="next-step"
         className="inline-flex min-h-[64px] w-full cursor-pointer items-center justify-center rounded-full bg-neon px-6 text-[20px] font-bold text-ink disabled:opacity-50"
       >
         {busy && modal === null ? "Saving..." : NEXT_LABEL[next]}
@@ -188,7 +231,7 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
             {error ? <Notice tone="error">{error}</Notice> : null}
             <div className="flex flex-col gap-2">
               <button type="submit" disabled={busy} className="inline-flex min-h-[56px] w-full cursor-pointer items-center justify-center rounded-full bg-neon px-6 text-[18px] font-bold text-ink disabled:opacity-50">
-                {busy ? "Saving..." : "Confirm ETA and leave"}
+                {busy ? "Saving..." : failed ? "Try again" : "Confirm ETA and leave"}
               </button>
               <Button type="button" variant="ghost" className="min-h-[48px]" onClick={close} disabled={busy}>Cancel</Button>
             </div>
@@ -204,7 +247,7 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
             </Field>
             {error ? <Notice tone="error">{error}</Notice> : null}
             <div className="flex flex-col gap-2">
-              <Button type="submit" variant="dark" className="min-h-[56px]" disabled={busy}>{busy ? "Saving..." : "Save ETA"}</Button>
+              <Button type="submit" variant="dark" className="min-h-[56px]" disabled={busy}>{busy ? "Saving..." : failed ? "Try again" : "Save ETA"}</Button>
               <Button type="button" variant="ghost" className="min-h-[48px]" onClick={close} disabled={busy}>Cancel</Button>
             </div>
           </form>
@@ -227,6 +270,8 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
                 disabled={busy}
                 onChange={(e) => {
                   setError(null);
+                  setFailed(false);
+                  podPath.current = null;
                   setFile(e.target.files?.[0] ?? null);
                 }}
                 className="block w-full min-h-[48px] rounded-[12px] border border-line bg-white p-2 text-[15px] text-ink file:mr-3 file:min-h-[40px] file:cursor-pointer file:rounded-full file:border-0 file:bg-ink file:px-4 file:font-bold file:text-white"
@@ -238,8 +283,8 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
             ) : null}
             {error ? <Notice tone="error">{error}</Notice> : null}
             <div className="flex flex-col gap-2">
-              <button type="submit" disabled={busy} className="inline-flex min-h-[56px] w-full cursor-pointer items-center justify-center rounded-full bg-neon px-6 text-[18px] font-bold text-ink disabled:opacity-50">
-                {busy ? "Uploading..." : "Mark delivered"}
+              <button type="submit" disabled={busy} data-testid={failed ? "pod-retry" : "pod-submit"} className="inline-flex min-h-[56px] w-full cursor-pointer items-center justify-center rounded-full bg-neon px-6 text-[18px] font-bold text-ink disabled:opacity-50">
+                {busy ? "Uploading..." : failed ? "Try again" : "Mark delivered"}
               </button>
               <Button type="button" variant="ghost" className="min-h-[48px]" onClick={close} disabled={busy}>Cancel</Button>
             </div>

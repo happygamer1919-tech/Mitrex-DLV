@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { safeNext } from "@/lib/safe-next";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
@@ -15,5 +16,5 @@ export async function GET(request: NextRequest) {
   } else if (tokenHash && type) {
     ok = !(await supabase.auth.verifyOtp({ type, token_hash: tokenHash })).error;
   }
-  return NextResponse.redirect(`${origin}${ok ? "/" : "/login?error=1"}`);
+  return NextResponse.redirect(`${origin}${ok ? (safeNext(searchParams.get("next")) ?? "/") : "/login?error=1"}`);
 }
