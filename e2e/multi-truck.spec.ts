@@ -336,7 +336,13 @@ test("server cap: loads past the recent window cap are refused with a clear mess
   const { count } = await d.from("loads").select("id", { count: "exact", head: true }).eq("created_by", maria).gte("created_at", since);
   const seedN = 998 - (count ?? 0);
   expect(seedN).toBeGreaterThan(0);
-  const base = (await d.from("loads").select("*").eq("created_by", maria).limit(1).single()).data as Record<string, unknown>;
+  // Template: one of Maria's loads whose locations can still ship and receive (other specs retire their own test
+  // locations, and a load pointing at a retired one is refused by the guard trigger).
+  const custId = (await d.from("customers").select("id").eq("name", "Mitrex").single()).data!.id as string;
+  const live = await d.from("locations").select("id,can_ship,can_receive").eq("is_active", true);
+  const ship = (live.data ?? []).filter((l) => l.can_ship).map((l) => l.id as string);
+  const recv = (live.data ?? []).filter((l) => l.can_receive).map((l) => l.id as string);
+  const base = (await d.from("loads").select("*").eq("created_by", maria).eq("customer_id", custId).in("pickup_location_id", ship).in("delivery_location_id", recv).limit(1).single()).data as Record<string, unknown>;
   const { id: _i, load_number: _n, created_at: _c, updated_at: _u, ...tpl } = base;
   void _i; void _n; void _c; void _u;
   const seeded: string[] = [];
@@ -348,15 +354,29 @@ test("server cap: loads past the recent window cap are refused with a clear mess
       if (ins.error) throw ins.error;
       seeded.push(...(ins.data ?? []).map((r) => r.id as string));
     }
+    // Loads created 9 to 10 minutes ago (earlier specs) leave the 10 minute window while this test runs, so top up to
+    // exactly 998 inside the window right before each submit.
+    const topUp = async () => {
+      const w = new Date(Date.now() - 10 * 60_000).toISOString();
+      const { count: now } = await d.from("loads").select("id", { count: "exact", head: true }).eq("created_by", maria).gte("created_at", w);
+      const missing = 998 - (now ?? 0);
+      if (missing > 0) {
+        const ins = await d.from("loads").insert(Array.from({ length: missing }, () => ({ ...tpl, po_number: uniq("MTCAPSEED") }))).select("id");
+        if (ins.error) throw ins.error;
+        seeded.push(...(ins.data ?? []).map((r) => r.id as string));
+      }
+    };
     const { ctx, page } = await as(browser, "maria");
     await openBook(page, po);
     await setQty(page, "3");
+    await topUp();
     await page.getByRole("button", { name: "Request 3 loads" }).click();
     await expect(page.getByText(/That is a lot of loads in a short time/)).toBeVisible();
     expect(page.url()).toMatch(/\/book$/);
     expect(await loadsByPo(po), "no partial insert").toHaveLength(0);
     // Exactly at the cap is allowed.
     await setQty(page, "2");
+    await topUp();
     await page.getByRole("button", { name: "Request 2 loads" }).click();
     await page.waitForURL(/\/loads\?booked=/);
     expect(await loadsByPo(po)).toHaveLength(2);

@@ -74,3 +74,9 @@ export function todayEastern(): string {
 export function telHref(phone: string): string {
   return "tel:" + phone.replace(/[^+\d]/g, "");
 }
+
+// "Oct 4, 2026" for an ISO instant, as the Eastern calendar date.
+export function fmtDateEt(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
+}

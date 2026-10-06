@@ -9,6 +9,8 @@ import { MAX_TRUCKS, parseQuantityText } from "@/lib/customer/bulk";
 import {
   EQUIPMENT_SIZES, validateLoad, type FieldErrors, type LoadFormValues,
 } from "@/lib/customer/validate";
+import { fmtDateEt } from "@/lib/format";
+import type { LastContacts } from "@/lib/customer/requestAgain";
 import type { Location, Timing } from "@/lib/types";
 
 type Props = {
@@ -17,6 +19,8 @@ type Props = {
   locations: Location[];
   initial: LoadFormValues;
   today: string;
+  lastContacts?: LastContacts; // most recent contact per location (new booking only)
+  copiedFrom?: string | null; // load number a Request again was copied from
 };
 
 function Err({ msg }: { msg?: string }) {
@@ -65,7 +69,10 @@ function CheckRow({ checked, onChange, children, disabled = false }:
   );
 }
 
-export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
+const NO_LAST: LastContacts = { pickup: {}, delivery: {} };
+
+export function LoadForm({ mode, loadId, locations, initial, today, lastContacts = NO_LAST, copiedFrom = null }: Props) {
+  const [noticeOpen, setNoticeOpen] = useState(true);
   const [v, setV] = useState<LoadFormValues>(initial);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -201,6 +208,11 @@ export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
     const phoneKey = `${side}_contact_phone` as const;
     const saveKey = `save_${side}_default` as const;
     const locId = v[`${side}_location_id`];
+    const loc = byId.get(locId);
+    const last = mode === "create" && locId ? lastContacts[side][locId] : undefined;
+    const same = last ? v[nameKey].trim() === last.name && v[phoneKey].trim() === last.phone : false;
+    const hasDefault = Boolean(loc?.default_contact_name || loc?.default_contact_phone);
+    const when = last ? `${last.loadNumber}, ${fmtDateEt(last.createdAt)}` : "";
     return (
       <div className="mt-4 space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -219,6 +231,27 @@ export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
             <Err msg={errors[phoneKey]} />
           </div>
         </div>
+        {mode === "create" ? (
+          <div aria-live="polite" data-testid={`${side}-last-contact`} className="text-[13px] text-muted">
+            {last ? (
+              same
+                ? <p data-testid={`${side}-last-same`}>Same as last time ({when})</p>
+                : <p data-testid={`${side}-last-line`}>Last contact at {loc?.name}: {last.name}, {last.phone} ({when})</p>
+            ) : locId && hasDefault ? (
+              <p data-testid={`${side}-last-none`}>No earlier load here. Using the saved default contact.</p>
+            ) : null}
+          </div>
+        ) : null}
+        {last && !same ? (
+          <button type="button" data-testid={`${side}-use-last`}
+            onClick={() => {
+              setV((p) => ({ ...p, [nameKey]: last.name, [phoneKey]: last.phone }));
+              setErrors((e) => ({ ...e, [nameKey]: undefined, [phoneKey]: undefined }));
+            }}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-line bg-white px-4 text-[15px] font-bold text-ink cursor-pointer">
+            Use last contact
+          </button>
+        ) : null}
         <CheckRow checked={v[saveKey]} disabled={!locId} onChange={(b) => set(saveKey, b)}>
           Save as default for this location
         </CheckRow>
@@ -237,6 +270,17 @@ export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
 
   return (
     <form onSubmit={submit} noValidate className="space-y-4">
+      {copiedFrom && noticeOpen ? (
+        <Notice tone="info">
+          <div className="flex items-center justify-between gap-3">
+            <span data-testid="copied-notice">Copied from {copiedFrom}. Choose the new dates and times.</span>
+            <button type="button" aria-label="Dismiss notice" onClick={() => setNoticeOpen(false)}
+              className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-line bg-white px-3 text-[15px] font-bold text-ink cursor-pointer">
+              Dismiss
+            </button>
+          </div>
+        </Notice>
+      ) : null}
       {formError ? <Notice tone="error">{formError}</Notice> : null}
 
       <Card>

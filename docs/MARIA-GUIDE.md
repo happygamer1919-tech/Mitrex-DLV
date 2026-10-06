@@ -19,6 +19,20 @@ Portal: https://portal.dlvlogistics.com . All times are Eastern (ET).
 8. **Trucks**: at the bottom, choose how many trucks (1 to 10) with the plus and minus buttons. Every truck becomes its own load with the same details and its own load number. Leave it at 1 for a single load.
 9. Tap **Request load** (it reads **Request 4 loads** for 4 trucks). You land on **Loads** with the new numbers listed.
 
+## Book the same load again
+1. Tap **Loads**, then **Completed**. These are your delivered loads, newest first, each with its delivered date.
+2. Tap **Request again** on a load (or open the load and tap **Request again** at the top).
+3. The booking form opens with the same locations, contacts, truck size, Moffett, weight, pieces, PO number and notes. Only the dates and times are empty, because every shipment needs new ones. A blue note says which load was copied. Tap **Dismiss** to hide it.
+4. Choose the dates and times, change anything else if needed, and tap **Request load**. You can also set several trucks at the bottom.
+5. Cancelled loads cannot be requested again.
+
+## Who was the contact last time
+Under each contact name and phone, the form shows "Last contact at <place>: <name>, <phone> (load number, date)". It is the contact on your most recent load to or from that place.
+- **Use last contact** fills in that name and phone.
+- **Same as last time** means the fields already match.
+- "No earlier load here. Using the saved default contact." means you have not shipped to or from that place yet, and the place's saved contact is used.
+Edit the fields freely. Tick "Save as default for this location" to keep the new contact for the place.
+
 ## Change or cancel
 - While the status is Requested you can tap **Edit load** then **Save changes**, or **Cancel load** then **Yes, cancel this load**. Cancelling cannot be undone.
 - After DLV books it, the page says "Contact DLV to change this load". Call or email dispatch (below).
