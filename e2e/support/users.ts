@@ -7,4 +7,5 @@ export const USERS = {
 export type Who = keyof typeof USERS;
 export const CARRIER_A = "E2E Carrier A";
 export const CARRIER_B = "E2E Carrier B";
-export const stateFile = (who: Who) => `e2e/.auth/${who}.json`;
+// Storage state is per engine: e2e/.auth/<project>-<who>.json
+export const stateFile = (project: string, who: Who) => `e2e/.auth/${project}-${who}.json`;

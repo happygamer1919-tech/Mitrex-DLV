@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminClient, as, insertBookedLoad, isoDate, PNG_1X1 } from "./support/helpers";
+import { adminClient, as, insertLoad, isoDate, uniq, PNG_1X1 } from "./support/helpers";
 import { CARRIER_A } from "./support/users";
 
 test.describe.configure({ mode: "serial" });
@@ -136,6 +136,8 @@ test("carrier walks the status buttons; ETA and POD are required", async ({ brow
 test("Maria sees status and ETA", async ({ browser }) => {
   const { ctx, page } = await as(browser, "maria");
   await page.goto(`/loads/${loadId}`);
+  // "Delivered" is also a progress label, so assert the authoritative status and the POD link too.
+  expect((await adminClient().from("loads").select("status").eq("id", loadId).single()).data?.status).toBe("delivered");
   await expect(page.getByText("Delivered").first()).toBeVisible();
   await expect(page.getByRole("link", { name: /View POD/ })).toBeVisible();
   const note = page.getByTestId("load-state-note");
@@ -150,7 +152,7 @@ test("Maria sees status and ETA", async ({ browser }) => {
 });
 
 test("cancelled load shows Cancelled, not the contact-DLV message", async ({ browser }) => {
-  const id = await insertBookedLoad(`CXL-${Date.now()}`, "cancelled");
+  const { id } = await insertLoad({ po: uniq("CXL"), status: "cancelled" });
   const { ctx, page } = await as(browser, "maria");
   await page.goto(`/loads/${id}`);
   await expect(page.getByTestId("load-state-note")).toContainText(/^Cancelled on /);
@@ -159,7 +161,7 @@ test("cancelled load shows Cancelled, not the contact-DLV message", async ({ bro
 });
 
 test("requested load shows no state note and offers Edit", async ({ browser }) => {
-  const id = await insertBookedLoad(`REQ-${Date.now()}`, "requested");
+  const { id } = await insertLoad({ po: uniq("REQ"), status: "requested" });
   const { ctx, page } = await as(browser, "maria");
   await page.goto(`/loads/${id}`);
   await expect(page.getByTestId("load-state-note")).toHaveCount(0);

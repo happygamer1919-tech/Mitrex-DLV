@@ -1,5 +1,5 @@
 // LOCAL-ONLY GUARD for every e2e run. Compares the parsed host exactly, never a substring.
-export function assertLocalUrl(label: string, value: string | undefined): void {
+export function assertLocalUrl(value: string | undefined, label: string): void {
   let host: string | null = null;
   try {
     host = new URL(value ?? "").hostname;

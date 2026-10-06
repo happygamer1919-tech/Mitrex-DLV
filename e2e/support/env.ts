@@ -9,7 +9,7 @@ export function localEnv(): Record<string, string> {
     const i = line.indexOf("=");
     if (i > 0) m[line.slice(0, i)] = line.slice(i + 1).replace(/^"|"$/g, "");
   }
-  assertLocalUrl("NEXT_PUBLIC_SUPABASE_URL", m.API_URL);
+  assertLocalUrl(m.API_URL, "supabase API_URL");
   return {
     NEXT_PUBLIC_SUPABASE_URL: m.API_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: m.ANON_KEY,
@@ -18,6 +18,9 @@ export function localEnv(): Record<string, string> {
 }
 
 export const DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
-assertLocalUrl("DB_URL", DB_URL);
 export const MAIL_API = "http://127.0.0.1:54324/api/v1";
-assertLocalUrl("MAIL_API", MAIL_API);
+export const E2E_PORT = Number(process.env.E2E_PORT ?? 3200);
+export const BASE_URL = `http://localhost:${E2E_PORT}`;
+assertLocalUrl(DB_URL, "DB_URL");
+assertLocalUrl(MAIL_API, "MAIL_API");
+assertLocalUrl(BASE_URL, "BASE_URL");

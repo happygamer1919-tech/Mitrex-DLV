@@ -35,7 +35,10 @@ DLV Logistics is a freight brokerage (Canada/US). Client Mitrex (also Cladify) s
 - R24 Staff /admin board (columns by status) and calendar (week and month by pickup date).
 - R25 Staff load detail: assign carrier, upload BOL, mark booked, override status with note, cancel. "BOL pending" badge on booked loads without BOL.
 - R26 Staff: locations manager (CRUD, needs_review), approve or reject location_requests (approve applies the payload), carriers manager, users invite and deactivate (staff_admin only).
-- R27 CSV export with date range and status filter. CSV_COLUMNS: load_number, created_at, pickup_location, delivery_location, equipment_size, moffett, weight_lbs, pieces, po_number, pickup_timing, pickup_date, pickup_time_start, pickup_time_end, delivery_timing, delivery_date, delivery_time_start, delivery_time_end, carrier, status, eta, delivered_at
+- R27 CSV export with date range and status filter.
+
+CSV_COLUMNS: load_number, created_at, pickup_location, delivery_location, equipment_size, moffett, weight_lbs, pieces, po_number, pickup_timing, pickup_date, pickup_time_start, pickup_time_end, delivery_timing, delivery_date, delivery_time_start, delivery_time_end, carrier, status, eta, delivered_at
+
 - R28 Carrier /my-loads: cards for loads of own carrier (booked and later).
 - R29 Carrier load detail: addresses, contacts with tap-to-call, timing, ONE big next-step button only. Enroute asks for a required ETA; Delivered requires a POD photo (camera capture, compressed client side to max 1600px JPEG before upload). ETA editable while enroute.
 - R30 /team (carrier_owner only): add and remove drivers by email.
