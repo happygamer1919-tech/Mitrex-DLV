@@ -52,6 +52,13 @@ Do one key at a time. For each: create the new value, update everywhere below, r
 6. Redeploy in Vercel (Deployments > Redeploy).
 7. Run the deploy checks below. Never commit the env file.
 
+## Sign-in says "Network problem" or no code arrives
+Most likely the sign-in email cannot be sent. Check, in this order:
+1. Supabase dashboard > Authentication > SMTP Settings: the Password must be the CURRENT Resend API key (the same one as in Vercel). After any Resend key rotation this must be updated too, or every sign-in fails.
+2. Resend dashboard > Domains: the sending domain (send.dlvlogistics.com) shows Verified.
+3. Resend dashboard > Logs: look for a rejected or bounced message to that address.
+4. Try again after saving. The portal itself and the database are separate and keep working while this is broken.
+
 ## After every deploy
 1. Open https://portal.dlvlogistics.com. It must load the login page.
 2. Request a sign-in code. The email must arrive with an 8 digit code.
@@ -60,7 +67,7 @@ Do one key at a time. For each: create the new value, update everywhere below, r
 5. Check Vercel > Deployments says Ready, with no errors in the logs.
 
 ## Who to call
-- DLV dispatch: [phone/email to be filled in by owner]
-- Developer: [phone/email to be filled in by owner]
-- Supabase support: [account email to be filled in by owner]
-- Vercel support: [account email to be filled in by owner]
+- DLV dispatch: (226) 703-3034, chris@dlvlogistics.com
+- Developer: info@a-and-i-automation.com
+- Supabase account email: info@a-and-i-automation.com
+- Vercel account email: info@a-and-i-automation.com
