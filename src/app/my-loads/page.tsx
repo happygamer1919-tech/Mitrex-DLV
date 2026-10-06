@@ -12,12 +12,13 @@ export default async function MyLoadsPage() {
   const profile = await requireCarrier();
   const supabase = await createClient();
   // Active loads are never cut off by old finished ones: two queries, oldest pickup first for the
-  // active list, most recent first for the finished list.
+  // active list, most recent first for the finished list. load_number breaks ties (many loads share a
+  // pickup date and time), so the capped list is the same on every request and for every user of the carrier.
   const [activeRes, doneRes] = await Promise.all([
     supabase.from("loads").select(LOAD_SELECT).in("status", ACTIVE_STATUSES)
-      .order("pickup_date", { ascending: true }).order("pickup_time_start", { ascending: true }).limit(300),
+      .order("pickup_date", { ascending: true }).order("pickup_time_start", { ascending: true }).order("load_number", { ascending: true }).limit(300),
     supabase.from("loads").select(LOAD_SELECT).not("status", "in", `(${ACTIVE_STATUSES.join(",")})`)
-      .order("pickup_date", { ascending: false }).order("pickup_time_start", { ascending: false }).limit(100),
+      .order("pickup_date", { ascending: false }).order("pickup_time_start", { ascending: false }).order("load_number", { ascending: false }).limit(100),
   ]);
   const error = activeRes.error ?? doneRes.error;
   const active = (activeRes.data ?? []) as unknown as CarrierLoad[];
