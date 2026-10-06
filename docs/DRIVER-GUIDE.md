@@ -56,4 +56,4 @@ Tap **Team** in the top menu.
 - Add: type the driver email (and name), tap **Add driver**. They sign in with a code.
 - Remove: tap **Remove** next to the driver, then **Yes, remove**. They lose access right away.
 
-DLV dispatch: [phone/email to be filled in by owner]
+DLV dispatch: (226) 703-3034, chris@dlvlogistics.com

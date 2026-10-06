@@ -50,4 +50,4 @@ On the **Locations** page you can:
 Under "My location requests" each request shows pending, approved or rejected. DLV reviews them.
 
 ## Who to contact
-DLV dispatch: [phone/email to be filled in by owner]
+DLV dispatch: (226) 703-3034, chris@dlvlogistics.com
