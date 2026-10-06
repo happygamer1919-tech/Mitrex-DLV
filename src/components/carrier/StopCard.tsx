@@ -1,5 +1,6 @@
 import { btnClass, Card } from "@/components/ui";
 import { fmtSlot, telHref } from "@/lib/format";
+import { nameIsStreet } from "@/lib/address";
 import type { Location, Timing } from "@/lib/types";
 
 type Props = {
@@ -24,7 +25,7 @@ export function StopCard({ title, location, timing, date, start, end, contactNam
         <div className="break-words text-[16px] font-bold">{location?.name ?? "Location not available"}</div>
         {location ? (
           <address className="not-italic text-[16px]">
-            <div className="break-words">{location.address_line}</div>
+            {nameIsStreet(location) ? null : <div className="break-words">{location.address_line}</div>}
             <div>
               {location.city}, {location.province}
               {location.postal_code ? ` ${location.postal_code}` : ""}

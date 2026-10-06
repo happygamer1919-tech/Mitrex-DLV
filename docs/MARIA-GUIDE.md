@@ -13,7 +13,7 @@ Portal: https://portal.dlvlogistics.com . All times are Eastern (ET).
 2. **Pickup**: choose the location. The contact name and phone fill in; change them if needed. Tick "Save as default for this location" to keep them.
 3. Choose **Appointment** (one fixed time) or **Time window** (from and to). Set the date.
 4. Do the same for **Delivery**.
-5. **Equipment**: tap the truck size (feet).
+5. **Equipment**: tap the truck size (26, 36 or 53 feet).
 6. Moffett (forklift on truck): tick it if needed. Some locations, such as SAMIH, require it. Then it is ticked and locked, with a note saying why.
 7. Optional: weight, pieces, PO number, notes.
 8. **Trucks**: at the bottom, choose how many trucks (1 to 10) with the plus and minus buttons. Every truck becomes its own load with the same details and its own load number. Leave it at 1 for a single load.
@@ -30,7 +30,7 @@ Portal: https://portal.dlvlogistics.com . All times are Eastern (ET).
 - **Loading**: the truck is being loaded.
 - **Enroute**: the truck left for delivery. The ETA shows.
 - **At delivery**: the truck is at the delivery location.
-- **Delivered**: done. The POD is available.
+- **Delivered**: done. The POD is available once the carrier or DLV uploads it. Until then the load says **POD not uploaded yet.**
 - **Cancelled**: the load will not move.
 
 Pages update by themselves.
@@ -39,7 +39,7 @@ Pages update by themselves.
 Open the load from the **Loads** list.
 - **ETA**: under "Load details" once the truck is enroute, and on the list.
 - **BOL**: under **Documents**, button **Download BOL**. It appears after DLV uploads it.
-- **POD**: under **Documents**, button **View POD**, after delivery.
+- **POD**: under **Documents**, button **View POD**, once it is uploaded. A load can be delivered before the POD photo arrives: the page then says **POD not uploaded yet.** and the button appears by itself (within about 15 seconds) when it is added.
 - The **Timeline** shows every status change.
 
 ## Locations

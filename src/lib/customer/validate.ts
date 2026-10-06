@@ -29,7 +29,7 @@ export type LoadFormValues = {
 export type FieldErrors = Partial<Record<keyof LoadFormValues | "quantity", string>>;
 export type ActionResult = { error?: string; fieldErrors?: FieldErrors; ok?: boolean };
 
-export const EQUIPMENT_SIZES = [26, 36, 48, 53] as const;
+export const EQUIPMENT_SIZES = [26, 36, 53] as const;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
@@ -79,7 +79,7 @@ export function validateLoad(v: LoadFormValues, today: string = todayEastern()):
   if (!v.pickup_contact_phone.trim()) e.pickup_contact_phone = "Pickup contact phone is required.";
   if (!v.delivery_contact_name.trim()) e.delivery_contact_name = "Delivery contact name is required.";
   if (!v.delivery_contact_phone.trim()) e.delivery_contact_phone = "Delivery contact phone is required.";
-  if (!["26", "36", "48", "53"].includes(v.equipment_size)) e.equipment_size = "Choose an equipment size.";
+  if (!["26", "36", "53"].includes(v.equipment_size)) e.equipment_size = "Choose an equipment size.";
   checkSlot(v, "pickup", today, e);
   checkSlot(v, "delivery", today, e);
   if (!e.pickup_date && !e.delivery_date && v.delivery_date < v.pickup_date) {

@@ -42,7 +42,7 @@ test("Maria books a load: window pickup, appointment delivery", async ({ browser
   await page.getByLabel("Delivery date").fill(isoDate(3));
   await page.getByLabel("Appointment time (ET)").fill("14:00");
 
-  await page.getByRole("radiogroup", { name: "Equipment size" }).getByRole("radio", { name: /48/ }).click();
+  await page.getByRole("radiogroup", { name: "Equipment size" }).getByRole("radio", { name: /53/ }).click();
   await page.getByLabel("PO number (optional)").fill(PO);
   await page.getByRole("button", { name: "Request load" }).click();
 
@@ -90,7 +90,7 @@ test("carrier A sees the load, carrier B does not", async ({ browser }) => {
   await b.ctx.close();
 });
 
-test("carrier walks the status buttons; ETA and POD are required", async ({ browser }) => {
+test("carrier walks the status buttons; ETA is required, POD is optional", async ({ browser }) => {
   const { ctx, page } = await as(browser, "carrierA");
   await page.goto(`/my-loads/${loadId}`);
 
@@ -115,21 +115,20 @@ test("carrier walks the status buttons; ETA and POD are required", async ({ brow
   await page.getByRole("button", { name: "Arrived at delivery" }).click();
   await expect(page.getByRole("button", { name: "Mark delivered" })).toBeVisible();
 
-  // Delivered: blocked without a POD photo.
+  // Delivered: a POD photo is optional. The modal says so and Mark delivered works without one.
   await page.getByRole("button", { name: "Mark delivered" }).click();
   const pod = page.getByRole("dialog");
-  await pod.getByRole("button", { name: "Mark delivered" }).click();
-  await expect(pod.getByText("Take a photo of the signed POD to mark this load delivered.")).toBeVisible();
-  await expect(page.getByText("Delivered", { exact: true })).toHaveCount(0);
-
-  // With a photo it passes.
-  await pod.locator('input[type="file"]').setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
-  await pod.getByRole("button", { name: "Mark delivered" }).click();
+  await expect(pod.getByText("Add the signed POD photo now if you have it. You can add it later from this load.")).toBeVisible();
+  await pod.getByRole("button", { name: "Mark delivered", exact: true }).click();
   await expect(page.getByRole("button", { name: "Mark delivered" })).toHaveCount(0, { timeout: 30_000 });
   const db = adminClient();
   await expect.poll(async () => (await db.from("loads").select("status").eq("id", loadId).single()).data?.status, { timeout: 15_000 }).toBe("delivered");
   const pods = await db.from("load_documents").select("id").eq("load_id", loadId).eq("kind", "pod");
-  expect(pods.data?.length).toBe(1);
+  expect(pods.data?.length).toBe(0);
+  // The load page now offers to add the POD photo.
+  await expect(page.getByRole("heading", { name: "Proof of delivery" })).toBeVisible();
+  await expect(page.getByTestId("pod-missing")).toHaveText("POD not uploaded yet");
+  await expect(page.getByTestId("pod-add").first()).toBeVisible();
   await ctx.close();
 });
 
@@ -139,7 +138,9 @@ test("Maria sees status and ETA", async ({ browser }) => {
   // "Delivered" is also a progress label, so assert the authoritative status and the POD link too.
   expect((await adminClient().from("loads").select("status").eq("id", loadId).single()).data?.status).toBe("delivered");
   await expect(page.getByText("Delivered").first()).toBeVisible();
-  await expect(page.getByRole("link", { name: /View POD/ })).toBeVisible();
+  // Delivered without a POD: the Documents card says so and offers no View POD link.
+  await expect(page.getByTestId("pod-missing")).toHaveText("POD not uploaded yet.");
+  await expect(page.getByRole("link", { name: /View POD/ })).toHaveCount(0);
   const note = page.getByTestId("load-state-note");
   await expect(note).toHaveCount(1);
   await expect(note).toContainText(/^Delivered on /);
@@ -149,6 +150,32 @@ test("Maria sees status and ETA", async ({ browser }) => {
   expect(eta).toBeTruthy();
   await expect(page.getByText(CARRIER_A).first()).toBeVisible();
   await ctx.close();
+});
+
+test("the carrier adds the POD photo after delivery: exactly one POD row, and Maria's open page shows View POD", async ({ browser }) => {
+  const maria = await as(browser, "maria");
+  await maria.page.goto(`/loads/${loadId}`);
+  await expect(maria.page.getByTestId("pod-missing")).toHaveText("POD not uploaded yet.");
+
+  const { ctx, page } = await as(browser, "carrierA");
+  await page.goto(`/my-loads/${loadId}`);
+  const card = page.getByTestId("pod-card");
+  await expect(card.getByTestId("pod-missing")).toHaveText("POD not uploaded yet");
+  await card.getByTestId("dropzone-input").setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await expect(card.getByTestId("dropzone-file")).toContainText("pod.png");
+  await card.getByTestId("pod-add").click();
+  await expect(card.getByRole("link", { name: "View POD" })).toBeVisible({ timeout: 30_000 });
+  await expect(card.getByTestId("pod-missing")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Add another" })).toBeVisible();
+  const pods = await adminClient().from("load_documents").select("id,storage_path").eq("load_id", loadId).eq("kind", "pod");
+  expect(pods.data?.length).toBe(1);
+  expect(await adminClient().storage.from("documents").list(`${loadId}/pod`).then((r) => r.data?.length)).toBe(1);
+  await ctx.close();
+
+  // Live: no reload on Maria's page. The 15 s poll brings the link (40 s leaves room for one slow tick).
+  await expect(maria.page.getByRole("link", { name: "View POD" })).toBeVisible({ timeout: 40_000 });
+  await expect(maria.page.getByTestId("pod-missing")).toHaveCount(0);
+  await maria.ctx.close();
 });
 
 test("cancelled load shows Cancelled, not the contact-DLV message", async ({ browser }) => {

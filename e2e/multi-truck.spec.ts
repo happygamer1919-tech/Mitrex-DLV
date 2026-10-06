@@ -246,7 +246,7 @@ test("all or nothing: a failing 3rd row leaves zero loads (the one insert statem
   const values = {
     ...EMPTY_LOAD_FORM, pickup_location_id: route.pickup.id, delivery_location_id: route.delivery.id,
     pickup_contact_name: "Pat", pickup_contact_phone: "416-555-0101", delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102",
-    equipment_size: "48", pickup_date: isoDate(5), pickup_time_start: "08:00", delivery_date: isoDate(5), delivery_time_start: "14:00", po_number: po,
+    equipment_size: "53", pickup_date: isoDate(5), pickup_time_start: "08:00", delivery_date: isoDate(5), delivery_time_start: "14:00", po_number: po,
   };
   const rows = buildTruckRows(values, false, 4, cust, await mariaId());
   expect(rows.map((r) => r.notes)).toEqual(["Truck 1 of 4", "Truck 2 of 4", "Truck 3 of 4", "Truck 4 of 4"]);

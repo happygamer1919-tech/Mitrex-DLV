@@ -20,3 +20,4 @@
 | Production migrations 0006-0010 applied (post-check 25 of 25); acceptance checklist M1-M7; default branch fixed | #17 | merged |
 | Owner contact details in guides and runbook; sign-in failure troubleshooting | #18 | merged |
 | Multi-truck booking (1 to 10 loads per submission, one staff email); no migration | #19 | merged |
+| Acceptance fixes: drop-area uploads, POD optional (migration 0011), 26/36/53 ft only (migration 0012); apply pack 3 | #20 | merged |

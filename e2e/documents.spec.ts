@@ -11,7 +11,7 @@ test("staff uploads a BOL, Maria downloads the same bytes, BOL pending disappear
   const staff = await as(browser, "admin");
   await staff.page.goto(`/admin/loads/${id}`);
   await expect(staff.page.getByText("BOL pending")).toHaveCount(1);
-  await staff.page.locator('input[type="file"]').setInputFiles({ name: `bol-${po}.pdf`, mimeType: "application/pdf", buffer: pdf });
+  await staff.page.getByTestId("upload-bol").getByTestId("dropzone-input").setInputFiles({ name: `bol-${po}.pdf`, mimeType: "application/pdf", buffer: pdf });
   await staff.page.getByRole("button", { name: "Upload BOL" }).click();
   await expect(staff.page.getByText("BOL uploaded.")).toBeVisible();
   await expect(staff.page.getByText("BOL pending")).toHaveCount(0);

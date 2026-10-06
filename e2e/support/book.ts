@@ -8,11 +8,11 @@ export type TestLocation = { id: string; name: string; label: string };
 // A fresh active location that can ship and receive. Labels match the /book select: "<name> (<city>)".
 export async function makeLocation(opts: {
   prefix?: string; ship?: boolean; receive?: boolean; contactName?: string | null; contactPhone?: string | null;
-  postal?: string | null; moffett?: boolean;
+  postal?: string | null; moffett?: boolean; address?: (name: string) => string;
 } = {}): Promise<TestLocation> {
   const name = uniq(opts.prefix ?? "E2E-LOC");
   const { data, error } = await adminClient().from("locations").insert({
-    name, address_line: "1 Spec Road", city: "Testville", province: "ON",
+    name, address_line: opts.address ? opts.address(name) : "1 Spec Road", city: "Testville", province: "ON",
     postal_code: opts.postal === undefined ? "A1A 1A1" : opts.postal,
     can_ship: opts.ship ?? true, can_receive: opts.receive ?? true, requires_moffett: opts.moffett ?? false,
     default_contact_name: opts.contactName ?? null, default_contact_phone: opts.contactPhone ?? null,
@@ -33,7 +33,7 @@ export type BookingInput = {
   pickupDate?: string; deliveryDate?: string;
   pickupWindow?: [string, string]; // switches pickup to a time window
   pickupTime?: string; deliveryTime?: string;
-  equipment?: 26 | 36 | 48 | 53;
+  equipment?: 26 | 36 | 53;
   po?: string;
 };
 
@@ -57,7 +57,7 @@ export async function fillBooking(page: Page, b: BookingInput): Promise<void> {
     await page.getByLabel("Delivery date").fill(b.deliveryDate ?? b.pickupDate ?? isoDate(3));
     await page.getByLabel("Appointment time (ET)").nth(1).fill(b.deliveryTime ?? "14:00");
   }
-  await page.getByRole("radiogroup", { name: "Equipment size" }).getByRole("radio", { name: new RegExp(String(b.equipment ?? 48)) }).click();
+  await page.getByRole("radiogroup", { name: "Equipment size" }).getByRole("radio", { name: new RegExp(String(b.equipment ?? 53)) }).click();
   if (b.po !== undefined) await page.getByLabel("PO number (optional)").fill(b.po);
 }
 

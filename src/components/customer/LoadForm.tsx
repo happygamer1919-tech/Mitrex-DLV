@@ -269,7 +269,7 @@ export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
 
       <Card>
         <h2 className="mb-3 text-[20px] font-bold">Equipment</h2>
-        <div role="radiogroup" aria-label="Equipment size" className="grid grid-cols-4 gap-2">
+        <div role="radiogroup" aria-label="Equipment size" className="grid grid-cols-3 gap-2">
           {EQUIPMENT_SIZES.map((s) => {
             const on = v.equipment_size === String(s);
             return (

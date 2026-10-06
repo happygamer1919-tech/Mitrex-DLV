@@ -2,6 +2,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Field, Input, Notice, Select, Textarea } from "@/components/ui";
+import { DropZone } from "@/components/DropZone";
 import { createClient } from "@/lib/supabase/client";
 import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
 import { assignCarrier, overrideStatus, setEta } from "@/lib/admin/load-actions";
@@ -92,57 +93,68 @@ const ALLOWED = ["pdf", "png", "jpg", "jpeg", "webp", "heic"];
 // Some browsers leave file.type empty (heic on non-Apple platforms); the bucket only accepts listed mime types.
 const MIME_BY_EXT: Record<string, string> = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", heic: "image/heic" };
 
-export function BolUpload({ loadId }: { loadId: string }) {
+// Staff upload of a BOL, or of a POD on behalf of the carrier.
+export function StaffUpload({ loadId, kind }: { loadId: string; kind: "bol" | "pod" }) {
   const router = useRouter();
-  const input = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
+  const KIND = kind === "bol" ? "BOL" : "POD";
+
+  const inflight = useRef(false); // synchronous lock: a double click or double tap uploads once
 
   async function upload() {
+    if (inflight.current) return;
     setError("");
     setOk("");
-    const file = input.current?.files?.[0];
     if (!file) { setError("Choose a file first."); return; }
     const ext = (file.name.split(".").pop() ?? "").toLowerCase();
     if (!ALLOWED.includes(ext)) { setError("Use a PDF or an image (png, jpg, webp, heic)."); return; }
     if (file.size > MAX_BYTES) { setError("The file is larger than 15 MB."); return; }
 
+    inflight.current = true;
     setBusy(true);
     try {
       const supabase = createClient();
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) { setError("Your session expired. Sign in again."); return; }
-      const path = `${loadId}/bol/${crypto.randomUUID()}.${ext}`;
+      const path = `${loadId}/${kind}/${crypto.randomUUID()}.${ext}`;
       const up = await supabase.storage.from("documents").upload(path, file, { contentType: file.type || MIME_BY_EXT[ext] });
       if (up.error) { setError(up.error.message); return; }
       const ins = await supabase.from("load_documents").insert({
-        load_id: loadId, kind: "bol", storage_path: path, uploaded_by: auth.user.id,
+        load_id: loadId, kind, storage_path: path, uploaded_by: auth.user.id,
       });
       if (ins.error) {
         await supabase.storage.from("documents").remove([path]);
         setError(ins.error.message);
         return;
       }
-      if (input.current) input.current.value = "";
-      setOk("BOL uploaded.");
+      setFile(null);
+      setOk(`${KIND} uploaded.`);
       router.refresh();
     } finally {
+      inflight.current = false;
       setBusy(false);
     }
   }
 
   return (
-    <div className="space-y-3">
-      <Field label="Bill of lading (PDF or image, max 15 MB)">
-        <input
-          ref={input}
-          type="file"
-          accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,application/pdf,image/*"
-          className="block min-h-[44px] w-full text-[15px]"
-        />
-      </Field>
-      <Button type="button" onClick={upload} disabled={busy}>{busy ? "Uploading..." : "Upload BOL"}</Button>
+    <div className="space-y-3" data-testid={`upload-${kind}`}>
+      <p className="text-[13px] font-medium text-muted">
+        {kind === "bol" ? "Bill of lading (PDF or image, max 15 MB)" : "Proof of delivery, on behalf of the carrier (PDF or image, max 15 MB)"}
+      </p>
+      <DropZone
+        file={file}
+        onFile={(f) => { setError(""); setOk(""); setFile(f); }}
+        exts={ALLOWED}
+        maxBytes={MAX_BYTES}
+        typeError="Use a PDF or an image (png, jpg, webp, heic)."
+        sizeError="The file is larger than 15 MB."
+        label={kind === "bol" ? "Bill of lading" : "Proof of delivery"}
+        disabled={busy}
+      />
+      <Button type="button" onClick={upload} disabled={busy}>{busy ? "Uploading..." : `Upload ${KIND}`}</Button>
       {error ? <Notice tone="error">{error}</Notice> : null}
       {ok ? <Notice tone="ok">{ok}</Notice> : null}
     </div>

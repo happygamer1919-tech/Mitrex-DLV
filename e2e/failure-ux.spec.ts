@@ -151,7 +151,7 @@ async function bookingForm(page: Page, po: string) {
   await page.getByLabel("Appointment time (ET)").nth(0).fill("08:00");
   await page.getByLabel("Delivery date").fill(isoDate(3));
   await page.getByLabel("Appointment time (ET)").nth(1).fill("14:00");
-  await page.getByRole("radiogroup", { name: "Equipment size" }).getByRole("radio", { name: /48/ }).click();
+  await page.getByRole("radiogroup", { name: "Equipment size" }).getByRole("radio", { name: /53/ }).click();
   await page.getByLabel("PO number (optional)").fill(po);
 }
 async function loadsWithPo(po: string) {
@@ -185,6 +185,8 @@ for (const mode of ["abort", "http500"] as const) {
     await expect(retry).toBeVisible();
     await expect(retry).toBeEnabled();
     await expect(retry).toHaveText("Try again");
+    // Never delivered silently: the second choice is explicit.
+    await expect(dialog.getByTestId("pod-skip")).toHaveText("Mark delivered without photo");
 
     // Authoritative state: still at_delivery, no POD row, no stored file, no event.
     expect(await status(id)).toBe("at_delivery");

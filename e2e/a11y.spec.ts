@@ -413,3 +413,33 @@ test("keyboard focus is visible: ink driver pages", async ({ browser }) => {
     expectVisibleRing("driver modal button", await focusRing(page, page.getByRole("dialog").getByRole("button", { name: "Save ETA" })));
   });
 });
+
+// ---- DLV-021 drop area states ---------------------------------------------------------------------
+
+test("drop area states: staff BOL and POD zones, carrier POD card, chosen file and error", async ({ browser }) => {
+  const delivered = await insertLoad({ po: uniq("A11Y-DZ"), status: "delivered" });
+  const staffMarker = { path: new RegExp(`^/admin/loads/${delivered.id}$`), h1: new RegExp(delivered.loadNumber), text: "Delivered" };
+  await session(browser, "admin", async (page) => {
+    await page.goto(`/admin/loads/${delivered.id}`);
+    await expect(page.getByTestId("pod-pending")).toBeVisible();
+    await scan(page, "/admin/loads/[id] (delivered, POD pending, two drop areas)", staffMarker);
+    const bol = page.getByTestId("upload-bol");
+    expectVisibleRing("drop area", await focusRing(page, bol.getByTestId("dropzone")));
+    await bol.getByTestId("dropzone-input").setInputFiles({ name: "run.exe", mimeType: "application/octet-stream", buffer: Buffer.from("MZ") });
+    await expect(bol.getByTestId("dropzone-error")).toBeVisible();
+    await scan(page, "/admin/loads/[id] (drop area error)", staffMarker);
+    await bol.getByTestId("dropzone-input").setInputFiles({ name: "ok.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF\n") });
+    await expect(bol.getByTestId("dropzone-file")).toBeVisible();
+    await scan(page, "/admin/loads/[id] (drop area with a chosen file)", staffMarker);
+  });
+  const carrierMarker = { path: new RegExp(`^/my-loads/${delivered.id}$`), h1: new RegExp(delivered.loadNumber), text: "Delivered", driver: true };
+  await session(browser, "carrierA", async (page) => {
+    await page.goto(`/my-loads/${delivered.id}`);
+    await expect(page.getByTestId("pod-missing")).toBeVisible();
+    await scan(page, "/my-loads/[id] (delivered, POD not uploaded yet)", carrierMarker);
+    const card = page.getByTestId("pod-card");
+    await card.getByTestId("dropzone-input").setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: Buffer.from("x") });
+    await expect(card.getByTestId("dropzone-file")).toBeVisible();
+    await scan(page, "/my-loads/[id] (POD drop area with a chosen file)", carrierMarker);
+  });
+});

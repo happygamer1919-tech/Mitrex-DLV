@@ -4,6 +4,7 @@ import { Button, Card, Field, Input, Notice, Select, Textarea } from "@/componen
 import { ActionForm } from "@/components/admin/ActionForm";
 import { deleteLocation, saveLocation, setLocationActive } from "@/lib/admin/location-actions";
 import type { Location } from "@/lib/types";
+import { nameIsStreet } from "@/lib/address";
 import type { ActionState } from "@/lib/admin/state";
 
 function Check({ name, label, defaultChecked }: { name: string; label: string; defaultChecked?: boolean }) {
@@ -58,7 +59,7 @@ function Row({ loc }: { loc: Location }) {
         <div className="min-w-0 flex-1">
           <p className="break-words text-[16px] font-bold">{loc.name}</p>
           <p className="break-words text-[15px]">
-            {loc.address_line}, {loc.city}, {loc.province} {loc.postal_code ?? ""}
+            {nameIsStreet(loc) ? "" : `${loc.address_line}, `}{loc.city}, {loc.province} {loc.postal_code ?? ""}
           </p>
           <div className="mt-2 flex flex-wrap gap-2 text-[13px]">
             {!loc.is_active ? <span className="rounded-full bg-[#F7D9D9] px-3 py-1 text-[#7A1F1F]">Inactive</span> : null}

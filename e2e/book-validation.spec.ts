@@ -175,3 +175,61 @@ for (const [who, path] of [["maria", "/loads"], ["admin", "/admin"], ["carrierA"
     await ctx.close();
   });
 }
+
+// Card 3 of DLV-021: equipment sizes are 26, 36 and 53 only.
+test("the equipment chips are exactly 26, 36 and 53", async ({ browser }) => {
+  const { ctx, page } = await as(browser, "maria");
+  await page.goto("/book");
+  const chips = page.getByRole("radiogroup", { name: "Equipment size" }).getByRole("radio");
+  await expect(chips).toHaveCount(3);
+  expect((await chips.allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim())).toEqual(["26ft", "36ft", "53ft"]);
+  await expect(page.getByRole("radiogroup", { name: "Equipment size" }).getByRole("radio", { name: /48/ })).toHaveCount(0);
+  await ctx.close();
+});
+
+test("a forged server call with equipment size 48 is refused and inserts nothing; the database refuses 48 too", async ({ browser }) => {
+  const po = uniq("BV-48");
+  // Service workers blocked: webkit would otherwise serve the fetch from the worker and page.route never sees it.
+  const { ctx, page } = await as(browser, "maria", undefined, { serviceWorkers: "block" });
+  await page.goto("/book");
+  const before = await customerLoadCount();
+  await fillBooking(page, {
+    pickup: pickup.label, delivery: delivery.label, equipment: 53,
+    pickupContact: ["Pat", "416-555-0101"], deliveryContact: ["Dee", "416-555-0102"], po,
+  });
+  let rewritten = false;
+  await page.route("**/book", async (r) => {
+    const req = r.request();
+    const body = req.postData() ?? req.postDataBuffer()?.toString("utf8") ?? null;
+    if (req.method() === "POST" && req.headers()["next-action"] && body && body.includes('"equipment_size":"53"')) {
+      rewritten = true;
+      await r.continue({ postData: body.replace('"equipment_size":"53"', '"equipment_size":"48"') });
+    } else await r.continue();
+  });
+  await submit(page);
+  await expect.poll(() => rewritten, { message: "request rewritten to 48" }).toBe(true);
+  await expect(page.getByText("Choose an equipment size.", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/book$/);
+  await page.waitForTimeout(1000);
+  expect(await customerLoadCount()).toBe(before);
+  await ctx.close();
+
+  // The database itself: an insert with 48 is refused by the CHECK, 36 is accepted (control).
+  const db = adminClient();
+  const [{ data: cust }, { data: maria }] = await Promise.all([
+    db.from("customers").select("id").eq("name", "Mitrex").single(),
+    db.from("profiles").select("id").eq("email", "maria@e2e.test").single(),
+  ]);
+  const row = (size: number, tag: string) => ({
+    customer_id: cust!.id, created_by: maria!.id, pickup_location_id: pickup.id, delivery_location_id: delivery.id,
+    equipment_size: size, pickup_timing: "appointment", pickup_date: isoDate(5), pickup_time_start: "08:00",
+    delivery_timing: "appointment", delivery_date: isoDate(5), delivery_time_start: "14:00",
+    pickup_contact_name: "Pat", pickup_contact_phone: "416-555-0101", delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102",
+    po_number: `${po}-${tag}`,
+  });
+  const bad = await db.from("loads").insert(row(48, "48")).select("id");
+  expect(bad.error?.message ?? "").toMatch(/equipment_size/);
+  const good = await db.from("loads").insert(row(36, "36")).select("id,status").single();
+  expect(good.error).toBeNull();
+  await db.from("loads").update({ status: "cancelled" }).eq("id", good.data!.id);
+});

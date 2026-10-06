@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { saveDefaultContact } from "@/lib/customer/actions";
 import type { Location } from "@/lib/types";
+import { nameIsStreet } from "@/lib/address";
 
 function Flag({ children }: { children: React.ReactNode }) {
   return <span className="rounded-full bg-[#DCE6F5] px-3 py-1 text-[13px] font-medium">{children}</span>;
@@ -30,7 +31,7 @@ export function LocationRow({ location }: { location: Location }) {
         <div className="min-w-0">
           <h2 className="text-[18px] font-bold break-words">{location.name}</h2>
           <p className="text-[15px] text-muted break-words">
-            {location.address_line}, {location.city}, {location.province}
+            {nameIsStreet(location) ? "" : `${location.address_line}, `}{location.city}, {location.province}
             {location.postal_code ? ` ${location.postal_code}` : ""}
           </p>
         </div>

@@ -7,6 +7,7 @@ import { MoffettBadge } from "@/components/carrier/MoffettBadge";
 import { Progress } from "@/components/carrier/Progress";
 import { StopCard } from "@/components/carrier/StopCard";
 import { LoadActions } from "@/components/carrier/LoadActions";
+import { PodCard } from "@/components/carrier/PodCard";
 import { requireCarrier } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, isoToEasternLocal } from "@/lib/format";
@@ -41,7 +42,8 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
     .order("created_at", { ascending: false });
   const docs = (docRows ?? []) as LoadDocument[];
   const bol = docs.find((d) => d.kind === "bol");
-  const pod = docs.find((d) => d.kind === "pod");
+  const podDocs = docs.filter((d) => d.kind === "pod");
+  const pod = podDocs[0];
 
   async function signed(path: string | undefined): Promise<string | null> {
     if (!path) return null;
@@ -49,7 +51,7 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
     return s?.signedUrl ?? null;
   }
   const bolUrl = await signed(bol?.storage_path);
-  const podUrl = await signed(pod?.storage_path);
+  const pods = await Promise.all(podDocs.map(async (d) => ({ id: d.id, url: await signed(d.storage_path) })));
 
   const finished = load.status === "delivered" || load.status === "cancelled";
 
@@ -90,6 +92,8 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
         ) : load.eta ? (
           <p className="text-[15px] text-white/80">Last ETA: {fmtDateTime(load.eta)}</p>
         ) : null}
+
+        {load.status === "delivered" ? <PodCard loadId={load.id} userId={profile.id} pods={pods} /> : null}
 
         <div className="grid gap-4 md:grid-cols-2">
           <StopCard
@@ -140,11 +144,6 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
           ) : (
             <p className="text-[15px] text-muted">{bol ? "The BOL link could not be created. Refresh the page." : "No BOL has been uploaded yet."}</p>
           )}
-          {podUrl ? (
-            <a href={podUrl} target="_blank" rel="noopener noreferrer" className={`${btnClass("ghost")} min-h-[48px] w-full`}>
-              View POD photo
-            </a>
-          ) : null}
         </Card>
       </div>
     </Shell>
