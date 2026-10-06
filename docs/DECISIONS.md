@@ -102,3 +102,6 @@
 - A location that is no longer active or can no longer ship or receive is left unselected (with its contact) instead of copied.
 - "Completed" is a separate quick filter (/loads?view=completed, sorted by delivered date, newest first). The existing per status chips, including Delivered, stay.
 - Last contact hint: computed from the customer's 200 most recent loads (session client), grouped in code by pickup or delivery location, newest created_at wins. No migration, no new table. A location whose last load is older than the 200 most recent loads shows the saved default contact message. Selecting a location still fills the saved default contact first (existing behaviour); the hint offers the last contact as a button, it does not overwrite the fields on its own.
+
+## 2026-10-06 admin board layout
+- The staff board shows one full-width band per status, stacked top to bottom, with load cards in a grid inside each band (1 column on a phone, 2 to 4 on a PC) and a jump bar with counts. No sideways scrolling. The shared header menu is one swipeable row on a phone so the board starts above the fold.

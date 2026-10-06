@@ -32,7 +32,7 @@ DLV Logistics is a freight brokerage (Canada/US). Client Mitrex (also Cladify) s
 - R21 Submitting creates one requested load per truck (N loads from one insert, identical details, own load number and status each; notes start "Truck i of N" when N is above 1) and sends ONE email to all active staff listing every load number with its admin link. N=1 redirects to the load, N above 1 to /loads with a banner listing the N numbers. At most 10 trucks per booking and 30 loads per customer user per 10 minutes.
 - R22 /loads: list with status filter and a "Completed" quick filter (delivered loads, newest delivery first, with the delivered date), live; every delivered row has "Request again" (cancelled loads do not). /loads/[id]: timeline from load_events, carrier name once booked, ETA when set, BOL download, POD view, edit and cancel while requested; a delivered load shows a prominent "Request again" button next to the Delivered note.
 - R23 /locations: list, edit default contact name and phone, request a new location, request an address change (location_requests pending).
-- R24 Staff /admin board (columns by status) and calendar (week and month by pickup date).
+- R24 Staff /admin board (one band per status, stacked top to bottom, load cards in a grid; single column on a phone) and calendar (week and month by pickup date).
 - R25 Staff load detail: assign carrier, upload BOL, mark booked, override status with note, cancel. "BOL pending" badge on booked loads without BOL.
 - R26 Staff: locations manager (CRUD, needs_review), approve or reject location_requests (approve applies the payload), carriers manager, users invite and deactivate (staff_admin only).
 - R27 CSV export with date range and status filter.

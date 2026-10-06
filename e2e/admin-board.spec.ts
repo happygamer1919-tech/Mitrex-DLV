@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { adminClient, as, easternLocal, gotoSteady, insertLoad, isoDate, loadRow, PNG_1X1, uniq, type SeedStatus } from "./support/helpers";
 
-// R24 staff board (columns by status) and calendar (week and month by pickup date), R25 BOL pending
+// R24 staff board (one status band per row, load cards in a grid) and calendar (week and month by pickup date), R25 BOL pending
 // badge and the status override with a required note. Authoritative state is read through the service role.
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
