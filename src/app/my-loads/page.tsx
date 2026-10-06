@@ -4,23 +4,24 @@ import { Card, Notice, PageTitle } from "@/components/ui";
 import { LoadCard } from "@/components/carrier/LoadCard";
 import { requireCarrier } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { isActive, LOAD_SELECT, type CarrierLoad } from "@/lib/carrier/loads";
+import { ACTIVE_STATUSES, LOAD_SELECT, type CarrierLoad } from "@/lib/carrier/loads";
 
 export const dynamic = "force-dynamic";
 
 export default async function MyLoadsPage() {
   const profile = await requireCarrier();
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("loads")
-    .select(LOAD_SELECT)
-    .order("pickup_date", { ascending: true })
-    .order("pickup_time_start", { ascending: true })
-    .limit(300);
-
-  const loads = ((data ?? []) as unknown as CarrierLoad[]);
-  const active = loads.filter((l) => isActive(l.status));
-  const done = loads.filter((l) => !isActive(l.status)).reverse();
+  // Active loads are never cut off by old finished ones: two queries, oldest pickup first for the
+  // active list, most recent first for the finished list.
+  const [activeRes, doneRes] = await Promise.all([
+    supabase.from("loads").select(LOAD_SELECT).in("status", ACTIVE_STATUSES)
+      .order("pickup_date", { ascending: true }).order("pickup_time_start", { ascending: true }).limit(300),
+    supabase.from("loads").select(LOAD_SELECT).not("status", "in", `(${ACTIVE_STATUSES.join(",")})`)
+      .order("pickup_date", { ascending: false }).order("pickup_time_start", { ascending: false }).limit(100),
+  ]);
+  const error = activeRes.error ?? doneRes.error;
+  const active = (activeRes.data ?? []) as unknown as CarrierLoad[];
+  const done = (doneRes.data ?? []) as unknown as CarrierLoad[];
 
   return (
     <Shell profile={profile} driver>

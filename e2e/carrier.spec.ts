@@ -1,5 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { adminClient, as, easternLocal, insertLoad, isoDate, loadRow, uniq, type SeedStatus } from "./support/helpers";
+
+// WebKit sometimes reports "navigation interrupted by another navigation" when a page with a live
+// Realtime socket and a polling refresh is navigated straight to the next load. Leaving through
+// about:blank first tears the old page down, so each load opens on a clean page.
+async function openFresh(page: Page, path: string) {
+  await page.goto("about:blank");
+  await page.goto(path);
+}
 
 const LABELS = ["Arrived at pickup", "Start loading", "Leave for delivery", "Arrived at delivery", "Mark delivered"];
 const EXPECTED: [SeedStatus, string][] = [
@@ -14,7 +22,7 @@ test("carrier UI offers only the next step at each status", async ({ browser }) 
   const { ctx, page } = await as(browser, "carrierA");
   for (const [status, label] of EXPECTED) {
     const { id } = await insertLoad({ po: uniq(`STEP-${status}`), status });
-    await page.goto(`/my-loads/${id}`);
+    await openFresh(page, `/my-loads/${id}`);
     await expect(page.getByRole("button", { name: label, exact: true }), `${status}: next step button`).toHaveCount(1);
     for (const other of LABELS.filter((l) => l !== label)) {
       await expect(page.getByRole("button", { name: other, exact: true }), `${status}: no "${other}"`).toHaveCount(0);
@@ -25,7 +33,7 @@ test("carrier UI offers only the next step at each status", async ({ browser }) 
   }
   // A delivered load has no status button at all.
   const done = await insertLoad({ po: uniq("STEP-done"), status: "delivered" });
-  await page.goto(`/my-loads/${done.id}`);
+  await openFresh(page, `/my-loads/${done.id}`);
   await expect(page.getByRole("heading", { name: done.loadNumber })).toBeVisible();
   await expect(page.getByRole("button", { name: new RegExp(`^(${LABELS.join("|")})$`) })).toHaveCount(0);
   await ctx.close();
@@ -35,7 +43,7 @@ test("ETA: not offered before enroute; carrier update shows on Maria's load page
   const carrier = await as(browser, "carrierA");
   for (const status of ["booked", "at_pickup", "loading"] as SeedStatus[]) {
     const { id } = await insertLoad({ po: uniq(`NOETA-${status}`), status });
-    await carrier.page.goto(`/my-loads/${id}`);
+    await openFresh(carrier.page, `/my-loads/${id}`);
     await expect(carrier.page.getByRole("button", { name: LABELS[["booked", "at_pickup", "loading"].indexOf(status)], exact: true })).toHaveCount(1);
     await expect(carrier.page.getByRole("button", { name: "Update ETA" })).toHaveCount(0);
   }

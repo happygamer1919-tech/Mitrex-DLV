@@ -67,10 +67,12 @@ test("customer cannot cancel a booked load: no button, and the action is refused
   await a.ctx.close();
 
   // 2) The server action, reached through the confirm panel of a load that was requested when the
-  // page rendered and booked before the click. Realtime is blocked so the page keeps its stale view.
+  // page rendered and booked before the click. Realtime and the poll are blocked so the page keeps its stale view.
   const { id } = await insertLoad({ po: uniq("RACE"), status: "requested" });
   const { ctx, page } = await as(browser, "maria");
   await page.routeWebSocket(/.*/, () => {});
+  // The 15 s poll refreshes through RSC fetches: block them too so a slow run cannot repaint the page.
+  await page.route(/[?&]_rsc=/, (route) => route.abort());
   await page.goto(`/loads/${id}`);
   await page.getByRole("button", { name: "Cancel load", exact: true }).click();
   await expect(page.getByRole("button", { name: "Yes, cancel this load" })).toBeVisible();

@@ -28,6 +28,12 @@ export default async function globalSetup(config: FullConfig) {
   }
   const carriers = { carrierA: await carrier(CARRIER_A), carrierB: await carrier(CARRIER_B) } as Record<string, string>;
 
+  // The database accumulates across runs. Park loads that earlier runs left active for the e2e
+  // carriers, so the carrier lists (which cap the active section) hold only this run's loads.
+  const parked = await admin.from("loads").update({ status: "cancelled" })
+    .in("carrier_id", Object.values(carriers)).in("status", ["booked", "at_pickup", "loading", "enroute", "at_delivery"]);
+  if (parked.error) throw parked.error;
+
   async function userId(email: string) {
     for (let page = 1; page < 20; page++) {
       const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
