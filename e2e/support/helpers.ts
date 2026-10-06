@@ -36,6 +36,17 @@ export async function anon(browser: Browser): Promise<{ ctx: BrowserContext; pag
   return { ctx, page: await ctx.newPage() };
 }
 
+// webkit: a goto right after a server action or redirect can be interrupted by the page's own pending navigation
+// (router refresh or redirect still settling). Retry once; any other error is thrown.
+export async function gotoSteady(page: Page, url: string): Promise<void> {
+  try {
+    await page.goto(url);
+  } catch (e) {
+    if (!String(e).includes("interrupted by another navigation")) throw e;
+    await page.goto(url);
+  }
+}
+
 export function adminClient() {
   const e = localEnv();
   assertLocalUrl(e.NEXT_PUBLIC_SUPABASE_URL, "supabase url");

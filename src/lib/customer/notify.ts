@@ -1,13 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 import { fmtSlot } from "@/lib/format";
+import { loadNumberSummary } from "./bulk";
 import type { LoadFormValues } from "./validate";
 
 // Emails every staff user about a new request. Never throws: the booking has already succeeded.
 // Call only after the actor was verified as a customer.
 export async function notifyStaffOfRequest(args: {
-  loadId: string;
-  loadNumber: string;
+  loads: { id: string; loadNumber: string }[]; // one booking, one email, however many trucks
   pickupName: string;
   deliveryName: string;
   moffett: boolean;
@@ -25,10 +25,14 @@ export async function notifyStaffOfRequest(args: {
     if (to.length === 0) return;
     const v = args.values;
     const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+    const many = args.loads.length > 1;
+    const numbers = args.loads.map((l) => l.loadNumber);
     const lines = [
-      `A new load was requested${args.customerName ? ` by ${args.customerName}` : ""}.`,
+      `${many ? `${args.loads.length} new loads were` : "A new load was"} requested${args.customerName ? ` by ${args.customerName}` : ""}.`,
       "",
-      `Load: ${args.loadNumber}`,
+      ...(many
+        ? [`Loads (${args.loads.length} trucks, same details):`, ...args.loads.map((l) => `${l.loadNumber}: ${site}/admin/loads/${l.id}`)]
+        : [`Load: ${numbers[0]}`]),
       `Route: ${args.pickupName} to ${args.deliveryName}`,
       `Equipment: ${v.equipment_size} ft${args.moffett ? ", Moffett required" : ""}`,
       `Pickup: ${fmtSlot(v.pickup_timing, v.pickup_date, v.pickup_time_start, v.pickup_time_end || null)}`,
@@ -40,8 +44,11 @@ export async function notifyStaffOfRequest(args: {
     if (v.pieces.trim()) lines.push(`Pieces: ${v.pieces.trim()}`);
     if (v.po_number.trim()) lines.push(`PO number: ${v.po_number.trim()}`);
     if (v.notes.trim()) lines.push(`Notes: ${v.notes.trim()}`);
-    lines.push("", `Open in the portal: ${site}/admin/loads/${args.loadId}`);
-    await sendEmail(to, `New load requested ${args.loadNumber}`, lines.join("\n"));
+    if (!many) lines.push("", `Open in the portal: ${site}/admin/loads/${args.loads[0].id}`);
+    const subject = many
+      ? `New loads requested ${loadNumberSummary(numbers)} (${numbers.length} trucks)`
+      : `New load requested ${numbers[0]}`;
+    await sendEmail(to, subject, lines.join("\n"));
   } catch {
     // swallow: notification failure must not fail the booking
   }

@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { adminClient, as, easternLocal, insertLoad, isoDate, loadRow, PNG_1X1, uniq, type SeedStatus } from "./support/helpers";
+import { adminClient, as, easternLocal, gotoSteady, insertLoad, isoDate, loadRow, PNG_1X1, uniq, type SeedStatus } from "./support/helpers";
 
 // R24 staff board (columns by status) and calendar (week and month by pickup date), R25 BOL pending
 // badge and the status override with a required note. Authoritative state is read through the service role.
@@ -230,7 +230,7 @@ test("the calendar shows a load on its pickup date in month view, with Prev, Nex
   await expect(page.getByRole("heading", { name: monthTitle(day) })).toBeVisible();
   await expect(linkTo(page, a.loadNumber)).toHaveCount(1);
   // Two months back never holds it.
-  await page.goto(`/admin/calendar?view=month&date=${firstOfPrevMonth(firstOfPrevMonth(day))}`);
+  await gotoSteady(page, `/admin/calendar?view=month&date=${firstOfPrevMonth(firstOfPrevMonth(day))}`);
   await expect(linkTo(page, a.loadNumber)).toHaveCount(0);
 
   await page.getByRole("link", { name: "Today" }).click();

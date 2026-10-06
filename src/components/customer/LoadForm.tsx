@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button, Card, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 import { createLoad, updateLoad } from "@/lib/customer/actions";
 import { failure, goToLogin, withTimeout } from "@/lib/client/action-guard";
+import { MAX_TRUCKS, parseQuantityText } from "@/lib/customer/bulk";
 import {
   EQUIPMENT_SIZES, validateLoad, type FieldErrors, type LoadFormValues,
 } from "@/lib/customer/validate";
@@ -69,7 +70,17 @@ export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false); // own flag: a transition stays pending while Next holds the action
+  const [qty, setQty] = useState("1"); // how many trucks (new booking only)
   const inflight = useRef(false); // synchronous double submit lock
+
+  const parsedQty = parseQuantityText(qty);
+  const trucks = "value" in parsedQty ? parsedQty.value : 1;
+
+  function stepQty(delta: number) {
+    const cur = "value" in parsedQty ? parsedQty.value : 1;
+    setQty(String(Math.min(MAX_TRUCKS, Math.max(1, cur + delta))));
+    setErrors((e) => ({ ...e, quantity: undefined }));
+  }
 
   const shippers = useMemo(() => locations.filter((l) => l.can_ship && l.is_active), [locations]);
   const receivers = useMemo(() => locations.filter((l) => l.can_receive && l.is_active), [locations]);
@@ -109,6 +120,7 @@ export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
     setFormError(null);
     const payload: LoadFormValues = { ...v, moffett: moffettOn };
     const found = validateLoad(payload);
+    if (mode === "create" && "error" in parsedQty) found.quantity = parsedQty.error;
     setErrors(found);
     if (Object.keys(found).length > 0) {
       setFormError("Please fix the highlighted fields.");
@@ -120,7 +132,7 @@ export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
     void (async () => {
       try {
         const res = await withTimeout(
-          mode === "edit" && loadId ? updateLoad(loadId, payload) : createLoad(payload),
+          mode === "edit" && loadId ? updateLoad(loadId, payload) : createLoad(payload, trucks),
         );
         // On success the action redirects, so a returned value is always a failure.
         if (res?.fieldErrors) setErrors(res.fieldErrors);
@@ -317,9 +329,39 @@ export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
         </div>
       </Card>
 
+      {mode === "create" ? (
+        <Card>
+          <h2 className="mb-3 text-[20px] font-bold">Trucks</h2>
+          <label htmlFor="truck-qty" className="mb-1 block text-[13px] font-medium text-muted">How many trucks?</label>
+          <div className="flex items-center gap-2">
+            <button type="button" aria-label="Fewer trucks" disabled={pending || ("value" in parsedQty && trucks <= 1)}
+              onClick={() => stepQty(-1)}
+              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-line bg-white text-[24px] font-bold text-ink disabled:opacity-50 cursor-pointer">
+              {"\u2212"}
+            </button>
+            <input id="truck-qty" type="text" inputMode="numeric" autoComplete="off" value={qty} disabled={pending}
+              aria-invalid={Boolean(errors.quantity)} aria-describedby="truck-qty-help"
+              onChange={(e) => { setQty(e.target.value); if (errors.quantity) setErrors((x) => ({ ...x, quantity: undefined })); }}
+              className="min-h-[48px] w-20 rounded-[12px] border border-line bg-white px-3 text-center text-[20px] font-bold text-ink" />
+            <button type="button" aria-label="More trucks" disabled={pending || trucks >= MAX_TRUCKS}
+              onClick={() => stepQty(1)}
+              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-line bg-white text-[24px] font-bold text-ink disabled:opacity-50 cursor-pointer">
+              +
+            </button>
+          </div>
+          <Err msg={errors.quantity} />
+          <p id="truck-qty-help" className="mt-2 text-[13px] text-muted">Details above apply to every truck.</p>
+          {trucks > 1 && !errors.quantity ? (
+            <p className="mt-1 text-[15px] font-medium">
+              This creates {trucks} separate loads, one per truck. Each gets its own load number and status.
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
+
       <div className="flex flex-wrap gap-3">
         <Button type="submit" big disabled={pending} className="w-full sm:w-auto">
-          {pending ? "Saving..." : mode === "edit" ? "Save changes" : "Request load"}
+          {pending ? "Saving..." : mode === "edit" ? "Save changes" : trucks > 1 ? `Request ${trucks} loads` : "Request load"}
         </Button>
         {mode === "edit" && loadId ? (
           <Link href={`/loads/${loadId}`}

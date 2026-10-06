@@ -1,5 +1,5 @@
 import { expect, test, type Browser } from "@playwright/test";
-import { adminClient, as, insertLoad, isoDate, PNG_1X1, uniq } from "./support/helpers";
+import { adminClient, as, gotoSteady, insertLoad, isoDate, PNG_1X1, uniq } from "./support/helpers";
 import { fillBooking, makeLocation, retireLocations } from "./support/book";
 import { BASE_URL } from "./support/env";
 import { sentEmails, setMockStatus, MAIL_MOCK_URL, type SentEmail } from "./support/mail-mock";
@@ -177,7 +177,7 @@ test("assigning a carrier and booking emails ALL active users of that carrier, w
   // A carrier added to a load that is already booked is told as well (the other path to the same email).
   const late = await insertLoad({ po: uniq("MAIL-LATE"), status: "booked", carrier: false });
   parked.push(late.id);
-  await page.goto(`/admin/loads/${late.id}`);
+  await gotoSteady(page, `/admin/loads/${late.id}`);
   await page.getByLabel("Carrier").first().selectOption({ label: CARRIER_A });
   await page.getByRole("button", { name: "Save carrier" }).click();
   await expect(page.getByText(/^Carrier assigned\. Email sent to \d+ carrier users?\.$/)).toBeVisible();
@@ -245,7 +245,7 @@ test("a failing email service (HTTP 500) does not fail the booking or the assign
     await expect(page.getByText("Carrier assigned. No email was sent.", { exact: true })).toBeVisible();
     expect((await db().from("loads").select("carrier_id").eq("id", late.id).single()).data?.carrier_id).toBe(carrierAId);
     expect(await emailsFor(late.loadNumber, 1)).toHaveLength(1); // attempted, refused by the mock
-    await page.goto(`/admin/loads/${id}`);
+    await gotoSteady(page, `/admin/loads/${id}`);
     await page.getByLabel("Carrier").first().selectOption({ label: CARRIER_A });
     await page.getByRole("button", { name: "Save carrier" }).click();
     await expect(page.getByText("Carrier assigned.", { exact: true })).toBeVisible();

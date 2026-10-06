@@ -41,3 +41,9 @@ Proposed default: manual gate M2 after the production apply. Open /loads as Mari
 - Migrations 0006 to 0010: applied (see docs/APPLY-PACK.md, Production result).
 - Open for the owner: the phone and email placeholder lines in the guides and runbook (see docs/ACCEPTANCE-CHECKLIST.md for the checks).
 
+## DLV-020 multi-truck booking (defaults, owner may change)
+- Maximum trucks per booking: 10 (default). Raising it is a one line change (MAX_TRUCKS in src/lib/customer/bulk.ts).
+- Runaway cap: at most 30 loads created per customer user in any 10 minutes (default), friendly error beyond it.
+- Known deferred item: no idempotency key. The client lock stops a double click and the quantity control is disabled while sending, but if the response is lost after the server created the loads and Maria resubmits, she gets another N loads (she can cancel them while requested). Fixing it needs a migration (a unique request token on loads). Deferred with the earlier duplicate booking item.
+- A failed multi-truck insert consumes load numbers from the sequence (gaps such as MTX-0007 missing are possible and harmless).
+

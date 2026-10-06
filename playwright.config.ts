@@ -33,6 +33,7 @@ export default defineConfig({
       RESEND_API_KEY: "re_test_local",
       RESEND_BASE_URL: MAIL_MOCK_URL,
       NOTIFY_FROM: "DLV <noreply@mock.test>",
+      LOAD_RATE_CAP: "1000", // specs seed many loads as Maria; the default of 30 per 10 minutes is tested as a pure function
       NEXT_PUBLIC_ACTION_TIMEOUT_MS: "4000", // watchdog for the e2e server only (default 25000)
     },
   },
