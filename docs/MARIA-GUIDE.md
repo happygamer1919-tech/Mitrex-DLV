@@ -16,7 +16,8 @@ Portal: https://portal.dlvlogistics.com . All times are Eastern (ET).
 5. **Equipment**: tap the truck size (feet).
 6. Moffett (forklift on truck): tick it if needed. Some locations, such as SAMIH, require it. Then it is ticked and locked, with a note saying why.
 7. Optional: weight, pieces, PO number, notes.
-8. Tap **Request load**.
+8. **Trucks**: at the bottom, choose how many trucks (1 to 10) with the plus and minus buttons. Every truck becomes its own load with the same details and its own load number. Leave it at 1 for a single load.
+9. Tap **Request load** (it reads **Request 4 loads** for 4 trucks). You land on **Loads** with the new numbers listed.
 
 ## Change or cancel
 - While the status is Requested you can tap **Edit load** then **Save changes**, or **Cancel load** then **Yes, cancel this load**. Cancelling cannot be undone.

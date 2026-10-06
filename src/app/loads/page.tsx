@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 
 const STATUSES = Object.keys(STATUS_LABEL) as LoadStatus[];
 
-export default async function LoadsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
-  const { status } = await searchParams;
+export default async function LoadsPage({ searchParams }: { searchParams: Promise<{ status?: string; booked?: string }> }) {
+  const { status, booked } = await searchParams;
   const profile = await requireCustomer();
   const filter = STATUSES.find((s) => s === status) ?? null;
   const supabase = await createClient();
@@ -21,6 +21,18 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
   if (filter) q = q.eq("status", filter);
   const { data, error } = await q;
   const loads = (data ?? []) as unknown as LoadWithRefs[];
+
+  // Success banner after a multi-truck booking. The parameter is untrusted: strict shape, at most 10 ids, and only
+  // loads the customer can read (RLS) are shown. Anything malformed is ignored.
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  const wanted = typeof booked === "string" ? booked.split(",") : [];
+  const bookedIds = wanted.length >= 2 && wanted.length <= 10 && wanted.every((x) => UUID.test(x)) ? wanted : [];
+  let bookedLoads: { id: string; load_number: string }[] = [];
+  if (bookedIds.length > 0) {
+    const { data: found } = await supabase.from("loads").select("id,load_number").in("id", bookedIds);
+    const byId = new Map(((found ?? []) as { id: string; load_number: string }[]).map((r) => [r.id, r]));
+    bookedLoads = bookedIds.map((id) => byId.get(id)).filter((r): r is { id: string; load_number: string } => Boolean(r));
+  }
 
   const chip = (active: boolean) =>
     `inline-flex min-h-[44px] items-center rounded-full border px-4 text-[15px] font-medium whitespace-nowrap ${
@@ -33,6 +45,15 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
         <h1 className="text-[24px] font-bold">My loads</h1>
         <LinkButton href="/book">Book a load</LinkButton>
       </div>
+      {bookedLoads.length > 0 ? (
+        <div className="mb-4">
+          <Notice tone="ok">
+            <span data-testid="booked-banner">
+              {bookedLoads.length} {bookedLoads.length === 1 ? "load" : "loads"} requested: {bookedLoads.map((l) => l.load_number).join(", ")}. Each truck is its own load.
+            </span>
+          </Notice>
+        </div>
+      ) : null}
       <nav aria-label="Filter by status" className="mb-4 flex gap-2 overflow-x-auto pb-1">
         <Link href="/loads" className={chip(!filter)}>All</Link>
         {STATUSES.map((s) => (

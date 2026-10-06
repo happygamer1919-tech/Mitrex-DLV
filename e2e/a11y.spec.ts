@@ -254,6 +254,10 @@ test("customer pages and states", async ({ browser }) => {
     await page.getByRole("button", { name: "Request load" }).click();
     await expect(page.locator('[role="alert"]').first()).toBeVisible();
     await scan(page, "/book (validation errors)", { path: /^\/book$/, h1: /Book a load/ });
+    await page.goto("/book");
+    for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "More trucks" }).click();
+    await expect(page.getByRole("button", { name: "Request 4 loads" })).toBeVisible();
+    await scan(page, "/book (4 trucks)", { path: /^\/book$/, h1: /Book a load/, text: "This creates 4 separate loads, one per truck. Each gets its own load number and status." });
 
     await page.goto("/loads");
     await scan(page, "/loads (with loads)", { path: /^\/loads$/, h1: /My loads/, text: requested.loadNumber });

@@ -70,3 +70,12 @@
 - Production was redeployed after the owner rotated the Resend key and the database URL, so new environment values apply.
 - Owner accepted all defaults listed in docs/QUESTIONS.md for the hardening run (duplicate booking protection deferred, per-customer location contacts before a second customer, no full CSP in v1, magic-link fallback keeps role home, TRUNCATE gap accepted).
 
+## 2026-10-06 multi-truck booking (DLV-020)
+- Owner request: Maria books 4 or 5 identical trucks; filling the form each time is stressful. The form now ends with "How many trucks?" (1 to 10) and one submission creates that many loads.
+- One load per truck, not a "group" entity: every load keeps its own number, carrier and status, so nothing downstream (board, carriers, CSV, RLS) changes. No migration. The link between the trucks is only the first notes line "Truck i of N" (and the shared PO if any).
+- One INSERT statement with N rows (all or nothing), ids read back with RETURNING under the customer SELECT policy (SR-60). customer_id and created_by come from the session profile.
+- N=1 is unchanged (redirect to the load, subject "New load requested MTX-xxxx"). N above 1 redirects to /loads?booked=id1,id2,... The page accepts only 2 to 10 well formed UUIDs and lists only loads the customer can read (RLS); anything else is ignored.
+- ONE staff email per booking. Subject "New loads requested MTX-0005 to MTX-0008 (4 trucks)" (numbers listed when not consecutive); the body lists every number with its admin link.
+- Limits: 10 trucks per booking, 30 loads per customer user per 10 minutes (counted through the user client). LOAD_RATE_CAP overrides the 30; only the e2e server sets it, because the specs seed many loads as Maria through the service role.
+- Duplicate submit: client lock and 25 s watchdog stay, and the quantity control disables with the submit button while a request is open. Residual risk (a lost response then a manual retry creates N more loads) is recorded in QUESTIONS.md; the cure is an idempotency key and needs a migration.
+

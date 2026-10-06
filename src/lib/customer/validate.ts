@@ -26,7 +26,7 @@ export type LoadFormValues = {
   notes: string;
 };
 
-export type FieldErrors = Partial<Record<keyof LoadFormValues, string>>;
+export type FieldErrors = Partial<Record<keyof LoadFormValues | "quantity", string>>;
 export type ActionResult = { error?: string; fieldErrors?: FieldErrors; ok?: boolean };
 
 export const EQUIPMENT_SIZES = [26, 36, 48, 53] as const;

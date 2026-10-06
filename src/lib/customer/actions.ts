@@ -5,12 +5,20 @@ import { revalidatePath } from "next/cache";
 import { requireCustomer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Location } from "@/lib/types";
+import { buildTruckRows, exceedsRecentCap, insertTruckLoads, MAX_LOADS_PER_WINDOW, RECENT_WINDOW_MINUTES, validateQuantity } from "./bulk";
 import { notifyStaffOfRequest } from "./notify";
 import { toLoadRow, validateLoad, type ActionResult, type LoadFormValues } from "./validate";
 
 type Sb = Awaited<ReturnType<typeof createClient>>;
 
 const GENERIC = "Something went wrong. Please try again.";
+
+// Default 30 loads per 10 minutes per customer user. LOAD_RATE_CAP overrides it (the e2e server raises it, because
+// the specs seed many loads as Maria through the service role).
+function recentCap(): number {
+  const n = Number(process.env.LOAD_RATE_CAP);
+  return Number.isInteger(n) && n >= 1 ? n : MAX_LOADS_PER_WINDOW;
+}
 
 async function checkLocations(sb: Sb, v: LoadFormValues):
   Promise<{ pickup: Location; delivery: Location; moffett: boolean } | { error: ActionResult }> {
@@ -47,31 +55,36 @@ async function saveDefaults(sb: Sb, v: LoadFormValues) {
   await Promise.allSettled(jobs);
 }
 
-export async function createLoad(values: LoadFormValues): Promise<ActionResult> {
+export async function createLoad(values: LoadFormValues, quantity: unknown = 1): Promise<ActionResult> {
   const profile = await requireCustomer();
   const fieldErrors = validateLoad(values);
   if (Object.keys(fieldErrors).length > 0) return { fieldErrors };
+  const q = validateQuantity(quantity);
+  if ("error" in q) return { fieldErrors: { quantity: q.error } };
+  const n = q.value;
   const sb = await createClient();
   const loc = await checkLocations(sb, values);
   if ("error" in loc) return loc.error;
 
-  const { data, error } = await sb
-    .from("loads")
-    .insert({
-      ...toLoadRow(values, loc.moffett),
-      customer_id: profile.customer_id,
-      created_by: profile.id,
-      status: "requested",
-    })
-    .select("id,load_number")
-    .single();
-  if (error || !data) return { error: error?.message ?? GENERIC };
+  // Runaway guard: loads this user created in the recent window (counted through the user client, RLS applies).
+  const since = new Date(Date.now() - RECENT_WINDOW_MINUTES * 60_000).toISOString();
+  const { count, error: countErr } = await sb
+    .from("loads").select("id", { count: "exact", head: true })
+    .eq("created_by", profile.id).gte("created_at", since);
+  if (countErr) return { error: GENERIC };
+  if (exceedsRecentCap(count ?? 0, n, recentCap())) {
+    return { error: `That is a lot of loads in a short time (limit ${recentCap()} in ${RECENT_WINDOW_MINUTES} minutes). Wait a few minutes, or contact DLV.` };
+  }
+
+  const rows = buildTruckRows(values, loc.moffett, n, profile.customer_id!, profile.id);
+  const made = await insertTruckLoads(sb, rows); // one statement: all or nothing
+  if ("error" in made) return { error: made.error || GENERIC };
+  const loads = made.loads;
 
   await saveDefaults(sb, values);
   const { data: cust } = await sb.from("customers").select("name").eq("id", profile.customer_id!).maybeSingle();
   await notifyStaffOfRequest({
-    loadId: data.id as string,
-    loadNumber: data.load_number as string,
+    loads: loads.map((l) => ({ id: l.id, loadNumber: l.load_number })),
     pickupName: loc.pickup.name,
     deliveryName: loc.delivery.name,
     moffett: loc.moffett,
@@ -80,7 +93,8 @@ export async function createLoad(values: LoadFormValues): Promise<ActionResult> 
   });
   revalidatePath("/loads");
   revalidatePath("/locations");
-  redirect(`/loads/${data.id}`);
+  if (n === 1) redirect(`/loads/${loads[0].id}`);
+  redirect(`/loads?booked=${loads.map((l) => l.id).join(",")}`);
 }
 
 export async function updateLoad(loadId: string, values: LoadFormValues): Promise<ActionResult> {
