@@ -93,6 +93,10 @@ export async function removeUser(_prev: ActionState, fd: FormData): Promise<Acti
   // Deleting the auth user cascades to the profile. It fails if the user created loads.
   const { error } = await admin.auth.admin.deleteUser(id);
   if (error) {
+    // Auth hides the database message, so re-check: still an active admin with no other active admin means the trigger fired.
+    if (target?.role === "staff_admin" && target.is_active && (await activeAdminCount(admin, id)) === 0) {
+      return { error: LAST_ADMIN_MSG };
+    }
     return { error: `Could not remove this user (${error.message}). A user who created loads or requests cannot be deleted.` };
   }
   // Orphan safety: remove a leftover profile row if the cascade did not run.
@@ -102,6 +106,13 @@ export async function removeUser(_prev: ActionState, fd: FormData): Promise<Acti
 }
 
 const BAN_FOREVER = "876000h";
+const LAST_ADMIN_MSG = "You cannot deactivate or remove the last active staff admin.";
+
+// The database trigger (migration 0008) refuses to leave zero active staff admins. It can fire before
+// the app check above when two admins act at the same moment, so map its error to the same plain message.
+function isLastAdminError(error: { message?: string; code?: string } | null | undefined): boolean {
+  return !!error && error.code === "23514" && /active staff admin/i.test(error.message ?? "");
+}
 
 async function activeAdminCount(admin: ReturnType<typeof createAdminClient>, excludeId: string): Promise<number> {
   const { count } = await admin.from("profiles").select("id", { count: "exact", head: true })
@@ -136,6 +147,7 @@ async function setActive(fd: FormData, active: boolean): Promise<ActionState> {
   }
 
   const { error } = await admin.from("profiles").update({ is_active: false }).eq("id", id);
+  if (isLastAdminError(error)) return { error: LAST_ADMIN_MSG };
   if (error) return { error: "Could not deactivate this user. Nothing was changed." };
   const { error: banErr } = await admin.auth.admin.updateUserById(id, { ban_duration: BAN_FOREVER });
   if (banErr) {

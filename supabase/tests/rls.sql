@@ -95,7 +95,8 @@ insert into auth.users (id, aud, role, email) values
   ('00000000-0000-0000-0000-0000000000c2', 'authenticated', 'authenticated', 'other@t.test'),
   ('00000000-0000-0000-0000-0000000000b1', 'authenticated', 'authenticated', 'ownera@t.test'),
   ('00000000-0000-0000-0000-0000000000b2', 'authenticated', 'authenticated', 'drivera@t.test'),
-  ('00000000-0000-0000-0000-0000000000b3', 'authenticated', 'authenticated', 'ownerb@t.test');
+  ('00000000-0000-0000-0000-0000000000b3', 'authenticated', 'authenticated', 'ownerb@t.test'),
+  ('00000000-0000-0000-0000-0000000000a3', 'authenticated', 'authenticated', 'admin2@t.test');
 
 insert into public.customers (id, name) values
   ('10000000-0000-0000-0000-000000000002', 'Other Customer');
@@ -110,7 +111,9 @@ insert into public.profiles (id, email, role, customer_id, carrier_id) values
   ('00000000-0000-0000-0000-0000000000c2', 'other@t.test', 'customer', '10000000-0000-0000-0000-000000000002', null),
   ('00000000-0000-0000-0000-0000000000b1', 'ownera@t.test', 'carrier_owner', null, '20000000-0000-0000-0000-00000000000a'),
   ('00000000-0000-0000-0000-0000000000b2', 'drivera@t.test', 'carrier_driver', null, '20000000-0000-0000-0000-00000000000a'),
-  ('00000000-0000-0000-0000-0000000000b3', 'ownerb@t.test', 'carrier_owner', null, '20000000-0000-0000-0000-00000000000b');
+  ('00000000-0000-0000-0000-0000000000b3', 'ownerb@t.test', 'carrier_owner', null, '20000000-0000-0000-0000-00000000000b'),
+  -- second staff_admin: migration 0008 refuses to deactivate the last active one (section 9 deactivates a1)
+  ('00000000-0000-0000-0000-0000000000a3', 'admin2@t.test', 'staff_admin', null, null);
 
 create function rlstest.mkload(p_id uuid, p_status public.load_status, p_carrier uuid) returns void
 language plpgsql security definer as $f$
@@ -331,7 +334,8 @@ select rlstest.err('admin cannot delete load_events', $q$delete from public.load
 select rlstest.cnt('control: events exist for delivered load', $q$select 1 from public.load_events where load_id = '30000000-0000-0000-0000-000000000002' and to_status = 'delivered'$q$, 1);
 select rlstest.back();
 select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
-select rlstest.cnt('control: Maria reads timeline of own load', $q$select 1 from public.load_events where load_id = '30000000-0000-0000-0000-000000000002'$q$, 7);
+-- 8 since 0010: the fixture's direct requested -> booked UPDATE (mkload) now writes its own event.
+select rlstest.cnt('control: Maria reads timeline of own load', $q$select 1 from public.load_events where load_id = '30000000-0000-0000-0000-000000000002'$q$, 8);
 select rlstest.back();
 
 -- 9. Deactivation: an inactive profile is denied everywhere ---------------
@@ -702,6 +706,351 @@ begin
         r->>'load', r->>'kind', r->>'path'), 'load_documents_path_ck');
   end loop;
 end $t$;
+
+-- 11. C6 data integrity (migrations 0008 to 0010) ---------------------------------
+grant usage on schema rlstest to service_role;
+create function rlstest.as_service() returns void language plpgsql as $f$
+begin
+  perform set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+  execute 'set local role service_role';
+end $f$;
+-- boolean assertion
+create function rlstest.chk(p_name text, p_cond boolean, p_detail text default null) returns void language plpgsql as $f$
+begin
+  perform rlstest.rec(p_name, case when p_cond is true then 'OK' else 'FAIL' end, p_detail);
+end $f$;
+create function rlstest.evcount(p_load uuid) returns bigint language sql security definer as $f$
+  select count(*) from public.load_events where load_id = p_load $f$;
+-- direct insert at an arbitrary status (what the e2e helper does)
+create function rlstest.mkload_direct(p_id uuid, p_status public.load_status, p_carrier uuid) returns void
+language plpgsql security definer as $f$
+begin
+  insert into public.loads (id, customer_id, created_by, pickup_location_id, delivery_location_id,
+    equipment_size, pickup_timing, pickup_date, pickup_time_start, delivery_timing, delivery_date,
+    delivery_time_start, pickup_contact_name, pickup_contact_phone, delivery_contact_name, delivery_contact_phone,
+    status, carrier_id)
+  values (p_id, (select id from public.customers where name = 'Mitrex'),
+    '00000000-0000-0000-0000-0000000000c1',
+    (select id from public.locations where name = 'Mitrex'),
+    (select id from public.locations where name = 'Howden'),
+    48, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00',
+    'P Contact', '416-000-0001', 'D Contact', '416-000-0002', p_status, p_carrier);
+end $f$;
+grant execute on all functions in schema rlstest to authenticated, anon, service_role;
+
+-- 11a. the last active staff_admin cannot be deactivated, demoted or deleted, by any writer ----------------
+do $t$
+declare
+  a1 uuid := '00000000-0000-0000-0000-0000000000a1';
+  a3 uuid := '00000000-0000-0000-0000-0000000000a3';
+  n int;
+begin
+  select count(*) into n from public.profiles where role = 'staff_admin' and is_active;
+  perform rlstest.rec('guard: two active staff admins before the last-admin tests', case when n = 2 then 'OK' else 'VACUOUS' end, 'active admins=' || n);
+
+  select count(*) into n from pg_trigger where tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled = 'O'
+    and tgname in ('profiles_last_admin_guard_update', 'profiles_last_admin_guard_delete');
+  perform rlstest.chk('last-admin triggers (update and delete) exist and are enabled', n = 2, 'found=' || n);
+
+  -- two admins: every change is allowed (positive controls, table owner = no JWT)
+  perform rlstest.ok('control: deactivating one of two admins is allowed', format('update public.profiles set is_active = false where id = %L', a3));
+  perform rlstest.ok('control: reactivating an admin is allowed', format('update public.profiles set is_active = true where id = %L', a3));
+  perform rlstest.ok('control: demoting one of two admins is allowed', format('update public.profiles set role = %L where id = %L', 'staff_csr', a3));
+  perform rlstest.ok('control: promoting back to staff_admin is allowed', format('update public.profiles set role = %L where id = %L', 'staff_admin', a3));
+
+  -- an inactive admin does not count: with a3 inactive, a1 is the last ACTIVE admin
+  perform rlstest.ok('control: deactivate a3', format('update public.profiles set is_active = false where id = %L', a3));
+  perform rlstest.err('table owner cannot deactivate the last active admin (an inactive admin does not count)',
+    format('update public.profiles set is_active = false where id = %L', a1), 'active staff admin');
+  perform rlstest.err('table owner cannot demote the last active admin',
+    format('update public.profiles set role = %L where id = %L', 'staff_csr', a1), 'active staff admin');
+  perform rlstest.err('table owner cannot delete the last active admin profile',
+    format('delete from public.profiles where id = %L', a1), 'active staff admin');
+  perform rlstest.err('deleting the auth user of the last active admin is refused (cascade)',
+    format('delete from auth.users where id = %L', a1), 'active staff admin');
+  perform rlstest.ok('control: other columns of the last admin stay editable',
+    format('update public.profiles set full_name = %L where id = %L', 'Admin One', a1));
+  perform rlstest.ok('control: deleting the profile of an INACTIVE admin is allowed (it is not the last active one)',
+    format('delete from public.profiles where id = %L and not is_active', a3));
+  perform rlstest.rec('guard: last-admin subject a1 still exists and is active',
+    case when exists (select 1 from public.profiles where id = a1 and role = 'staff_admin' and is_active) then 'OK' else 'FAIL' end);
+end $t$;
+-- restore a3 (deleted above) for the next tests
+insert into public.profiles (id, email, role) values ('00000000-0000-0000-0000-0000000000a3', 'admin2@t.test', 'staff_admin');
+
+-- the service role is bound too
+select rlstest.as_service();
+select rlstest.ok('control: service role deactivates one of two admins', $q$update public.profiles set is_active = false where id = '00000000-0000-0000-0000-0000000000a3'$q$);
+select rlstest.err('service role cannot deactivate the last active admin', $q$update public.profiles set is_active = false where id = '00000000-0000-0000-0000-0000000000a1'$q$, 'active staff admin');
+select rlstest.err('service role cannot demote the last active admin', $q$update public.profiles set role = 'customer' where id = '00000000-0000-0000-0000-0000000000a1'$q$, 'active staff admin|violates');
+select rlstest.err('service role cannot delete the last active admin', $q$delete from public.profiles where id = '00000000-0000-0000-0000-0000000000a1'$q$, 'active staff admin');
+select rlstest.ok('control: service role reactivates the second admin', $q$update public.profiles set is_active = true where id = '00000000-0000-0000-0000-0000000000a3'$q$);
+select rlstest.back();
+
+-- one statement that deactivates BOTH admins: the second row must see the first row's change
+do $t$
+declare n int;
+begin
+  select count(*) into n from public.profiles where role = 'staff_admin' and is_active;
+  perform rlstest.rec('guard: two active admins before the multi-row test', case when n = 2 then 'OK' else 'VACUOUS' end, 'active admins=' || n);
+  perform rlstest.err('one UPDATE deactivating every admin is refused', $q$update public.profiles set is_active = false where role = 'staff_admin'$q$, 'active staff admin');
+  perform rlstest.err('one DELETE removing every admin is refused', $q$delete from public.profiles where role = 'staff_admin'$q$, 'active staff admin');
+  select count(*) into n from public.profiles where role = 'staff_admin' and is_active;
+  perform rlstest.chk('both admins are still active after the refused statements', n = 2, 'active admins=' || n);
+end $t$;
+
+-- the guard function is not callable by clients
+do $t$
+begin
+  perform rlstest.chk('anon and authenticated have no EXECUTE on the last-admin guard function',
+    not has_function_privilege('anon', 'public.dlv_profiles_last_admin_guard()', 'execute')
+    and not has_function_privilege('authenticated', 'public.dlv_profiles_last_admin_guard()', 'execute'));
+  perform rlstest.chk('control: service_role has EXECUTE on the last-admin guard function',
+    has_function_privilege('service_role', 'public.dlv_profiles_last_admin_guard()', 'execute'));
+end $t$;
+
+-- 11b. the five hot columns each LEAD at least one valid index ---------------------------------------------
+create function rlstest.leads_index(p_table regclass, p_col text) returns boolean language sql stable as $f$
+  select exists (
+    select 1 from pg_index i
+    join pg_attribute a on a.attrelid = i.indrelid and a.attnum = i.indkey[0]
+    where i.indrelid = p_table and i.indisvalid and a.attname = p_col) $f$;
+select rlstest.chk('loads(status) leads an index', rlstest.leads_index('public.loads', 'status'));
+select rlstest.chk('loads(pickup_date) leads an index', rlstest.leads_index('public.loads', 'pickup_date'));
+select rlstest.chk('loads(carrier_id) leads an index', rlstest.leads_index('public.loads', 'carrier_id'));
+select rlstest.chk('loads(customer_id) leads an index', rlstest.leads_index('public.loads', 'customer_id'));
+select rlstest.chk('load_events(load_id) leads an index', rlstest.leads_index('public.load_events', 'load_id'));
+-- negative controls: the probe is not vacuously true
+select rlstest.chk('control: loads(notes) leads no index (the probe can say no)', not rlstest.leads_index('public.loads', 'notes'));
+select rlstest.chk('control: a non leading column is not counted (loads.created_at)', not rlstest.leads_index('public.loads', 'created_at'));
+
+-- 11c. updated_at moves forward on UPDATE for every mutable table ----------------------------------------
+do $t$
+declare
+  r record;
+  v_old constant timestamptz := '2000-01-01 00:00:00+00';
+  v_new timestamptz;
+  v_cnt bigint;
+  v_has boolean;
+begin
+  for r in
+    select * from (values
+      ('locations',         'locations_touch_updated_at',         $q$update public.locations set notes = 'touch' where name = 'Howden'$q$,              $q$name = 'Howden'$q$),
+      ('carriers',          'carriers_touch_updated_at',          $q$update public.carriers set name = name || ' x' where name = 'Carrier A'$q$,         $q$name like 'Carrier A%'$q$),
+      ('customers',         'customers_touch_updated_at',         $q$update public.customers set name = name || ' x' where name = 'Other Customer'$q$,   $q$name like 'Other Customer%'$q$),
+      ('profiles',          'profiles_touch_updated_at',          $q$update public.profiles set full_name = 'Touch' where email = 'csr@t.test'$q$,       $q$email = 'csr@t.test'$q$),
+      ('location_requests', 'location_requests_touch_updated_at', $q$update public.location_requests set payload = payload || '{"z":1}'$q$,             $q$true$q$),
+      ('loads',             'loads_before_update',                $q$update public.loads set notes = 'touch' where id = '30000000-0000-0000-0000-000000000002'$q$, $q$id = '30000000-0000-0000-0000-000000000002'$q$)
+    ) v(tbl, trg, upd, filt)
+  loop
+    select exists (select 1 from information_schema.columns c where c.table_schema = 'public' and c.table_name = r.tbl
+                   and c.column_name = 'updated_at' and c.is_nullable = 'NO' and c.data_type = 'timestamp with time zone') into v_has;
+    perform rlstest.chk(r.tbl || ' has updated_at timestamptz not null', v_has);
+    execute format('select count(*) from public.%I where %s', r.tbl, r.filt) into v_cnt;
+    if v_cnt = 0 then perform rlstest.rec(r.tbl || ' updated_at moves forward on UPDATE', 'VACUOUS', 'subject has no rows'); continue; end if;
+    -- age the rows as table owner with the touch trigger off, then UPDATE a normal column
+    execute format('alter table public.%I disable trigger %I', r.tbl, r.trg);
+    execute format('update public.%I set updated_at = %L where %s', r.tbl, v_old, r.filt);
+    execute format('alter table public.%I enable trigger %I', r.tbl, r.trg);
+    execute format('select min(updated_at) from public.%I where %s', r.tbl, r.filt) into v_new;
+    perform rlstest.chk('guard: ' || r.tbl || ' row aged to 2000-01-01', v_new = v_old);
+    execute r.upd;
+    execute format('select min(updated_at) from public.%I where %s', r.tbl, r.filt) into v_new;
+    perform rlstest.chk(r.tbl || ' updated_at moves forward on UPDATE', v_new > v_old and v_new <= clock_timestamp(), 'updated_at=' || v_new);
+  end loop;
+end $t$;
+-- a customer's allowed edit (default contact) still passes the locations guard
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.rows('control: customer contact edit still allowed with updated_at present', $q$update public.locations set default_contact_phone = '416-111-2222' where name = 'Howden'$q$, 1);
+select rlstest.err('customer still cannot edit an address (updated_at is not a loophole)', $q$update public.locations set address_line = 'y', updated_at = now() where name = 'Howden'$q$, 'only default contact');
+select rlstest.back();
+
+-- 11d. one load_events row per status change, for every writer --------------------------------------------
+\set L20 '30000000-0000-0000-0000-000000000020'
+\set L21 '30000000-0000-0000-0000-000000000021'
+\set L22 '30000000-0000-0000-0000-000000000022'
+\set L23 '30000000-0000-0000-0000-000000000023'
+\set L24 '30000000-0000-0000-0000-000000000024'
+\set L25 '30000000-0000-0000-0000-000000000025'
+\set L26 '30000000-0000-0000-0000-000000000026'
+\set L27 '30000000-0000-0000-0000-000000000027'
+
+-- the definitions moved: set_load_status no longer inserts, the trigger does; set_load_eta still does
+do $t$
+declare v_ls text; v_eta text; n int;
+begin
+  v_ls := pg_get_functiondef('public.set_load_status(uuid, public.load_status, timestamptz, text)'::regprocedure);
+  v_eta := pg_get_functiondef('public.set_load_eta(uuid, timestamptz, text)'::regprocedure);
+  perform rlstest.chk('set_load_status no longer inserts into load_events', v_ls !~* 'insert into public\.load_events');
+  perform rlstest.chk('set_load_status hands the note to the trigger (dlv.event_note)', v_ls ~ 'dlv\.event_note');
+  perform rlstest.chk('control: set_load_eta still writes its own event', v_eta ~* 'insert into public\.load_events');
+  select count(*) into n from pg_trigger where tgrelid = 'public.loads'::regclass and not tgisinternal and tgenabled = 'O'
+    and tgname in ('loads_status_event', 'loads_after_insert');
+  perform rlstest.chk('loads_status_event and loads_after_insert triggers exist and are enabled', n = 2, 'found=' || n);
+end $t$;
+
+-- full walk by the proper actors: staff books, the carrier owner drives it to delivered
+select rlstest.mkload(:'L20', 'requested', null);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.rows('control: staff assigns carrier A to L20', format($q$update public.loads set carrier_id = '20000000-0000-0000-0000-00000000000a' where id = %L$q$, :'L20'), 1);
+select rlstest.ok('walk: staff books', format($q$select public.set_load_status(%L, 'booked')$q$, :'L20'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.ok('walk: carrier at_pickup', format($q$select public.set_load_status(%L, 'at_pickup')$q$, :'L20'));
+select rlstest.ok('walk: carrier loading', format($q$select public.set_load_status(%L, 'loading')$q$, :'L20'));
+select rlstest.ok('walk: carrier enroute', format($q$select public.set_load_status(%L, 'enroute', now() + interval '3 hours')$q$, :'L20'));
+select rlstest.ok('walk: carrier at_delivery', format($q$select public.set_load_status(%L, 'at_delivery')$q$, :'L20'));
+select rlstest.ok('walk: carrier uploads POD row', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L, 'pod', %L, '00000000-0000-0000-0000-0000000000b1')$q$, :'L20', :'L20' || '/pod/a0000000-0000-0000-0000-000000000020.jpg'));
+select rlstest.ok('walk: carrier delivered', format($q$select public.set_load_status(%L, 'delivered')$q$, :'L20'));
+select rlstest.back();
+do $t$
+declare
+  l uuid := '30000000-0000-0000-0000-000000000020';
+  n bigint; broken bigint; nulls bigint; st text;
+begin
+  select status::text into st from public.loads where id = l;
+  perform rlstest.chk('guard: walked load reached delivered', st = 'delivered', 'status=' || coalesce(st, 'null'));
+  n := rlstest.evcount(l);
+  perform rlstest.chk('full walk requested..delivered yields exactly 7 events', n = 7, 'events=' || n);
+  select count(*) into broken from (
+    select from_status, lag(to_status) over (order by id) as prev_to, row_number() over (order by id) as rn
+    from public.load_events where load_id = l) q
+   where rn > 1 and from_status is distinct from prev_to;
+  perform rlstest.chk('event chain is consistent (each from_status equals the previous to_status)', n = 7 and broken = 0, 'broken links=' || broken);
+  perform rlstest.chk('first event is the creation event (from NULL, to requested)',
+    (select from_status is null and to_status = 'requested' from public.load_events where load_id = l order by id limit 1));
+  select count(*) into nulls from public.load_events where load_id = l and from_status is not null and actor_id is null;
+  perform rlstest.chk('every walked event carries the acting user', n = 7 and nulls = 0, 'events without actor=' || nulls);
+  perform rlstest.chk('booked event actor is the staff user, the delivered one the carrier owner',
+    (select count(*) from public.load_events where load_id = l and to_status = 'booked' and actor_id = '00000000-0000-0000-0000-0000000000a2') = 1
+    and (select count(*) from public.load_events where load_id = l and to_status = 'delivered' and actor_id = '00000000-0000-0000-0000-0000000000b1') = 1);
+end $t$;
+
+-- note handoff, no leak into the next writer; a staff override carries its note
+select rlstest.mkload(:'L21', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.ok('override with note', format($q$select public.set_load_status(%L, 'loading', null, 'manual fix')$q$, :'L21'));
+select rlstest.back();
+do $t$
+declare l uuid := '30000000-0000-0000-0000-000000000021'; v_note text; v_actor uuid; v_guc text;
+begin
+  select note, actor_id into v_note, v_actor from public.load_events where load_id = l and to_status = 'loading';
+  perform rlstest.chk('staff override: the event carries the note', v_note = 'manual fix', 'note=' || coalesce(v_note, 'null'));
+  perform rlstest.chk('staff override: the event carries the actor', v_actor = '00000000-0000-0000-0000-0000000000a2');
+  v_guc := coalesce(current_setting('dlv.event_note', true), '');
+  perform rlstest.chk('the note GUC is cleared after set_load_status', v_guc = '', 'guc=' || v_guc);
+  -- a direct update right after, same transaction: must not inherit the note
+  perform set_config('dlv.status_fn', '1', true);
+  update public.loads set status = 'enroute', eta = now() + interval '1 hour' where id = l;
+  perform set_config('dlv.status_fn', '0', true);
+  select note, actor_id into v_note, v_actor from public.load_events where load_id = l and to_status = 'enroute';
+  perform rlstest.chk('a later direct UPDATE does not inherit the previous note', v_note is null, 'note=' || coalesce(v_note, 'null'));
+  perform rlstest.chk('a direct UPDATE with no JWT records a NULL actor', v_actor is null);
+end $t$;
+
+-- service-role style direct status UPDATE (table owner, status_fn set, as the fixtures do) writes exactly one event
+select rlstest.mkload_direct(:'L22', 'requested', null);
+do $t$
+declare l uuid := '30000000-0000-0000-0000-000000000022'; n0 bigint; n1 bigint; last_from public.load_status; last_to public.load_status;
+begin
+  n0 := rlstest.evcount(l);
+  perform rlstest.chk('guard: fresh load has its creation event', n0 = 1, 'events=' || n0);
+  perform set_config('dlv.status_fn', '1', true);
+  update public.loads set status = 'booked', carrier_id = '20000000-0000-0000-0000-00000000000a' where id = l;
+  perform set_config('dlv.status_fn', '0', true);
+  n1 := rlstest.evcount(l);
+  perform rlstest.chk('direct status UPDATE (owner, status_fn) writes exactly one event', n1 = n0 + 1, 'before=' || n0 || ' after=' || n1);
+  select from_status, to_status into last_from, last_to from public.load_events where load_id = l order by id desc limit 1;
+  perform rlstest.chk('that event is requested to booked', last_from = 'requested' and last_to = 'booked');
+  -- without status_fn and without a JWT (plain owner tooling)
+  update public.loads set status = 'at_pickup' where id = l;
+  perform rlstest.chk('direct status UPDATE with no status_fn writes exactly one event', rlstest.evcount(l) = n1 + 1);
+end $t$;
+select rlstest.as_service();
+select rlstest.ok('service role moves L22 forward', format($q$update public.loads set status = 'loading' where id = %L$q$, :'L22'));
+select rlstest.back();
+select rlstest.chk('service role status UPDATE wrote exactly one more event (4 in total)', rlstest.evcount(:'L22') = 4, 'events=' || rlstest.evcount(:'L22'));
+-- a JWT subject that has no profile row: actor NULL, no FK error
+do $t$
+declare l uuid := '30000000-0000-0000-0000-000000000022'; v_actor uuid; n bigint;
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', gen_random_uuid(), 'role', 'authenticated')::text, true);
+  perform set_config('dlv.status_fn', '1', true);
+  update public.loads set status = 'enroute', eta = now() + interval '2 hours' where id = l;
+  perform set_config('dlv.status_fn', '0', true);
+  perform set_config('request.jwt.claims', '', true);
+  select actor_id into v_actor from public.load_events where load_id = l order by id desc limit 1;
+  n := rlstest.evcount(l);
+  perform rlstest.chk('a JWT subject without a profile records a NULL actor', n = 5 and v_actor is null, 'events=' || n);
+end $t$;
+
+-- an UPDATE that does not change status produces no event
+do $t$
+declare l uuid := '30000000-0000-0000-0000-000000000022'; n0 bigint;
+begin
+  n0 := rlstest.evcount(l);
+  perform rlstest.chk('guard: events exist before the no-change updates', n0 > 0, 'events=' || n0);
+  update public.loads set notes = 'no status change' where id = l;
+  perform rlstest.chk('UPDATE of another column writes no event', rlstest.evcount(l) = n0);
+  update public.loads set status = status where id = l;
+  perform rlstest.chk('UPDATE status = status (same value) writes no event', rlstest.evcount(l) = n0);
+  update public.loads set carrier_id = '20000000-0000-0000-0000-00000000000b' where id = l;
+  perform rlstest.chk('carrier reassignment writes no event', rlstest.evcount(l) = n0);
+end $t$;
+
+-- INSERT at a non requested status still yields exactly ONE event
+select rlstest.mkload_direct(:'L23', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload_direct(:'L24', 'delivered', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload_direct(:'L25', 'requested', null);
+select rlstest.chk('INSERT at status booked yields exactly one event', rlstest.evcount(:'L23') = 1, 'events=' || rlstest.evcount(:'L23'));
+select rlstest.chk('INSERT at status delivered yields exactly one event', rlstest.evcount(:'L24') = 1, 'events=' || rlstest.evcount(:'L24'));
+select rlstest.chk('INSERT at status requested yields exactly one event', rlstest.evcount(:'L25') = 1, 'events=' || rlstest.evcount(:'L25'));
+select rlstest.chk('the insert event of a booked load is (NULL to booked)',
+  (select coalesce(bool_and(from_status is null and to_status = 'booked'), false) from public.load_events where load_id = :'L23'::uuid));
+
+-- set_load_eta keeps its own from=to event, and changes no status
+select rlstest.mkload(:'L26', 'enroute', '20000000-0000-0000-0000-00000000000a');
+do $t$
+declare l uuid := '30000000-0000-0000-0000-000000000026'; n0 bigint; same bigint;
+begin
+  n0 := rlstest.evcount(l);
+  perform rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+  perform rlstest.ok('control: owner edits the eta', format($q$select public.set_load_eta(%L, now() + interval '5 hours', 'late')$q$, l));
+  perform rlstest.back();
+  select count(*) into same from public.load_events where load_id = l and from_status = to_status;
+  perform rlstest.chk('set_load_eta writes exactly one from=to event', rlstest.evcount(l) = n0 + 1 and same = 1, 'before=' || n0 || ' after=' || rlstest.evcount(l) || ' same=' || same);
+end $t$;
+
+-- a customer cancel: one event, actor and note kept
+select rlstest.mkload(:'L27', 'requested', null);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.ok('customer cancels own requested load with a note', format($q$select public.set_load_status(%L, 'cancelled', null, 'Cancelled by customer')$q$, :'L27'));
+select rlstest.back();
+select rlstest.chk('customer cancel writes exactly one cancelled event with actor and note',
+  (select count(*) = 1 and bool_and(from_status = 'requested' and actor_id = '00000000-0000-0000-0000-0000000000c1' and note = 'Cancelled by customer')
+     from public.load_events where load_id = :'L27'::uuid and to_status = 'cancelled'));
+
+-- events are append-only for clients
+do $t$
+declare p text; bad boolean := false;
+begin
+  foreach p in array array['insert', 'update', 'delete', 'truncate'] loop
+    if has_table_privilege('authenticated', 'public.load_events', p) or has_table_privilege('anon', 'public.load_events', p) then bad := true; end if;
+  end loop;
+  perform rlstest.chk('authenticated and anon hold no INSERT, UPDATE, DELETE or TRUNCATE on load_events', not bad);
+  perform rlstest.chk('control: authenticated can SELECT load_events', has_table_privilege('authenticated', 'public.load_events', 'select'));
+  perform rlstest.chk('anon and authenticated have no EXECUTE on the status event trigger function',
+    not has_function_privilege('anon', 'public.dlv_loads_status_event()', 'execute')
+    and not has_function_privilege('authenticated', 'public.dlv_loads_status_event()', 'execute'));
+  perform rlstest.chk('control: service_role has EXECUTE on the status event trigger function',
+    has_function_privilege('service_role', 'public.dlv_loads_status_event()', 'execute'));
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.err('admin cannot UPDATE load_events', $q$update public.load_events set note = 'x'$q$, 'permission denied');
+select rlstest.err('admin cannot insert a status event by hand', $q$insert into public.load_events (load_id, to_status) values ('30000000-0000-0000-0000-000000000020', 'booked')$q$, 'permission denied');
+select rlstest.err('admin cannot change status by direct UPDATE (so no event can be forged that way)', $q$update public.loads set status = 'cancelled' where id = '30000000-0000-0000-0000-000000000023'$q$, 'set_load_status');
+select rlstest.cnt('control: admin reads the L20 timeline', $q$select 1 from public.load_events where load_id = '30000000-0000-0000-0000-000000000020'$q$, 7);
+select rlstest.back();
 
 -- Summary ----------------------------------------------------------------
 select name, outcome, detail from rlstest.res where outcome <> 'OK' order by n;

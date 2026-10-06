@@ -55,3 +55,11 @@
 - Touch targets: text inputs inside .driver-surface (Shell driver) are at least 48px, via an unlayered rule that beats the 44px field utility. Found on /team (44px) and the driver Update ETA modal.
 - Heading order: the locations list used h3 directly under the h1; now h2.
 - Selects: WebKit clamps the min-height of a native select (measured 26px against the 44px rule), so selects use appearance none with an ink chevron and the 44px rule now holds on every engine. Date and time inputs also get the focus ring through :focus-within (WebKit focuses an inner field).
+
+## 2026-10-05 C6 data integrity (migrations 0008 to 0010)
+- Last active staff_admin (0008): BEFORE UPDATE OF role, is_active and BEFORE DELETE triggers on profiles refuse to leave zero active staff_admin, for every writer (no auth.uid() test, so the service role and the auth.users cascade are bound). Race safe with a transaction advisory lock taken before the count of the other active admins. Error 23514, message "cannot leave the portal without an active staff admin". Proven with two real sessions by scripts/test-last-admin-race.mjs (local only) and in rls.sql section 11a. The app keeps its own pre-check and maps the trigger error to the same plain message.
+- Indexes: no change. The five hot columns already lead an index (loads status, pickup_date, carrier_id, customer_id; load_events load_id); rls.sql 11b asserts it so a future drop fails the suite.
+- updated_at (0009): added to locations, carriers, customers, profiles, location_requests with the existing dlv_touch_updated_at(). The customer edit guard on locations now ignores updated_at.
+- One event per status change (0010): an AFTER UPDATE OF status trigger on loads writes the load_events row (actor = auth.uid() if it is a profile else NULL; note from the transaction local GUC dlv.event_note that set_load_status sets and clears). set_load_status keeps every rule and no longer inserts. Consequence for fixtures: a direct status UPDATE now writes an event, so rls.sql mkload fixtures that start at booked have one more event (the timeline control for L2 moved from 7 to 8) and the new tests assert the exact walk (7 events, consistent chain).
+- rls.sql needs a second staff_admin fixture (a3) because section 9 deactivates the only admin.
+- Apply: docs/APPLY-PACK.md (0006 to 0010, migrations first, then the app).
