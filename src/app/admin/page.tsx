@@ -71,25 +71,42 @@ export default async function AdminBoardPage() {
       <PageTitle>Load board</PageTitle>
       {error ? <div className="mb-4"><Notice tone="error">Could not load the board: {error.message}</Notice></div> : null}
       <p className="mb-3 text-[13px] text-muted">Delivered and cancelled loads show the last 14 days. Times are Eastern (ET).</p>
-      <div className="-mx-4 overflow-x-auto px-4 pb-4">
-        <div className="flex gap-3">
-          {COLUMNS.map((s) => {
-            const list = byStatus.get(s) ?? [];
-            return (
-              <section key={s} aria-label={STATUS_LABEL[s]} className="w-[280px] shrink-0">
-                <h2 className="mb-2 flex items-center justify-between text-[15px] font-bold">
-                  <span>{STATUS_LABEL[s]}</span>
-                  <span className="rounded-full bg-white px-2 py-0.5 text-[13px] text-muted">{list.length}</span>
-                </h2>
-                <div className="space-y-3">
-                  {list.length === 0 ? (
-                    <p className="rounded-[16px] border border-dashed border-line px-3 py-4 text-[13px] text-muted">No loads</p>
-                  ) : list.map((l) => <LoadCard key={l.id} l={l} />)}
+      <nav aria-label="Jump to status" className="mb-4 flex flex-wrap gap-2">
+        {COLUMNS.map((s) => {
+          const n = (byStatus.get(s) ?? []).length;
+          return (
+            <a
+              key={s}
+              href={`#status-${s}`}
+              className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border px-4 text-[14px] font-medium ${
+                n > 0 ? "border-ink bg-white text-ink" : "border-line bg-white/60 text-muted"
+              }`}
+            >
+              {STATUS_LABEL[s]}
+              <span className="rounded-full bg-mint px-2 py-0.5 text-[13px]">{n}</span>
+            </a>
+          );
+        })}
+      </nav>
+      <div className="space-y-6">
+        {COLUMNS.map((s) => {
+          const list = byStatus.get(s) ?? [];
+          return (
+            <section key={s} id={`status-${s}`} aria-label={STATUS_LABEL[s]} className="scroll-mt-4">
+              <h2 className="mb-2 flex items-center gap-2 text-[18px] font-bold">
+                <span>{STATUS_LABEL[s]}</span>
+                <span className="rounded-full bg-white px-2.5 py-0.5 text-[14px] text-muted">{list.length}</span>
+              </h2>
+              {list.length === 0 ? (
+                <p className="rounded-[16px] border border-dashed border-line px-3 py-3 text-[13px] text-muted">No loads</p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                  {list.map((l) => <LoadCard key={l.id} l={l} />)}
                 </div>
-              </section>
-            );
-          })}
-        </div>
+              )}
+            </section>
+          );
+        })}
       </div>
     </Shell>
   );

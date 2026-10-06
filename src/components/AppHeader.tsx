@@ -41,14 +41,14 @@ export function AppHeader({ profile, driver = false }: { profile: Profile; drive
           <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-neon" />
           <span className="text-[13px] text-white/80">Mitrex shipping portal</span>
         </Link>
-        <nav className="flex flex-1 flex-wrap items-center gap-1">
+        <nav aria-label="Main" className="order-3 -mx-4 flex w-[calc(100%+2rem)] items-center gap-1 overflow-x-auto px-4 pb-1 md:order-none md:mx-0 md:w-auto md:flex-1 md:overflow-visible md:px-0 md:pb-0">
           {nav.map((n) => (
-            <Link key={n.href} href={n.href} className={`inline-flex ${h} items-center rounded-full px-3 text-[15px] hover:bg-white/10`}>
+            <Link key={n.href} href={n.href} className={`inline-flex ${h} shrink-0 items-center whitespace-nowrap rounded-full px-3 text-[15px] hover:bg-white/10`}>
               {n.label}
             </Link>
           ))}
         </nav>
-        <form action="/auth/signout" method="post">
+        <form action="/auth/signout" method="post" className="ml-auto md:ml-0">
           <button className={`inline-flex ${h} items-center rounded-full border border-white/30 px-4 text-[14px]`}>
             Sign out
           </button>
