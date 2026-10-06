@@ -229,11 +229,11 @@ select rlstest.ok('control: enroute with eta', $q$select public.set_load_status(
 select rlstest.ok('control: eta editable while enroute', $q$select public.set_load_eta('30000000-0000-0000-0000-000000000002', now() + interval '4 hours')$q$);
 select rlstest.ok('control: carrier moves to at_delivery', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'at_delivery')$q$);
 select rlstest.err('delivered without POD rejected', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'delivered')$q$, 'POD');
-select rlstest.err('carrier cannot upload a BOL', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000002', 'bol', '30000000-0000-0000-0000-000000000002/bol/x.pdf', '00000000-0000-0000-0000-0000000000b1')$q$, 'row-level security');
-select rlstest.err('carrier A cannot upload POD to carrier B load', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000003', 'pod', '30000000-0000-0000-0000-000000000003/pod/x.jpg', '00000000-0000-0000-0000-0000000000b1')$q$, 'row-level security');
-select rlstest.ok('control: carrier uploads POD row', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000002', 'pod', '30000000-0000-0000-0000-000000000002/pod/x.jpg', '00000000-0000-0000-0000-0000000000b1')$q$);
-select rlstest.ok('control: carrier uploads POD file', $q$insert into storage.objects (bucket_id, name, owner) values ('documents', '30000000-0000-0000-0000-000000000002/pod/x.jpg', '00000000-0000-0000-0000-0000000000b1')$q$);
-select rlstest.err('carrier cannot upload a BOL file', $q$insert into storage.objects (bucket_id, name, owner) values ('documents', '30000000-0000-0000-0000-000000000002/bol/x.pdf', '00000000-0000-0000-0000-0000000000b1')$q$, 'row-level security');
+select rlstest.err('carrier cannot upload a BOL', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000002', 'bol', '30000000-0000-0000-0000-000000000002/bol/a0000000-0000-0000-0000-0000000000f2.pdf', '00000000-0000-0000-0000-0000000000b1')$q$, 'row-level security');
+select rlstest.err('carrier A cannot upload POD to carrier B load', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000003', 'pod', '30000000-0000-0000-0000-000000000003/pod/a0000000-0000-0000-0000-0000000000f1.jpg', '00000000-0000-0000-0000-0000000000b1')$q$, 'row-level security');
+select rlstest.ok('control: carrier uploads POD row', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000002', 'pod', '30000000-0000-0000-0000-000000000002/pod/a0000000-0000-0000-0000-0000000000f1.jpg', '00000000-0000-0000-0000-0000000000b1')$q$);
+select rlstest.ok('control: carrier uploads POD file', $q$insert into storage.objects (bucket_id, name, owner) values ('documents', '30000000-0000-0000-0000-000000000002/pod/a0000000-0000-0000-0000-0000000000f1.jpg', '00000000-0000-0000-0000-0000000000b1')$q$);
+select rlstest.err('carrier cannot upload a BOL file', $q$insert into storage.objects (bucket_id, name, owner) values ('documents', '30000000-0000-0000-0000-000000000002/bol/a0000000-0000-0000-0000-0000000000f2.pdf', '00000000-0000-0000-0000-0000000000b1')$q$, 'row-level security');
 select rlstest.ok('control: delivered with POD', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'delivered')$q$);
 select rlstest.err('delivered load is final for carrier', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'at_delivery')$q$, 'one step|final');
 select rlstest.back();
@@ -425,13 +425,13 @@ begin
   perform rlstest.as_user(v_adm);
   perform rlstest.rec('inactive admin: dlv_is_admin false, dlv_role null, no doc access',
     case when not public.dlv_is_admin() and public.dlv_role() is null
-          and not public.dlv_can_access_doc('30000000-0000-0000-0000-000000000006/pod/x.pdf', false) then 'OK' else 'FAIL' end);
+          and not public.dlv_can_access_doc('30000000-0000-0000-0000-000000000006/pod/a0000000-0000-0000-0000-0000000000f3.pdf', false) then 'OK' else 'FAIL' end);
   perform rlstest.back();
   perform rlstest.set_active(v_adm, true);
   perform rlstest.as_user(v_adm);
   perform rlstest.rec('control: active admin: dlv_is_admin true, doc access allowed',
     case when public.dlv_is_admin() and public.dlv_role() = 'staff_admin'
-          and public.dlv_can_access_doc('30000000-0000-0000-0000-000000000006/pod/x.pdf', false) then 'OK' else 'FAIL' end);
+          and public.dlv_can_access_doc('30000000-0000-0000-0000-000000000006/pod/a0000000-0000-0000-0000-0000000000f3.pdf', false) then 'OK' else 'FAIL' end);
   perform rlstest.back();
 
   -- authenticated cannot write profiles
@@ -439,6 +439,268 @@ begin
   perform rlstest.err('authenticated cannot update profiles.is_active',
     $q$update public.profiles set is_active = false where id = '00000000-0000-0000-0000-0000000000c1'$q$, 'permission denied');
   perform rlstest.back();
+end $t$;
+
+-- 10. Documents bucket and load_documents ------------------------------------
+\set L10 '30000000-0000-0000-0000-000000000010'
+\set L11 '30000000-0000-0000-0000-000000000011'
+\set L12 '30000000-0000-0000-0000-000000000012'
+\set L13 '30000000-0000-0000-0000-000000000013'
+\set L14 '30000000-0000-0000-0000-000000000014'
+\set L15 '30000000-0000-0000-0000-000000000015'
+
+create function rlstest.mkload2(p_id uuid, p_cust uuid, p_user uuid, p_status public.load_status, p_carrier uuid) returns void
+language plpgsql security definer as $f$
+begin
+  insert into public.loads (id, customer_id, created_by, pickup_location_id, delivery_location_id,
+    equipment_size, pickup_timing, pickup_date, pickup_time_start, delivery_timing, delivery_date,
+    delivery_time_start, pickup_contact_name, pickup_contact_phone, delivery_contact_name, delivery_contact_phone)
+  values (p_id, p_cust, p_user,
+    (select id from public.locations where name = 'Mitrex'),
+    (select id from public.locations where name = 'Howden'),
+    48, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00',
+    'P Contact', '416-000-0001', 'D Contact', '416-000-0002');
+  perform set_config('dlv.status_fn', '1', true);
+  update public.loads set status = p_status, carrier_id = p_carrier where id = p_id;
+  perform set_config('dlv.status_fn', '0', true);
+end $f$;
+
+-- L10 enroute carrier A (Maria's), L11 enroute carrier B (Maria's), L12 booked A, L13 loading A,
+-- L14 at_delivery A, L15 enroute carrier B owned by the OTHER customer.
+select rlstest.mkload(:'L10', 'enroute', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L11', 'enroute', '20000000-0000-0000-0000-00000000000b');
+select rlstest.mkload(:'L12', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L13', 'loading', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L14', 'at_delivery', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload2(:'L15', '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000c2', 'enroute', '20000000-0000-0000-0000-00000000000b');
+
+-- existing documents (superuser fixtures): a BOL and a POD on L10, L11 and L15
+insert into storage.objects (bucket_id, name) values
+  ('documents', :'L10' || '/bol/b0000000-0000-0000-0000-000000000010.pdf'),
+  ('documents', :'L10' || '/pod/b0000000-0000-0000-0000-000000000110.jpg'),
+  ('documents', :'L11' || '/bol/b0000000-0000-0000-0000-000000000011.pdf'),
+  ('documents', :'L11' || '/pod/b0000000-0000-0000-0000-000000000111.jpg'),
+  ('documents', :'L15' || '/bol/b0000000-0000-0000-0000-000000000015.pdf'),
+  ('documents', :'L15' || '/pod/b0000000-0000-0000-0000-000000000115.jpg');
+insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values
+  (:'L10', 'bol', :'L10' || '/bol/b0000000-0000-0000-0000-000000000010.pdf', '00000000-0000-0000-0000-0000000000a1'),
+  (:'L10', 'pod', :'L10' || '/pod/b0000000-0000-0000-0000-000000000110.jpg', '00000000-0000-0000-0000-0000000000a1'),
+  (:'L11', 'bol', :'L11' || '/bol/b0000000-0000-0000-0000-000000000011.pdf', '00000000-0000-0000-0000-0000000000a1'),
+  (:'L11', 'pod', :'L11' || '/pod/b0000000-0000-0000-0000-000000000111.jpg', '00000000-0000-0000-0000-0000000000a1'),
+  (:'L15', 'bol', :'L15' || '/bol/b0000000-0000-0000-0000-000000000015.pdf', '00000000-0000-0000-0000-0000000000a1'),
+  (:'L15', 'pod', :'L15' || '/pod/b0000000-0000-0000-0000-000000000115.jpg', '00000000-0000-0000-0000-0000000000a1');
+
+create function rlstest.sins(p_path text) returns text language sql immutable as $f$
+  select format($q$insert into storage.objects (bucket_id, name) values ('documents', %L)$q$, p_path) $f$;
+create function rlstest.dins(p_load text, p_kind text, p_path text) returns text language sql immutable as $f$
+  select format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, %L, %L, auth.uid())$q$, p_load, p_kind, p_path) $f$;
+
+-- 10a. reads: both tables, BOL and POD
+create function rlstest.read_pair(p_name text, p_load text, p_expected int) returns void language plpgsql as $f$
+declare k text;
+begin
+  foreach k in array array['bol','pod'] loop
+    perform rlstest.cnt(p_name || ' (' || k || ', storage.objects)',
+      format($q$select 1 from storage.objects where bucket_id = 'documents' and name like %L$q$, p_load || '/' || k || '/%'), p_expected,
+      format($q$select 1 from storage.objects where bucket_id = 'documents' and name like %L$q$, p_load || '/' || k || '/%'));
+    perform rlstest.cnt(p_name || ' (' || k || ', load_documents)',
+      format($q$select 1 from public.load_documents where load_id = %L::uuid and kind = %L$q$, p_load, k), p_expected,
+      format($q$select 1 from public.load_documents where load_id = %L::uuid and kind = %L$q$, p_load, k));
+  end loop;
+end $f$;
+
+grant execute on all functions in schema rlstest to authenticated, anon;
+
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b3');
+select rlstest.read_pair('control: carrier B reads own load documents', :'L11', 1);
+select rlstest.read_pair('carrier B cannot read carrier A documents', :'L10', 0);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.read_pair('control: carrier A reads own load documents', :'L10', 1);
+select rlstest.read_pair('carrier A cannot read carrier B documents', :'L11', 0);
+select rlstest.read_pair('carrier A cannot read documents of an unrelated load', :'L15', 0);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b2');
+select rlstest.read_pair('control: driver A reads own load documents', :'L10', 1);
+select rlstest.read_pair('driver A cannot read carrier B documents', :'L11', 0);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.read_pair('control: customer reads own load documents', :'L10', 1);
+select rlstest.read_pair('customer cannot read another customer documents', :'L15', 0);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c2');
+select rlstest.read_pair('control: other customer reads own load documents', :'L15', 1);
+select rlstest.read_pair('other customer cannot read first customer documents', :'L10', 0);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.read_pair('control: staff reads any load documents', :'L15', 1);
+select rlstest.back();
+
+-- 10b. uploads, valid paths (a unique file uuid per attempt)
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.err('customer cannot upload a BOL (storage)', rlstest.sins(:'L10' || '/bol/c0000000-0000-0000-0000-000000000001.pdf'), 'row-level security');
+select rlstest.err('customer cannot upload a BOL (load_documents)', rlstest.dins(:'L10', 'bol', :'L10' || '/bol/c0000000-0000-0000-0000-000000000002.pdf'), 'row-level security');
+select rlstest.err('customer cannot upload a POD (storage)', rlstest.sins(:'L10' || '/pod/c0000000-0000-0000-0000-000000000003.jpg'), 'row-level security');
+select rlstest.err('customer cannot upload a POD (load_documents)', rlstest.dins(:'L10', 'pod', :'L10' || '/pod/c0000000-0000-0000-0000-000000000004.jpg'), 'row-level security');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.err('carrier cannot upload a BOL to own load (storage)', rlstest.sins(:'L10' || '/bol/c0000000-0000-0000-0000-000000000005.pdf'), 'row-level security');
+select rlstest.err('carrier cannot upload a BOL to own load (load_documents)', rlstest.dins(:'L10', 'bol', :'L10' || '/bol/c0000000-0000-0000-0000-000000000006.pdf'), 'row-level security');
+select rlstest.err('carrier A cannot upload POD to carrier B load (storage)', rlstest.sins(:'L11' || '/pod/c0000000-0000-0000-0000-000000000007.jpg'), 'row-level security');
+select rlstest.err('carrier A cannot upload POD to carrier B load (load_documents)', rlstest.dins(:'L11', 'pod', :'L11' || '/pod/c0000000-0000-0000-0000-000000000008.jpg'), 'row-level security');
+select rlstest.err('carrier cannot upload POD while booked (storage)', rlstest.sins(:'L12' || '/pod/c0000000-0000-0000-0000-000000000009.jpg'), 'row-level security');
+select rlstest.err('carrier cannot upload POD while booked (load_documents)', rlstest.dins(:'L12', 'pod', :'L12' || '/pod/c0000000-0000-0000-0000-00000000000a.jpg'), 'row-level security');
+select rlstest.err('carrier cannot upload POD while loading (storage)', rlstest.sins(:'L13' || '/pod/c0000000-0000-0000-0000-00000000000b.jpg'), 'row-level security');
+select rlstest.err('carrier cannot upload POD while loading (load_documents)', rlstest.dins(:'L13', 'pod', :'L13' || '/pod/c0000000-0000-0000-0000-00000000000c.jpg'), 'row-level security');
+select rlstest.ok('control: carrier uploads POD while enroute (storage)', rlstest.sins(:'L10' || '/pod/c0000000-0000-0000-0000-00000000000d.jpg'));
+select rlstest.ok('control: carrier uploads POD while enroute (load_documents)', rlstest.dins(:'L10', 'pod', :'L10' || '/pod/c0000000-0000-0000-0000-00000000000e.jpg'));
+select rlstest.ok('control: carrier uploads POD at_delivery (storage)', rlstest.sins(:'L14' || '/pod/c0000000-0000-0000-0000-00000000000f.jpg'));
+select rlstest.ok('control: carrier uploads POD at_delivery (load_documents)', rlstest.dins(:'L14', 'pod', :'L14' || '/pod/c0000000-0000-0000-0000-000000000010.jpg'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.ok('control: staff uploads a BOL (storage)', rlstest.sins(:'L12' || '/bol/c0000000-0000-0000-0000-000000000011.pdf'));
+select rlstest.ok('control: staff uploads a BOL (load_documents)', rlstest.dins(:'L12', 'bol', :'L12' || '/bol/c0000000-0000-0000-0000-000000000012.pdf'));
+select rlstest.ok('control: staff uploads a POD (storage)', rlstest.sins(:'L12' || '/pod/c0000000-0000-0000-0000-000000000013.jpg'));
+select rlstest.ok('control: staff uploads a POD (load_documents)', rlstest.dins(:'L12', 'pod', :'L12' || '/pod/c0000000-0000-0000-0000-000000000014.jpg'));
+select rlstest.ok('control: staff uploads a png name', rlstest.sins(:'L12' || '/bol/c0000000-0000-0000-0000-000000000015.png'));
+select rlstest.ok('control: staff uploads a jpeg name', rlstest.sins(:'L12' || '/bol/c0000000-0000-0000-0000-000000000016.jpeg'));
+select rlstest.ok('control: staff uploads a webp name', rlstest.sins(:'L12' || '/bol/c0000000-0000-0000-0000-000000000017.webp'));
+select rlstest.ok('control: staff uploads a heic name', rlstest.sins(:'L12' || '/bol/c0000000-0000-0000-0000-000000000018.heic'));
+select rlstest.back();
+
+-- 10c. path traversal and malformed paths, on both tables, for staff and for a carrier.
+create table rlstest.bad (label text, path text, load text, kind text, storage_bad boolean);
+insert into rlstest.bad values
+  ('dotdot to another load',      :'L10' || '/pod/../' || :'L11' || '/bol/d0000000-0000-0000-0000-000000000001.pdf', :'L10', 'pod', true),
+  ('dotdot to root',              :'L10' || '/pod/../../x', :'L10', 'pod', true),
+  ('empty segment',               :'L10' || '/pod//x', :'L10', 'pod', true),
+  ('empty segment before file',   :'L10' || '/pod//d0000000-0000-0000-0000-000000000002.jpg', :'L10', 'pod', true),
+  ('leading slash',               '/' || :'L10' || '/pod/d0000000-0000-0000-0000-000000000003.jpg', :'L10', 'pod', true),
+  ('backslashes',                 :'L10' || E'\\pod\\d0000000-0000-0000-0000-000000000004.jpg', :'L10', 'pod', true),
+  ('backslash separator inside',  :'L10' || E'/pod\\..\\d0000000-0000-0000-0000-000000000005.jpg', :'L10', 'pod', true),
+  ('encoded dotdot',              :'L10' || '/pod/%2e%2e/d0000000-0000-0000-0000-000000000006.jpg', :'L10', 'pod', true),
+  ('encoded dotdot as file',      :'L10' || '/pod/%2e%2e', :'L10', 'pod', true),
+  ('trailing space',              :'L10' || '/pod/d0000000-0000-0000-0000-000000000007.jpg ', :'L10', 'pod', true),
+  ('trailing newline',            :'L10' || E'/pod/d0000000-0000-0000-0000-000000000008.jpg\n', :'L10', 'pod', true),
+  ('upper-case kind',             :'L10' || '/POD/d0000000-0000-0000-0000-000000000009.jpg', :'L10', 'pod', true),
+  ('extra segment',               :'L10' || '/pod/extra/d0000000-0000-0000-0000-00000000000a.jpg', :'L10', 'pod', true),
+  ('non-uuid file name',          :'L10' || '/pod/x.jpg', :'L10', 'pod', true),
+  ('upper-case file uuid',        :'L10' || '/pod/D0000000-0000-0000-0000-00000000000B.jpg', :'L10', 'pod', true),
+  ('upper-case extension',        :'L10' || '/pod/d0000000-0000-0000-0000-00000000000c.JPG', :'L10', 'pod', true),
+  ('no extension',                :'L10' || '/pod/d0000000-0000-0000-0000-00000000000d', :'L10', 'pod', true),
+  ('extension too long',          :'L10' || '/pod/d0000000-0000-0000-0000-00000000000e.jpegxx', :'L10', 'pod', true),
+  ('one char extension',          :'L10' || '/pod/d0000000-0000-0000-0000-00000000000f.j', :'L10', 'pod', true),
+  ('double extension',            :'L10' || '/pod/d0000000-0000-0000-0000-000000000010.jpg.exe', :'L10', 'pod', true),
+  ('unknown kind',                :'L10' || '/doc/d0000000-0000-0000-0000-000000000012.jpg', :'L10', 'pod', true),
+  ('only a load folder',          :'L10' || '/', :'L10', 'pod', true),
+  ('first segment is another load', :'L11' || '/pod/d0000000-0000-0000-0000-000000000013.jpg', :'L10', 'pod', false),
+  ('kind column differs from path', :'L10' || '/pod/d0000000-0000-0000-0000-000000000014.jpg', :'L10', 'bol', false);
+grant select on rlstest.bad to authenticated;
+
+-- subjects: malformed objects as they could land through a hole, plus a valid control, as superuser
+insert into storage.objects (bucket_id, name)
+  select 'documents', path from rlstest.bad where storage_bad;
+insert into storage.objects (bucket_id, name) values ('documents', :'L10' || '/pod/d0000000-0000-0000-0000-0000000000ff.jpg');
+
+do $t$
+declare
+  b jsonb;
+  r jsonb;
+  v_actor text;
+  v_uid uuid;
+begin
+  select jsonb_agg(to_jsonb(x)) into b from rlstest.bad x;
+  foreach v_actor in array array['staff', 'carrier'] loop
+    v_uid := case v_actor when 'staff' then '00000000-0000-0000-0000-0000000000a1' else '00000000-0000-0000-0000-0000000000b1' end;
+    perform rlstest.as_user(v_uid);
+    perform rlstest.ok('control: ' || v_actor || ' uploads a well-formed POD path (storage)',
+      rlstest.sins('30000000-0000-0000-0000-000000000010/pod/e0000000-0000-0000-0000-0000000000a' || case v_actor when 'staff' then '1' else '2' end || '.webp'));
+    perform rlstest.ok('control: ' || v_actor || ' uploads a well-formed POD path (load_documents)',
+      rlstest.dins('30000000-0000-0000-0000-000000000010', 'pod', '30000000-0000-0000-0000-000000000010/pod/e0000000-0000-0000-0000-0000000000b' || case v_actor when 'staff' then '1' else '2' end || '.webp'));
+    for r in select * from jsonb_array_elements(b) loop
+      if (r->>'storage_bad')::boolean then
+        perform rlstest.err(v_actor || ' storage insert rejects: ' || (r->>'label'), rlstest.sins(r->>'path'), 'row-level security');
+      end if;
+      perform rlstest.err(v_actor || ' load_documents insert rejects: ' || (r->>'label'),
+        rlstest.dins(r->>'load', r->>'kind', r->>'path'), 'row-level security|check constraint|violates');
+    end loop;
+    perform rlstest.back();
+  end loop;
+
+  -- reads: malformed objects that exist are invisible even to staff, the valid one is visible
+  perform rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+  perform rlstest.cnt('control: staff reads the well-formed object', $q$select 1 from storage.objects where name = '30000000-0000-0000-0000-000000000010/pod/d0000000-0000-0000-0000-0000000000ff.jpg'$q$, 1);
+  perform rlstest.cnt('staff cannot read malformed object names',
+    $q$select 1 from storage.objects where bucket_id = 'documents' and (name like '%/../%' or name like '%\%' or name like '%//%' or name like '/%' or name like '%/POD/%' or name like '%/extra/%' or name like '%x.jpg' or name like '%.exe' or name like '%.JPG' or name like '%\n')$q$, 0,
+    $q$select 1 from storage.objects where bucket_id = 'documents' and (name like '%/../%' or name like '%\%' or name like '%//%' or name like '/%' or name like '%/POD/%' or name like '%/extra/%' or name like '%x.jpg' or name like '%.exe' or name like '%.JPG' or name like '%\n')$q$);
+  perform rlstest.back();
+end $t$;
+
+-- 10d. dlv_can_access_doc directly, as admin, on every malformed shape (read and write)
+do $t$
+declare r record; v_bad int := 0; v_n int := 0;
+begin
+  perform rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+  perform rlstest.rec('control: dlv_can_access_doc accepts a well-formed path',
+    case when public.dlv_can_access_doc('30000000-0000-0000-0000-000000000010/pod/d0000000-0000-0000-0000-0000000000ff.jpg', true) then 'OK' else 'FAIL' end);
+  for r in select path from rlstest.bad where storage_bad loop
+    v_n := v_n + 1;
+    if public.dlv_can_access_doc(r.path, false) or public.dlv_can_access_doc(r.path, true) then v_bad := v_bad + 1; end if;
+  end loop;
+  perform rlstest.back();
+  perform rlstest.rec('dlv_can_access_doc rejects every malformed path (read and write)',
+    case when v_n = 0 then 'VACUOUS' when v_bad = 0 then 'OK' else 'FAIL' end, 'accepted ' || v_bad || ' of ' || v_n);
+end $t$;
+
+-- 10e. bucket configuration and anon
+do $t$
+declare bk record; n int;
+begin
+  select * into bk from storage.buckets where id = 'documents';
+  perform rlstest.rec('bucket documents exists', case when found then 'OK' else 'FAIL' end);
+  perform rlstest.rec('bucket documents is private', case when bk.public is false then 'OK' else 'FAIL' end);
+  perform rlstest.rec('bucket documents has a 15 MB file size limit', case when bk.file_size_limit = 15728640 then 'OK' else 'FAIL' end, 'limit=' || coalesce(bk.file_size_limit::text, 'null'));
+  perform rlstest.rec('bucket documents allows only pdf, png, jpeg, webp, heic',
+    case when bk.allowed_mime_types is not null
+          and bk.allowed_mime_types @> array['application/pdf','image/png','image/jpeg','image/webp','image/heic']
+          and bk.allowed_mime_types <@ array['application/pdf','image/png','image/jpeg','image/webp','image/heic','image/heif']
+         then 'OK' else 'FAIL' end, 'types=' || coalesce(bk.allowed_mime_types::text, 'null'));
+  perform rlstest.rec('RLS is enabled on storage.objects',
+    case when (select relrowsecurity from pg_class where oid = 'storage.objects'::regclass) then 'OK' else 'FAIL' end);
+  select count(*) into n from pg_policies p where p.schemaname = 'storage' and p.tablename = 'objects'
+    and (p.roles && array['anon'::name, 'public'::name]) and (coalesce(p.qual, '') || coalesce(p.with_check, '')) ~ 'documents';
+  perform rlstest.rec('no storage.objects policy for anon or public touches the documents bucket', case when n = 0 then 'OK' else 'FAIL' end, 'policies=' || n);
+  select count(*) into n from pg_policies p where p.schemaname = 'storage' and p.tablename = 'objects'
+    and 'authenticated'::name = any (p.roles) and p.cmd in ('SELECT', 'INSERT') and p.policyname in ('documents_select', 'documents_insert');
+  perform rlstest.rec('control: authenticated has the documents select and insert policies', case when n = 2 then 'OK' else 'FAIL' end, 'policies=' || n);
+  select count(*) into n from pg_policies p where p.schemaname = 'storage' and p.tablename = 'objects' and p.cmd in ('UPDATE', 'DELETE', 'ALL')
+    and (coalesce(p.qual, '') || coalesce(p.with_check, '')) ~ 'documents';
+  perform rlstest.rec('no UPDATE, DELETE or ALL policy on documents (objects are immutable for users)', case when n = 0 then 'OK' else 'FAIL' end, 'policies=' || n);
+  perform rlstest.rec('anon has no EXECUTE on dlv_can_access_doc',
+    case when has_function_privilege('anon', 'public.dlv_can_access_doc(text, boolean)', 'execute') then 'FAIL' else 'OK' end);
+  perform rlstest.rec('control: authenticated has EXECUTE on dlv_can_access_doc',
+    case when has_function_privilege('authenticated', 'public.dlv_can_access_doc(text, boolean)', 'execute') then 'OK' else 'FAIL' end);
+  perform rlstest.rec('anon has no privilege on load_documents',
+    case when has_table_privilege('anon', 'public.load_documents', 'insert') or has_table_privilege('anon', 'public.load_documents', 'select') then 'FAIL' else 'OK' end);
+end $t$;
+select rlstest.as_anon();
+select rlstest.cnt('anon reads no document objects', $q$select 1 from storage.objects where bucket_id = 'documents'$q$, 0, $q$select 1 from storage.objects where bucket_id = 'documents'$q$);
+select rlstest.err('anon cannot insert a document object', rlstest.sins('30000000-0000-0000-0000-000000000010/pod/f0000000-0000-0000-0000-000000000001.jpg'), 'row-level security|permission denied');
+select rlstest.back();
+
+-- 10f. the load_documents CHECK itself, as the table owner (RLS bypassed: service role, SQL editor, a future policy slip)
+do $t$
+declare b jsonb; r jsonb;
+begin
+  select jsonb_agg(to_jsonb(x)) into b from rlstest.bad x;
+  perform rlstest.ok('control: owner inserts a well-formed load_documents row',
+    format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, 'bol', %L, '00000000-0000-0000-0000-0000000000a1')$q$,
+      '30000000-0000-0000-0000-000000000013', '30000000-0000-0000-0000-000000000013/bol/e0000000-0000-0000-0000-0000000000c1.pdf'));
+  for r in select * from jsonb_array_elements(b) loop
+    perform rlstest.err('CHECK rejects (owner, RLS bypassed): ' || (r->>'label'),
+      format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, %L, %L, '00000000-0000-0000-0000-0000000000a1')$q$,
+        r->>'load', r->>'kind', r->>'path'), 'load_documents_path_ck');
+  end loop;
 end $t$;
 
 -- Summary ----------------------------------------------------------------
