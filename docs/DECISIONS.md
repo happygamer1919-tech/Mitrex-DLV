@@ -89,3 +89,8 @@
 - Address display: when a location's name equals its street (case and whitespace insensitive) the text is printed once (carrier assignment email, carrier stop card, customer and staff detail, location lists). Pure helper src/lib/address.ts. The staff request email prints names only and needed no change.
 - Customer "live" POD link: load_documents is not in the Realtime publication, so a new POD reaches Maria's open page with the 15 second poll (verified), not instantly. Adding the table to the publication is a small later change if instant matters.
 - Apply: docs/APPLY-PACK-3.md (0011 and 0012), a separate owner supervised session.
+
+## 2026-10-06 production migrations 0011 and 0012
+- Applied under the owner's explicit authorization, before the app deploy. POD is now optional at delivery and can be uploaded afterwards; new loads accept only 26, 36 and 53 ft. Result in docs/APPLY-PACK-3.md.
+- Owner acceptance run: M1, M4, M5, M6, M7 confirmed. M2 issue: the staff BOL file picker did not open for the owner (not reproducible in headless Chromium); replaced by the DropZone component. M3 feedback: POD optional.
+

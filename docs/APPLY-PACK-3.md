@@ -440,3 +440,14 @@ Rehearsed on the LOCAL stack only (127.0.0.1:54322), never production. Method: `
 | Negative arm: a 48 ft load at the 0010 state | Block A printed the STOP message that asks the owner what to do with the load, plus FAIL on "loads outside 26, 36, 53", and PRECHECK_FAIL (do not apply). Block B run anyway: 0011 applied, 0012 raised "0012 refused: 1 load(s) still have equipment_size 48 ..." and rolled back as one transaction (old CHECK still the only equipment CHECK). After the load was changed to 36 ft: PRECHECK_OK, APPLY_OK, POSTCHECK_OK. |
 | Review hardening (reviewer rerun from `--last 2`) | Block A now records `PRECHECK_RESULT=OK` or `FAIL` in the state file and block B refuses to run unless the last pre-check said OK (before, a failed pre-check left a state file and block B would still apply 0011). Reran A, B, C verbatim under `zsh -f` with the local URL: with a 48 ft load A printed PRECHECK_FAIL and B printed "the last pre-check (block A) did not end in PRECHECK_OK"; 0012 run directly refused with "0012 refused: 1 load(s) still have equipment_size 48" and changed nothing; after the load was changed A, B, C gave PRECHECK_OK, APPLY_OK, POSTCHECK_OK, and a second B run was idempotent. |
 | Functional check at the applied state (rolled back) | As staff, set_load_status to delivered on an at_delivery load with no POD row returned status delivered. The carrier side of the same rule (POD upload after delivered, never on another carrier's load, never a BOL, never a customer) is asserted by supabase/tests/rls.sql section 12. |
+
+## Production result (2026-10-06)
+
+Run by the engineering assistant with the owner's explicit authorization ("yes, go ahead apply"). Blocks A, B and C were extracted verbatim from this file and run with `zsh -f`; no connection string was printed. PR #20 was merged only after the migrations were applied (migrations first, then deploy).
+
+| Step | Result |
+| --- | --- |
+| Block A pre-check | PRECHECK_OK. Production at 0001 to 0010; 0 loads with equipment_size 48; 0 delivered loads; 0011 and 0012 absent. |
+| Block B apply | APPLY_OK at 2026-10-06T19:15:22Z. 0011 and 0012 each in its own transaction, 0 ERROR lines. |
+| Block C post-check | POSTCHECK_OK. All 8 row counts unchanged; set_load_status without the POD rule and with the 0010 rules; carrier POD write allowed enroute, at delivery and delivered, BOL never; strict path regex kept; exactly one validated equipment CHECK allowing 26, 36, 53; pack 2 objects and the full security posture unchanged. |
+
