@@ -112,7 +112,7 @@ test("Maria books quantity 4: four identical requested loads, Truck i of 4 notes
   for (const n of nums) await expect(page.locator("ul").getByText(n, { exact: true })).toBeVisible();
 
   // The parameter is not trusted: malformed values and other people's ids show nothing.
-  for (const bad of ["abc", "not-a-uuid,also-bad", rows[0].id, `${order[0].id},${order[1].id},zzz`]) {
+  for (const bad of ["abc", "not-a-uuid,also-bad", rows[0].id, `${order[0].id},${order[1].id},zzz`, `${order[0].id},${order[0].id}`]) {
     await gotoSteady(page, `/loads?booked=${encodeURIComponent(bad)}`);
     await expect(page.locator("h1")).toHaveText(/My loads/);
     await expect(page.getByTestId("booked-banner"), `ignored: ${bad}`).toHaveCount(0);
@@ -313,4 +313,57 @@ test("mobile 375x812: the 4 truck flow has no horizontal overflow and the quanti
   expect(await overflow(), "overflow on /loads with the banner").toBeLessThanOrEqual(0);
   expect(await loadsByPo(po)).toHaveLength(4);
   await ctx.close();
+});
+
+test("double submit with 4 trucks creates exactly 4 loads, not 8", async ({ browser }) => {
+  const po = uniq("MTD");
+  const { ctx, page } = await as(browser, "maria");
+  await openBook(page, po);
+  await setQty(page, "4");
+  // Two clicks in the same tick (no render between them): only the synchronous lock can stop the second.
+  await page.getByRole("button", { name: "Request 4 loads" }).evaluate((b) => { (b as HTMLButtonElement).click(); (b as HTMLButtonElement).click(); });
+  await page.waitForURL(/\/loads\?booked=/);
+  await new Promise((r) => setTimeout(r, 1500));
+  expect(await loadsByPo(po)).toHaveLength(4);
+  await ctx.close();
+});
+
+test("server cap: loads past the recent window cap are refused with a clear message and nothing is inserted", async ({ browser }) => {
+  // The e2e server runs with LOAD_RATE_CAP=1000. Seed Maria up to 2 below it in a few statements, then try 3, then 2.
+  const d = db();
+  const since = new Date(Date.now() - 10 * 60_000).toISOString();
+  const maria = await mariaId();
+  const { count } = await d.from("loads").select("id", { count: "exact", head: true }).eq("created_by", maria).gte("created_at", since);
+  const seedN = 998 - (count ?? 0);
+  expect(seedN).toBeGreaterThan(0);
+  const base = (await d.from("loads").select("*").eq("created_by", maria).limit(1).single()).data as Record<string, unknown>;
+  const { id: _i, load_number: _n, created_at: _c, updated_at: _u, ...tpl } = base;
+  void _i; void _n; void _c; void _u;
+  const seeded: string[] = [];
+  const po = uniq("MTC");
+  try {
+    for (let off = 0; off < seedN; off += 200) {
+      const rows = Array.from({ length: Math.min(200, seedN - off) }, () => ({ ...tpl, po_number: uniq("MTCAPSEED") }));
+      const ins = await d.from("loads").insert(rows).select("id");
+      if (ins.error) throw ins.error;
+      seeded.push(...(ins.data ?? []).map((r) => r.id as string));
+    }
+    const { ctx, page } = await as(browser, "maria");
+    await openBook(page, po);
+    await setQty(page, "3");
+    await page.getByRole("button", { name: "Request 3 loads" }).click();
+    await expect(page.getByText(/That is a lot of loads in a short time/)).toBeVisible();
+    expect(page.url()).toMatch(/\/book$/);
+    expect(await loadsByPo(po), "no partial insert").toHaveLength(0);
+    // Exactly at the cap is allowed.
+    await setQty(page, "2");
+    await page.getByRole("button", { name: "Request 2 loads" }).click();
+    await page.waitForURL(/\/loads\?booked=/);
+    expect(await loadsByPo(po)).toHaveLength(2);
+    await ctx.close();
+  } finally {
+    const mine = (await loadsByPo(po)).map((r) => r.id);
+    const all = [...seeded, ...mine];
+    for (let i = 0; i < all.length; i += 100) await d.from("loads").delete().in("id", all.slice(i, i + 100));
+  }
 });

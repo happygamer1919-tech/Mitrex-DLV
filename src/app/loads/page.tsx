@@ -25,7 +25,7 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
   // Success banner after a multi-truck booking. The parameter is untrusted: strict shape, at most 10 ids, and only
   // loads the customer can read (RLS) are shown. Anything malformed is ignored.
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-  const wanted = typeof booked === "string" ? booked.split(",") : [];
+  const wanted = typeof booked === "string" ? [...new Set(booked.split(","))] : []; // duplicates collapse
   const bookedIds = wanted.length >= 2 && wanted.length <= 10 && wanted.every((x) => UUID.test(x)) ? wanted : [];
   let bookedLoads: { id: string; load_number: string }[] = [];
   if (bookedIds.length > 0) {
