@@ -7,6 +7,7 @@ import { CancelLoad } from "@/components/customer/CancelLoad";
 import { requireCustomer } from "@/lib/auth";
 import { LOAD_SELECT, type LoadWithRefs } from "@/lib/customer/queries";
 import { fmtDateTime, fmtSlot, telHref } from "@/lib/format";
+import { nameIsStreet } from "@/lib/address";
 import { createClient } from "@/lib/supabase/server";
 import { STATUS_LABEL, type Location, type LoadDocument, type LoadEvent } from "@/lib/types";
 
@@ -27,7 +28,7 @@ function Place({ loc, name, phone }: { loc: Location | null; name: string; phone
       <p className="font-bold">{loc?.name ?? "Location unavailable"}</p>
       {loc ? (
         <p className="text-muted">
-          {loc.address_line}, {loc.city}, {loc.province}{loc.postal_code ? ` ${loc.postal_code}` : ""}
+          {nameIsStreet(loc) ? "" : `${loc.address_line}, `}{loc.city}, {loc.province}{loc.postal_code ? ` ${loc.postal_code}` : ""}
         </p>
       ) : null}
       <p>
@@ -126,7 +127,7 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
           </Card>
           <Card>
             <h2 className="mb-2 text-[20px] font-bold">Documents</h2>
-            {bols.length === 0 && pods.length === 0 ? (
+            {bols.length === 0 && pods.length === 0 && l.status !== "delivered" ? (
               <p className="text-[15px] text-muted">No documents yet. The BOL appears here once DLV uploads it.</p>
             ) : (
               <div className="flex flex-wrap gap-3">
@@ -146,6 +147,9 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
                 ))}
               </div>
             )}
+            {l.status === "delivered" && pods.length === 0 ? (
+              <p data-testid="pod-missing" className="mt-3 text-[15px] font-medium">POD not uploaded yet.</p>
+            ) : null}
           </Card>
         </div>
 

@@ -21,8 +21,8 @@ export function StatusChip({ status }: { status: LoadStatus }) {
   );
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-[16px] border border-line bg-card p-4 ${className}`}>{children}</div>;
+export function Card({ children, className = "", "data-testid": testId }: { children: ReactNode; className?: string; "data-testid"?: string }) {
+  return <div data-testid={testId} className={`rounded-[16px] border border-line bg-card p-4 ${className}`}>{children}</div>;
 }
 
 type Variant = "primary" | "dark" | "ghost" | "neon" | "white" | "danger";
@@ -68,7 +68,7 @@ export function PageTitle({ children }: { children: ReactNode }) {
   return <h1 className="mb-4 text-[24px] font-bold">{children}</h1>;
 }
 
-export function Notice({ tone = "info", children }: { tone?: "info" | "error" | "ok"; children: ReactNode }) {
-  const t = { info: "bg-[#DCE6F5] text-ink", error: "bg-[#F7D9D9] text-[#7A1F1F]", ok: "bg-[#CFF5DE] text-ink" }[tone];
+export function Notice({ tone = "info", children }: { tone?: "info" | "error" | "ok" | "warn"; children: ReactNode }) {
+  const t = { info: "bg-[#DCE6F5] text-ink", error: "bg-[#F7D9D9] text-[#7A1F1F]", ok: "bg-[#CFF5DE] text-ink", warn: "bg-amber text-[#2B1500]" }[tone];
   return <div role={tone === "error" ? "alert" : "status"} className={`rounded-[12px] px-4 py-3 text-[15px] ${t}`}>{children}</div>;
 }

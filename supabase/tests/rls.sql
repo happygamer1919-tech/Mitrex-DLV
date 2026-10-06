@@ -125,7 +125,7 @@ begin
     '00000000-0000-0000-0000-0000000000c1',
     (select id from public.locations where name = 'Mitrex'),
     (select id from public.locations where name = 'Howden'),
-    48, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00',
+    53, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00',
     'P Contact', '416-000-0001', 'D Contact', '416-000-0002');
   perform set_config('dlv.status_fn', '1', true);
   update public.loads set status = p_status, carrier_id = p_carrier where id = p_id;
@@ -219,7 +219,7 @@ select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
 select rlstest.ok('control: admin creates a carrier', $q$insert into public.carriers (name) values ('Carrier C')$q$);
 select rlstest.back();
 
--- 4. carrier steps: cannot skip, eta required, POD required --------------
+-- 4. carrier steps: cannot skip, eta required, POD is optional at delivery (0011, see section 12) --------------
 select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
 select rlstest.err('carrier cannot skip a step', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'loading')$q$, 'one step');
 select rlstest.err('carrier cannot book', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'booked')$q$, 'one step|already');
@@ -231,7 +231,6 @@ select rlstest.err('eta cannot change before enroute', $q$select public.set_load
 select rlstest.ok('control: enroute with eta', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'enroute', now() + interval '3 hours')$q$);
 select rlstest.ok('control: eta editable while enroute', $q$select public.set_load_eta('30000000-0000-0000-0000-000000000002', now() + interval '4 hours')$q$);
 select rlstest.ok('control: carrier moves to at_delivery', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'at_delivery')$q$);
-select rlstest.err('delivered without POD rejected', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'delivered')$q$, 'POD');
 select rlstest.err('carrier cannot upload a BOL', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000002', 'bol', '30000000-0000-0000-0000-000000000002/bol/a0000000-0000-0000-0000-0000000000f2.pdf', '00000000-0000-0000-0000-0000000000b1')$q$, 'row-level security');
 select rlstest.err('carrier A cannot upload POD to carrier B load', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000003', 'pod', '30000000-0000-0000-0000-000000000003/pod/a0000000-0000-0000-0000-0000000000f1.jpg', '00000000-0000-0000-0000-0000000000b1')$q$, 'row-level security');
 select rlstest.ok('control: carrier uploads POD row', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000002', 'pod', '30000000-0000-0000-0000-000000000002/pod/a0000000-0000-0000-0000-0000000000f1.jpg', '00000000-0000-0000-0000-0000000000b1')$q$);
@@ -462,7 +461,7 @@ begin
   values (p_id, p_cust, p_user,
     (select id from public.locations where name = 'Mitrex'),
     (select id from public.locations where name = 'Howden'),
-    48, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00',
+    53, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00',
     'P Contact', '416-000-0001', 'D Contact', '416-000-0002');
   perform set_config('dlv.status_fn', '1', true);
   update public.loads set status = p_status, carrier_id = p_carrier where id = p_id;
@@ -733,7 +732,7 @@ begin
     '00000000-0000-0000-0000-0000000000c1',
     (select id from public.locations where name = 'Mitrex'),
     (select id from public.locations where name = 'Howden'),
-    48, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00',
+    53, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00',
     'P Contact', '416-000-0001', 'D Contact', '416-000-0002', p_status, p_carrier);
 end $f$;
 grant execute on all functions in schema rlstest to authenticated, anon, service_role;
@@ -1050,6 +1049,67 @@ select rlstest.err('admin cannot UPDATE load_events', $q$update public.load_even
 select rlstest.err('admin cannot insert a status event by hand', $q$insert into public.load_events (load_id, to_status) values ('30000000-0000-0000-0000-000000000020', 'booked')$q$, 'permission denied');
 select rlstest.err('admin cannot change status by direct UPDATE (so no event can be forged that way)', $q$update public.loads set status = 'cancelled' where id = '30000000-0000-0000-0000-000000000023'$q$, 'set_load_status');
 select rlstest.cnt('control: admin reads the L20 timeline', $q$select 1 from public.load_events where load_id = '30000000-0000-0000-0000-000000000020'$q$, 7);
+select rlstest.back();
+
+-- 12. POD is optional at delivery (0011): delivering needs no POD, and a POD can be added after delivered --------
+\set L40 '30000000-0000-0000-0000-000000000040'
+\set L41 '30000000-0000-0000-0000-000000000041'
+\set L42 '30000000-0000-0000-0000-000000000042'
+-- L40 at_delivery A (no POD, no document at all), L41 delivered A, L42 delivered B
+select rlstest.mkload(:'L40', 'at_delivery', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L41', 'delivered', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L42', 'delivered', '20000000-0000-0000-0000-00000000000b');
+select rlstest.chk('guard: L40 has no document and sits at_delivery',
+  (select count(*) from public.load_documents where load_id = :'L40') = 0
+  and (select status from public.loads where id = :'L40') = 'at_delivery');
+select rlstest.chk('guard: L41 and L42 are delivered with no document',
+  (select count(*) from public.loads where id in (:'L41', :'L42') and status = 'delivered') = 2
+  and (select count(*) from public.load_documents where load_id in (:'L41', :'L42')) = 0);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.ok('delivered without a POD is allowed (carrier owner)', $q$select public.set_load_status('30000000-0000-0000-0000-000000000040', 'delivered')$q$);
+select rlstest.err('control: delivered stays final for a carrier', $q$select public.set_load_status('30000000-0000-0000-0000-000000000040', 'at_delivery')$q$, 'one step|final');
+select rlstest.ok('carrier owner uploads a POD after delivered (storage)', rlstest.sins(:'L41' || '/pod/c1000000-0000-0000-0000-000000000001.jpg'));
+select rlstest.ok('carrier owner uploads a POD after delivered (load_documents)', rlstest.dins(:'L41', 'pod', :'L41' || '/pod/c1000000-0000-0000-0000-000000000001.jpg'));
+select rlstest.ok('carrier owner adds a second POD after delivered', rlstest.dins(:'L41', 'pod', :'L41' || '/pod/c1000000-0000-0000-0000-000000000002.jpg'));
+select rlstest.ok('carrier owner uploads a POD to the load it just delivered', rlstest.dins(:'L40', 'pod', :'L40' || '/pod/c1000000-0000-0000-0000-000000000003.jpg'));
+select rlstest.err('carrier A cannot upload a POD to carrier B delivered load (storage)', rlstest.sins(:'L42' || '/pod/c1000000-0000-0000-0000-000000000004.jpg'), 'row-level security');
+select rlstest.err('carrier A cannot upload a POD to carrier B delivered load (load_documents)', rlstest.dins(:'L42', 'pod', :'L42' || '/pod/c1000000-0000-0000-0000-000000000005.jpg'), 'row-level security');
+select rlstest.err('carrier cannot upload a BOL after delivered (storage)', rlstest.sins(:'L41' || '/bol/c1000000-0000-0000-0000-000000000006.pdf'), 'row-level security');
+select rlstest.err('carrier cannot upload a BOL after delivered (load_documents)', rlstest.dins(:'L41', 'bol', :'L41' || '/bol/c1000000-0000-0000-0000-000000000006.pdf'), 'row-level security');
+select rlstest.err('path regex still enforced after delivered: dotdot', rlstest.sins(:'L41' || '/pod/../' || :'L42' || '/pod/c1000000-0000-0000-0000-000000000007.jpg'), 'row-level security');
+select rlstest.err('path regex still enforced after delivered: non uuid name', rlstest.sins(:'L41' || '/pod/photo.jpg'), 'row-level security');
+select rlstest.err('path regex still enforced after delivered: upper case kind', rlstest.sins(:'L41' || '/POD/c1000000-0000-0000-0000-000000000008.jpg'), 'row-level security');
+select rlstest.err('path regex still enforced after delivered: load_documents row', rlstest.dins(:'L41', 'pod', :'L41' || '/pod/photo.jpg'), 'row-level security|violates check');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b2');
+select rlstest.ok('driver uploads a POD after delivered (storage)', rlstest.sins(:'L41' || '/pod/c1000000-0000-0000-0000-000000000009.jpg'));
+select rlstest.ok('driver uploads a POD after delivered (load_documents)', rlstest.dins(:'L41', 'pod', :'L41' || '/pod/c1000000-0000-0000-0000-000000000009.jpg'));
+select rlstest.err('driver A cannot upload a POD to carrier B delivered load', rlstest.dins(:'L42', 'pod', :'L42' || '/pod/c1000000-0000-0000-0000-00000000000a.jpg'), 'row-level security');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b3');
+select rlstest.ok('control: carrier B uploads a POD to its own delivered load', rlstest.dins(:'L42', 'pod', :'L42' || '/pod/c1000000-0000-0000-0000-00000000000b.jpg'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.err('customer cannot upload a POD to a delivered load (storage)', rlstest.sins(:'L41' || '/pod/c1000000-0000-0000-0000-00000000000c.jpg'), 'row-level security');
+select rlstest.err('customer cannot upload a POD to a delivered load (load_documents)', rlstest.dins(:'L41', 'pod', :'L41' || '/pod/c1000000-0000-0000-0000-00000000000c.jpg'), 'row-level security');
+select rlstest.cnt('control: customer reads the POD of the delivered load afterwards', $q$select 1 from public.load_documents where load_id = '30000000-0000-0000-0000-000000000041' and kind = 'pod'$q$, 3);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.ok('control: staff uploads a POD to a delivered load', rlstest.dins(:'L42', 'pod', :'L42' || '/pod/c1000000-0000-0000-0000-00000000000d.jpg'));
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('set_load_status no longer mentions a POD requirement',
+    pg_get_functiondef('public.set_load_status(uuid, public.load_status, timestamptz, text)'::regprocedure) !~* 'pod');
+  perform rlstest.chk('equipment_size CHECK allows exactly 26, 36, 53 and refuses 48',
+    (select count(*) from pg_constraint where conrelid = 'public.loads'::regclass and contype = 'c' and convalidated
+        and pg_get_constraintdef(oid) like '%equipment_size%' and pg_get_constraintdef(oid) not like '%48%') = 1);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.err('DB refuses a load with equipment_size 48', $q$insert into public.loads (customer_id, created_by, pickup_location_id, delivery_location_id, equipment_size, pickup_timing, pickup_date, pickup_time_start, delivery_timing, delivery_date, delivery_time_start, pickup_contact_name, pickup_contact_phone, delivery_contact_name, delivery_contact_phone)
+  values ((select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000a1', (select id from public.locations where name = 'Mitrex'), (select id from public.locations where name = 'Howden'), 48, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00', 'P', '1', 'D', '2')$q$, 'equipment_size');
+select rlstest.ok('control: DB accepts equipment_size 36', $q$insert into public.loads (customer_id, created_by, pickup_location_id, delivery_location_id, equipment_size, pickup_timing, pickup_date, pickup_time_start, delivery_timing, delivery_date, delivery_time_start, pickup_contact_name, pickup_contact_phone, delivery_contact_name, delivery_contact_phone)
+  values ((select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000a1', (select id from public.locations where name = 'Mitrex'), (select id from public.locations where name = 'Howden'), 36, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00', 'P', '1', 'D', '2')$q$);
 select rlstest.back();
 
 -- Summary ----------------------------------------------------------------

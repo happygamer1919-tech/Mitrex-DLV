@@ -143,13 +143,14 @@ test("loads carry the specified columns, MTX numbering and constraints; each bad
   const day = isoDate(5);
   const good = {
     customer_id: cust!.id, created_by: maria!.id, pickup_location_id: pu!.id, delivery_location_id: de!.id,
-    equipment_size: 48, pickup_timing: "appointment", pickup_date: day, pickup_time_start: "08:00",
+    equipment_size: 53, pickup_timing: "appointment", pickup_date: day, pickup_time_start: "08:00",
     delivery_timing: "window", delivery_date: day, delivery_time_start: "13:00", delivery_time_end: "16:00",
     pickup_contact_name: "Pat", pickup_contact_phone: "416-555-0101",
     delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102", po_number: po,
   };
   const bad: [string, Record<string, unknown>][] = [
     ["equipment 30", { equipment_size: 30 }],
+    ["equipment 48 (removed size)", { equipment_size: 48 }],
     ["weight 0", { weight_lbs: 0 }],
     ["pieces 0", { pieces: 0 }],
     ["appointment with an end time", { pickup_time_end: "09:00" }],

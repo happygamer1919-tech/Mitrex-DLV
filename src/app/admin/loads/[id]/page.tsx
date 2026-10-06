@@ -4,12 +4,13 @@ import { Shell } from "@/components/Shell";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { Card, StatusChip } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
-import { AssignCarrierForm, BolUpload, EtaForm, StatusOverrideForm } from "@/components/admin/LoadControls";
+import { AssignCarrierForm, EtaForm, StaffUpload, StatusOverrideForm } from "@/components/admin/LoadControls";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, fmtSlot, isoToEasternLocal, telHref } from "@/lib/format";
 import { STATUS_LABEL, type LoadDocument, type LoadEvent } from "@/lib/types";
 import { UUID } from "@/lib/admin/errors";
+import { nameIsStreet } from "@/lib/address";
 import { cancelLoad, markBooked } from "@/lib/admin/load-actions";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ function Address({ l }: { l: Loc | null }) {
   return (
     <>
       <span className="font-bold">{l.name}</span><br />
-      {l.address_line}, {l.city}, {l.province} {l.postal_code ?? ""}
+      {nameIsStreet(l) ? "" : `${l.address_line}, `}{l.city}, {l.province} {l.postal_code ?? ""}
     </>
   );
 }
@@ -81,6 +82,7 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
   const status = load.status as keyof typeof STATUS_LABEL;
   const closed = status === "delivered" || status === "cancelled";
   const hasBol = docs.some((d) => d.kind === "bol");
+  const hasPod = docs.some((d) => d.kind === "pod");
 
   return (
     <Shell profile={profile}>
@@ -91,6 +93,9 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
         <StatusChip status={status} />
         {!hasBol && ["booked", "at_pickup", "loading", "enroute", "at_delivery"].includes(status) ? (
           <span className="rounded-full bg-amber px-3 py-1 text-[13px] font-medium text-[#2B1500]">BOL pending</span>
+        ) : null}
+        {status === "delivered" && !hasPod ? (
+          <span data-testid="pod-pending" className="rounded-full bg-amber px-3 py-1 text-[13px] font-medium text-[#2B1500]">POD pending</span>
         ) : null}
       </div>
 
@@ -196,7 +201,12 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
                 ))}
               </ul>
             )}
-            {status !== "cancelled" ? <BolUpload loadId={load.id} /> : null}
+            {status !== "cancelled" ? (
+              <div className="space-y-6">
+                <StaffUpload loadId={load.id} kind="bol" />
+                <StaffUpload loadId={load.id} kind="pod" />
+              </div>
+            ) : null}
           </Card>
 
           {status === "enroute" || status === "at_delivery" ? (

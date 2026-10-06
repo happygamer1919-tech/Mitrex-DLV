@@ -2,12 +2,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 import { fmtSlot } from "@/lib/format";
+import { addressWithName } from "@/lib/address";
 
 type Loc = { name: string; address_line: string; city: string; province: string; postal_code: string | null } | null;
 
 function addr(l: Loc): string {
   if (!l) return "Unknown";
-  return `${l.name}, ${l.address_line}, ${l.city}, ${l.province}${l.postal_code ? " " + l.postal_code : ""}`;
+  return addressWithName(l);
 }
 
 // Emails every user of the load's carrier. Call ONLY after the actor was verified as staff.

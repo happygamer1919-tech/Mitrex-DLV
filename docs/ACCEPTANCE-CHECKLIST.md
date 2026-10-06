@@ -9,7 +9,7 @@ Run these on the live portal, https://portal.dlvlogistics.com. Each step says wh
 - Use the PO number `TEST-` plus the date for every test load, so test loads are easy to find and clean up.
 - Keep two browsers or devices handy: staff on a laptop, the carrier on a phone.
 
-Test load used below: Pickup **Mitrex**, Delivery **Howden**, 48 ft, pickup window tomorrow 8:00 AM to 11:00 AM, delivery appointment tomorrow 2:00 PM, contacts any name and phone, PO `TEST-<date>-1`.
+Test load used below: Pickup **Mitrex**, Delivery **Howden**, 53 ft, pickup window tomorrow 8:00 AM to 11:00 AM, delivery appointment tomorrow 2:00 PM, contacts any name and phone, PO `TEST-<date>-1`.
 
 ## M1. Maria books a load and staff get the email
 - [ ] Maria: **Book a load**, fill the test load, tap **Request load**. You land on the load page with status **Requested** and a load number like MTX-0001.
@@ -19,7 +19,7 @@ Test load used below: Pickup **Mitrex**, Delivery **Howden**, 48 ft, pickup wind
 
 ## M2. Carrier isolation
 - [ ] Staff: open the load (Admin, Board, the load). Choose carrier **Kaja Transport**, tap **Save carrier**.
-- [ ] Staff: **Upload BOL** (any small PDF or photo). The "BOL pending" badge disappears after the upload.
+- [ ] Staff: **Upload BOL** (any small PDF or photo): drop the file on the dashed box or tap it, then tap **Upload BOL**. The "BOL pending" badge disappears after the upload.
 - [ ] Staff: tap **Mark booked**. Status becomes **Booked**.
 - [ ] Kaja owner receives an email "Load MTX-0001 assigned to you" with addresses, contacts, times and a link. The link opens the load.
 - [ ] Kaja owner: **My loads** shows the load.
@@ -32,9 +32,10 @@ Kaja owner on a phone (any mobile browser is fine).
 - [ ] Next big buttons in order: **Start loading**, then **Leave for delivery**.
 - [ ] **Leave for delivery** opens a window asking for the delivery ETA. Clear the time and confirm: you get an error. Enter a time and confirm: status **Enroute**.
 - [ ] **Update ETA** works while enroute.
-- [ ] **Arrived at delivery**, then **Mark delivered**. Tap **Mark delivered** without a photo: you get "Take a photo of the signed POD to mark this load delivered." and the load is NOT delivered.
-- [ ] Take a real photo with the phone camera and confirm: status **Delivered**.
-- [ ] Optional: switch on airplane mode before confirming the photo. You get an error and a **Try again** button; turn it off, tap **Try again**: delivered once.
+- [ ] **Arrived at delivery**, then **Mark delivered**. The window says "Add the signed POD photo now if you have it. You can add it later from this load." Tap **Mark delivered** WITHOUT a photo: status **Delivered** (a POD is optional).
+- [ ] The load page now shows **Proof of delivery** with an orange **POD not uploaded yet**. Tap the box (or **Choose file**), take a real photo with the phone camera, tap **Add POD photo**: the card shows **View POD** and **Add another**.
+- [ ] Staff: before the photo the board card and the load page show a **POD pending** badge; after the photo it is gone. Maria's load says **POD not uploaded yet.** and then shows **View POD**.
+- [ ] Optional: on another load, choose a photo, switch on airplane mode and tap **Mark delivered**. You get an error with **Try again** and **Mark delivered without photo**; turn airplane mode off and tap **Try again**: delivered once with the photo.
 
 ## M4. Maria sees live status, ETA, BOL and POD
 - [ ] Maria: keep **Loads** open on her screen (do not refresh) while staff and the carrier do M2 and M3 on another load or a repeat of the test. The status on her list changes by itself within a few seconds.

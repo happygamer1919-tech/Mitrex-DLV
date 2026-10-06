@@ -81,7 +81,7 @@ async function activeEmails(roles: string[], carrierId?: string): Promise<string
 }
 
 // Maria books through the real form; returns the load id and number.
-async function mariaBooks(browser: Browser, route: { pickup: string; delivery: string }, po: string, equipment: 26 | 36 | 48 | 53) {
+async function mariaBooks(browser: Browser, route: { pickup: string; delivery: string }, po: string, equipment: 26 | 36 | 53) {
   const { ctx, page } = await as(browser, "maria");
   await page.goto("/book");
   await fillBooking(page, {

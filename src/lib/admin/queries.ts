@@ -41,3 +41,7 @@ const BOL_EXPECTED: LoadStatus[] = ["booked", "at_pickup", "loading", "enroute",
 export function bolPending(l: Pick<BoardLoad, "status" | "load_documents">): boolean {
   return BOL_EXPECTED.includes(l.status) && !l.load_documents.some((d) => d.kind === "bol");
 }
+
+export function podPending(l: Pick<BoardLoad, "status" | "load_documents">): boolean {
+  return l.status === "delivered" && !l.load_documents.some((d) => d.kind === "pod");
+}

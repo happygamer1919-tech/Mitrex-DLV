@@ -77,6 +77,7 @@ export type SeedStatus = "requested" | "booked" | "at_pickup" | "loading" | "enr
 // for E2E carrier A, created by Maria. Returns the id and the load number.
 export async function insertLoad(opts: {
   po: string; status?: SeedStatus; carrier?: boolean; pickupDate?: string; eta?: string | null; notes?: string;
+  pickupLocationId?: string; deliveryLocationId?: string;
 }): Promise<{ id: string; loadNumber: string }> {
   const db = adminClient();
   const status = opts.status ?? "booked";
@@ -91,8 +92,8 @@ export async function insertLoad(opts: {
   const pickup = opts.pickupDate ?? isoDate(2);
   const eta = opts.eta !== undefined ? opts.eta : status === "enroute" || status === "at_delivery" ? new Date(Date.now() + 6 * 3_600_000).toISOString() : null;
   const { data, error } = await db.from("loads").insert({
-    customer_id: cust!.id, created_by: maria!.id, pickup_location_id: pu!.id, delivery_location_id: de!.id,
-    equipment_size: 48, pickup_timing: "appointment", pickup_date: pickup, pickup_time_start: "08:00",
+    customer_id: cust!.id, created_by: maria!.id, pickup_location_id: opts.pickupLocationId ?? pu!.id, delivery_location_id: opts.deliveryLocationId ?? de!.id,
+    equipment_size: 53, pickup_timing: "appointment", pickup_date: pickup, pickup_time_start: "08:00",
     delivery_timing: "appointment", delivery_date: pickup, delivery_time_start: "14:00",
     pickup_contact_name: "Pat", pickup_contact_phone: "416-555-0101",
     delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102",

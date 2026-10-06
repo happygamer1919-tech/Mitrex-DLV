@@ -75,7 +75,7 @@ test("BOL pending shows on a booked load without a BOL and goes away once a BOL 
 
   await page.goto(`/admin/loads/${noBol.id}`);
   await expect(page.getByText("BOL pending", { exact: true })).toBeVisible();
-  await page.locator('input[type="file"]').setInputFiles({ name: "bol.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await page.getByTestId("upload-bol").getByTestId("dropzone-input").setInputFiles({ name: "bol.png", mimeType: "image/png", buffer: PNG_1X1 });
   await page.getByRole("button", { name: "Upload BOL" }).click();
   await expect(page.getByText("BOL uploaded.")).toBeVisible();
   const docs = await adminClient().from("load_documents").select("kind").eq("load_id", noBol.id);

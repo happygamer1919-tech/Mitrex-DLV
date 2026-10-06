@@ -6,7 +6,7 @@ import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
-import { BOARD_SELECT, bolPending, pickupTimeLabel, routeOf, type BoardLoad } from "@/lib/admin/queries";
+import { BOARD_SELECT, bolPending, pickupTimeLabel, podPending, routeOf, type BoardLoad } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +35,11 @@ function LoadCard({ l }: { l: BoardLoad }) {
       {bolPending(l) ? (
         <span className="mt-2 inline-flex rounded-full bg-amber px-3 py-1 text-[13px] font-medium text-[#2B1500]">
           BOL pending
+        </span>
+      ) : null}
+      {podPending(l) ? (
+        <span data-testid="pod-pending" className="mt-2 inline-flex rounded-full bg-amber px-3 py-1 text-[13px] font-medium text-[#2B1500]">
+          POD pending
         </span>
       ) : null}
     </Link>
