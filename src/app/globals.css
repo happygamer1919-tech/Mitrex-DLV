@@ -24,4 +24,19 @@ body {
 }
 body.surface-driver { background: var(--color-ink); color: #fff; }
 label { font-size: 13px; }
-:focus-visible { outline: 3px solid var(--color-amber); outline-offset: 2px; }
+/* Two-tone focus ring: an ink outline outside a 2px white gap. The outline reads on mint, white and
+   neon; the white inner ring reads on ink, so one rule works on every surface (measured in e2e/a11y.spec.ts). */
+:focus-visible, input[type=date]:focus-within, input[type=time]:focus-within, input[type=datetime-local]:focus-within { outline: 3px solid var(--color-ink); outline-offset: 2px; box-shadow: 0 0 0 2px #fff; }
+/* Driver screens: 48px touch targets for every text control (unlayered, so it beats the 44px utility). */
+.driver-surface input:not([type=checkbox]):not([type=radio]):not([type=file]), .driver-surface select, .driver-surface textarea { min-height: 48px; }
+/* Selects: native appearance clamps min-height in WebKit (measured 26px against a 44px rule), so draw our own chevron
+   and let the 44px rule apply on every engine. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='M3 6l5 5 5-5' fill='none' stroke='%23020814' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+  padding-right: 40px;
+}
