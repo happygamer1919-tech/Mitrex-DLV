@@ -63,3 +63,10 @@
 - One event per status change (0010): an AFTER UPDATE OF status trigger on loads writes the load_events row (actor = auth.uid() if it is a profile else NULL; note from the transaction local GUC dlv.event_note that set_load_status sets and clears). set_load_status keeps every rule and no longer inserts. Consequence for fixtures: a direct status UPDATE now writes an event, so rls.sql mkload fixtures that start at booked have one more event (the timeline control for L2 moved from 7 to 8) and the new tests assert the exact walk (7 events, consistent chain).
 - rls.sql needs a second staff_admin fixture (a3) because section 9 deactivates the only admin.
 - Apply: docs/APPLY-PACK.md (0006 to 0010, migrations first, then the app).
+
+## 2026-10-06 production apply and repository settings
+- Migrations 0006 to 0010 applied to production under the owner's explicit authorization (migrations first, then deploy). Result in docs/APPLY-PACK.md.
+- The GitHub default branch was still the first feature branch, so scheduled workflows (keepalive, backup) could never have run. Default branch is now main. Keepalive and backup were run manually once and succeeded; the backup artifact (private, 14 day retention) exists.
+- Production was redeployed after the owner rotated the Resend key and the database URL, so new environment values apply.
+- Owner accepted all defaults listed in docs/QUESTIONS.md for the hardening run (duplicate booking protection deferred, per-customer location contacts before a second customer, no full CSP in v1, magic-link fallback keeps role home, TRUNCATE gap accepted).
+

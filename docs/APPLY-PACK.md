@@ -380,3 +380,13 @@ Setup note: the local CLI treats `supabase db reset --version 0005` as the globa
 
 After the rehearsal `supabase db reset` restored all ten migrations.
 
+## Production result (2026-10-06)
+
+Run by the engineering assistant with the owner's explicit authorization (blocks A, B, C extracted verbatim from this file and run with `zsh -f` after loading the env file; no connection string was printed).
+
+| Step | Result |
+| --- | --- |
+| Block A pre-check | PRECHECK_OK. Before: loads 0, profiles 5, load_events 0, load_documents 0, locations 19, customers 1, carriers 2, location_requests 0. 8 public tables, RLS on 8 of 8, anon table grants 0, 22 policies, 1 active staff_admin, 0006 to 0010 all absent. |
+| Block B apply | APPLY_OK at 2026-10-06T13:10:06Z. 0006, 0007, 0008, 0009, 0010 each applied in its own transaction. 0 ERROR lines (NOTICEs were "drop trigger if exists" skips). Transcript: apply-transcript-2.txt (repo root, git ignored, no secrets). |
+| Block C post-check | POSTCHECK_OK. All 8 counts unchanged, new functions, triggers, updated_at columns, unique index, strict CHECK, set_load_status behaviour, leading indexes, RLS on every table, anon zero grants, no client EXECUTE on trigger functions, bucket private with 15 MB limit and mime list. |
+
