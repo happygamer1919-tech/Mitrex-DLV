@@ -1,23 +1,40 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Notice } from "@/components/ui";
 import { cancelLoad } from "@/lib/customer/actions";
+import { failure, goToLogin, withTimeout } from "@/lib/client/action-guard";
 
 export function CancelLoad({ loadId, loadNumber }: { loadId: string; loadNumber: string }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false); // own flag: a transition stays pending while Next holds the action
+  const inflight = useRef(false);
 
   function run() {
+    if (inflight.current) return;
+    inflight.current = true;
     setError(null);
-    startTransition(async () => {
-      const res = await cancelLoad(loadId);
-      if (res.error) setError(res.error);
-      else router.refresh();
-    });
+    setPending(true);
+    void (async () => {
+      try {
+        const res = await withTimeout(cancelLoad(loadId));
+        if (res.error) setError(res.error);
+        else router.refresh();
+      } catch (e) {
+        const f = failure(e);
+        if (f.sessionExpired) {
+          goToLogin();
+          return;
+        }
+        setError(f.message);
+      } finally {
+        inflight.current = false;
+        setPending(false);
+      }
+    })();
   }
 
   if (!confirming) {

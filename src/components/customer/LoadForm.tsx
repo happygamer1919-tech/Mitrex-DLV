@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button, Card, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 import { createLoad, updateLoad } from "@/lib/customer/actions";
+import { failure, goToLogin, withTimeout } from "@/lib/client/action-guard";
 import {
   EQUIPMENT_SIZES, validateLoad, type FieldErrors, type LoadFormValues,
 } from "@/lib/customer/validate";
@@ -67,7 +68,8 @@ export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
   const [v, setV] = useState<LoadFormValues>(initial);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false); // own flag: a transition stays pending while Next holds the action
+  const inflight = useRef(false); // synchronous double submit lock
 
   const shippers = useMemo(() => locations.filter((l) => l.can_ship && l.is_active), [locations]);
   const receivers = useMemo(() => locations.filter((l) => l.can_receive && l.is_active), [locations]);
@@ -112,12 +114,29 @@ export function LoadForm({ mode, loadId, locations, initial, today }: Props) {
       setFormError("Please fix the highlighted fields.");
       return;
     }
-    startTransition(async () => {
-      const res = mode === "edit" && loadId ? await updateLoad(loadId, payload) : await createLoad(payload);
-      // On success the action redirects, so a returned value is always a failure.
-      if (res?.fieldErrors) setErrors(res.fieldErrors);
-      setFormError(res?.error ?? (res?.fieldErrors ? "Please fix the highlighted fields." : null));
-    });
+    if (inflight.current) return;
+    inflight.current = true;
+    setPending(true);
+    void (async () => {
+      try {
+        const res = await withTimeout(
+          mode === "edit" && loadId ? updateLoad(loadId, payload) : createLoad(payload),
+        );
+        // On success the action redirects, so a returned value is always a failure.
+        if (res?.fieldErrors) setErrors(res.fieldErrors);
+        setFormError(res?.error ?? (res?.fieldErrors ? "Please fix the highlighted fields." : null));
+      } catch (e) {
+        const f = failure(e);
+        if (f.sessionExpired) {
+          goToLogin();
+          return;
+        }
+        setFormError(f.message);
+      } finally {
+        inflight.current = false;
+        setPending(false);
+      }
+    })();
   }
 
   function slot(side: "pickup" | "delivery", title: string) {

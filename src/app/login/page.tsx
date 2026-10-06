@@ -1,8 +1,9 @@
 import Image from "next/image";
+import { safeNext } from "@/lib/safe-next";
 import { LoginForm } from "./LoginForm";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; next?: string }> }) {
+  const { error, next } = await searchParams;
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-10">
       <div className="mb-6 flex items-center gap-3">
@@ -14,7 +15,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <div className="text-[13px] text-muted">Mitrex shipping portal</div>
         </div>
       </div>
-      <LoginForm initialError={error ? "That sign-in link is invalid or expired. Request a new one, or use a code." : null} />
+      <LoginForm nextPath={safeNext(next)} initialError={error ? "That sign-in link is invalid or expired. Request a new one, or use a code." : null} />
     </main>
   );
 }

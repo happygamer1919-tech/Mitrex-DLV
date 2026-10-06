@@ -30,6 +30,7 @@ export default defineConfig({
       NEXT_PUBLIC_SITE_URL: `http://localhost:${PORT}`,
       RESEND_API_KEY: "",
       NOTIFY_FROM: "",
+      NEXT_PUBLIC_ACTION_TIMEOUT_MS: "4000", // watchdog for the e2e server only (default 25000)
     },
   },
 });

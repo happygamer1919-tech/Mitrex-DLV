@@ -11,3 +11,4 @@
 | C7 ops: /api/health, keepalive and backup workflows, Operations docs | #8 | merged |
 | C8 handover docs: Maria guide, driver guide, runbook; team page copy | #9 | merged |
 | C2 e2e coverage, chromium + webkit iPhone 13; Realtime auth fix; carrier list fix | #10 | merged |
+| C3 failure UX: POD retry, double-tap safe, session return path, no stuck buttons; migration 0006 local only | #11 | merged |

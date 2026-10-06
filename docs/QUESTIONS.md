@@ -21,3 +21,9 @@ next.config.ts sends X-Content-Type-Options, Referrer-Policy, X-Frame-Options DE
 
 ## 2026-10-05 C4 npm audit --omit=dev
 Result: 0 vulnerabilities (0 high, 0 critical). No upgrades needed. Re-run before each release.
+
+## C3: booking has no duplicate protection (2026-10-06)
+If a booking request is slow, the 25 second watchdog frees the button, and the request then lands, a second tap creates a second requested load. Closing it needs a request id column on loads (migration) so a repeated request is ignored. Proposed default: leave as is for v1 (one customer, staff see duplicates on the board and can cancel one); add the request id before a second customer is onboarded.
+
+## C3: magic-link fallback does not carry the return path (2026-10-06)
+The emailed link fallback lands on the role home, not the original page; only the code login returns to the original path. Proposed default: leave (the code is the primary login).

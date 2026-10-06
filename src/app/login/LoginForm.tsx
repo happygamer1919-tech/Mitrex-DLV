@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Card, Field, Input, Notice } from "@/components/ui";
+import { safeNext } from "@/lib/safe-next";
 
 const RESEND_SECONDS = 30;
 
@@ -19,7 +20,7 @@ function isNetwork(e: AuthErr) {
 const OTP_LENGTH = 8;
 const MIN_CODE_LENGTH = 6;
 
-export function LoginForm({ initialError }: { initialError: string | null }) {
+export function LoginForm({ initialError, nextPath }: { initialError: string | null; nextPath: string | null }) {
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -107,8 +108,9 @@ export function LoginForm({ initialError }: { initialError: string | null }) {
         codeRef.current?.focus();
         return;
       }
-      // Hard navigation so the server sees the cookie session and routes by role.
-      window.location.assign("/");
+      // Hard navigation so the server sees the cookie session. Back to the page the user was on when
+      // the session ended (validated again here), otherwise "/" routes by role.
+      window.location.assign(safeNext(nextPath) ?? "/");
     } catch {
       setError("Network problem. Check your connection and try again.");
       setCode("");

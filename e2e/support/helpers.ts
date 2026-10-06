@@ -1,4 +1,4 @@
-import { devices, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { devices, type Browser, type BrowserContext, type BrowserContextOptions, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { deflateSync } from "node:zlib";
 import { BASE_URL, localEnv } from "./env";
@@ -17,13 +17,14 @@ function engineOptions(browser: Browser) {
   return { engine, options: rest };
 }
 
-export async function as(browser: Browser, who: Who, viewport?: Viewport): Promise<{ ctx: BrowserContext; page: Page }> {
+export async function as(browser: Browser, who: Who, viewport?: Viewport, extra?: BrowserContextOptions): Promise<{ ctx: BrowserContext; page: Page }> {
   const { engine, options } = engineOptions(browser);
   const ctx = await browser.newContext({
     ...options,
     storageState: stateFile(engine, who),
     baseURL: BASE_URL,
     ...(viewport ? { viewport } : {}),
+    ...(extra ?? {}),
   });
   return { ctx, page: await ctx.newPage() };
 }
