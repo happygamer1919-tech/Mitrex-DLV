@@ -4,18 +4,19 @@ import { easternLocalToIso, isoToEasternLocal } from "@/lib/format";
 import { isStaff, STATUS_LABEL } from "@/lib/types";
 import { addDays, isValidDay } from "@/lib/admin/cal";
 import { csvRow } from "@/lib/admin/csv";
+import { itsOrRef } from "@/lib/load-number";
 
 export const dynamic = "force-dynamic";
 
 const COLUMNS = [
-  "load_number", "created_at", "pickup_location", "delivery_location", "equipment_size", "moffett",
+  "load_number", "request_ref", "created_at", "pickup_location", "delivery_location", "equipment_size", "moffett",
   "weight_lbs", "pieces", "po_number", "pickup_timing", "pickup_date", "pickup_time_start",
   "pickup_time_end", "delivery_timing", "delivery_date", "delivery_time_start", "delivery_time_end",
   "carrier", "status", "eta", "delivered_at",
 ];
 
 const SELECT =
-  "load_number,created_at,equipment_size,moffett,weight_lbs,pieces,po_number,pickup_timing,pickup_date," +
+  "load_number,its_load_number,created_at,equipment_size,moffett,weight_lbs,pieces,po_number,pickup_timing,pickup_date," +
   "pickup_time_start,pickup_time_end,delivery_timing,delivery_date,delivery_time_start,delivery_time_end," +
   "status,eta,delivered_at," +
   "pickup:locations!pickup_location_id(name),delivery:locations!delivery_location_id(name),carrier:carriers(name)";
@@ -63,7 +64,7 @@ export async function GET(request: Request) {
   const lines = [csvRow(COLUMNS)];
   for (const l of rows) {
     lines.push(csvRow([
-      l.load_number, et(l.created_at), l.pickup?.name, l.delivery?.name, l.equipment_size,
+      itsOrRef(l), l.load_number, et(l.created_at), l.pickup?.name, l.delivery?.name, l.equipment_size,
       l.moffett ? "yes" : "no", l.weight_lbs, l.pieces, l.po_number, l.pickup_timing, l.pickup_date,
       hm(l.pickup_time_start), hm(l.pickup_time_end), l.delivery_timing, l.delivery_date,
       hm(l.delivery_time_start), hm(l.delivery_time_end), l.carrier?.name, l.status, et(l.eta), et(l.delivered_at),

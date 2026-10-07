@@ -222,7 +222,7 @@ test("Request again copies the details, leaves every date and time empty, and bo
   await page.getByRole("listitem").filter({ hasText: src.loadNumber }).getByRole("link", { name: "Request again" }).click();
   await expect(page).toHaveURL(new RegExp(`/book\\?from=${src.id}$`));
   await expect(page.locator("h1")).toHaveText(/Book a load/);
-  await expect(page.getByTestId("copied-notice")).toHaveText(`Copied from ${src.loadNumber}. Choose the new dates and times.`);
+  await expect(page.getByTestId("copied-notice")).toHaveText(`Copied from Request ${src.loadNumber}. Choose the new dates and times.`);
 
   await expect(page.getByLabel("Pickup location")).toHaveValue(pu.id);
   await expect(page.getByLabel("Delivery location")).toHaveValue(de.id);
@@ -353,7 +353,7 @@ test("last contact hint: the most recent load at the location, Use last contact,
   // Location with history: the default contact fills the fields (existing behaviour), the hint shows the latest load.
   await page.getByLabel("Pickup location").selectOption({ label: hLoc.label });
   await expect(page.getByLabel("Contact name").nth(0)).toHaveValue("Hdef Name");
-  await expect(pHint).toHaveText(`Last contact at ${hLoc.name}: New Contact, 416-555-0701 (${newest.loadNumber}, ${etDate(tNew)})`);
+  await expect(pHint).toHaveText(`Last contact at ${hLoc.name}: New Contact, 416-555-0701 (Request ${newest.loadNumber}, ${etDate(tNew)})`);
   await expect(pHint).not.toContainText("Old Contact");
   const use = page.getByTestId("pickup-use-last");
   await expect(use).toHaveText("Use last contact");
@@ -362,7 +362,7 @@ test("last contact hint: the most recent load at the location, Use last contact,
   await use.click();
   await expect(page.getByLabel("Contact name").nth(0)).toHaveValue("New Contact");
   await expect(page.getByLabel("Contact phone").nth(0)).toHaveValue("416-555-0701");
-  await expect(pHint).toHaveText(`Same as last time (${newest.loadNumber}, ${etDate(tNew)})`);
+  await expect(pHint).toHaveText(`Same as last time (Request ${newest.loadNumber}, ${etDate(tNew)})`);
   await expect(page.getByTestId("pickup-use-last")).toHaveCount(0);
   // Typing something else brings the button back; typing the same again hides it.
   await page.getByLabel("Contact name").nth(0).fill("Someone Else");
@@ -382,7 +382,7 @@ test("last contact hint: the most recent load at the location, Use last contact,
 
   // The delivery side has its own history (the delivery contact of the same loads).
   await page.getByLabel("Delivery location").selectOption({ label: hDel.label });
-  await expect(dHint).toHaveText(`Last contact at ${hDel.name}: New Receiver, 416-555-0801 (${newest.loadNumber}, ${etDate(tNew)})`);
+  await expect(dHint).toHaveText(`Last contact at ${hDel.name}: New Receiver, 416-555-0801 (Request ${newest.loadNumber}, ${etDate(tNew)})`);
   await page.getByTestId("delivery-use-last").click();
   await expect(page.getByLabel("Contact name").nth(1)).toHaveValue("New Receiver");
   await expect(page.getByLabel("Contact phone").nth(1)).toHaveValue("416-555-0801");
@@ -405,11 +405,11 @@ test("Request again shows the most recent contact at the location, which may be 
   await page.goto(`/book?from=${src.id}`);
   await expect(page.getByTestId("copied-notice")).toContainText(src.loadNumber);
   await expect(page.getByLabel("Contact name").nth(0)).toHaveValue("Src Contact");
-  await expect(page.getByTestId("pickup-last-contact")).toHaveText(`Last contact at ${rLoc.name}: Later Contact, 416-555-0903 (${later.loadNumber}, ${etDate(tLater)})`);
+  await expect(page.getByTestId("pickup-last-contact")).toHaveText(`Last contact at ${rLoc.name}: Later Contact, 416-555-0903 (Request ${later.loadNumber}, ${etDate(tLater)})`);
   await page.getByTestId("pickup-use-last").click();
   await expect(page.getByLabel("Contact name").nth(0)).toHaveValue("Later Contact");
   // The delivery contact equals the latest one there.
-  await expect(page.getByTestId("delivery-last-contact")).toHaveText(`Same as last time (${later.loadNumber}, ${etDate(tLater)})`);
+  await expect(page.getByTestId("delivery-last-contact")).toHaveText(`Same as last time (Request ${later.loadNumber}, ${etDate(tLater)})`);
   await ctx.close();
 });
 

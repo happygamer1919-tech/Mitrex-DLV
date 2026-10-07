@@ -51,3 +51,9 @@ Proposed default: manual gate M2 after the production apply. Open /loads as Mari
 ## DLV-022 Request again: delivered only, PO and notes copied (2026-10-06)
 Defaults used, owner may change: (1) Request again only for delivered loads, not cancelled ones. (2) PO number and notes are copied (editable), because Maria often repeats a PO; the "Truck i of N" line is dropped. (3) Last contact comes from the 200 most recent loads; an older load at a location is not seen and the saved default contact is used. (4) The hint offers the last contact with a button instead of filling it automatically when a location is chosen.
 Open question: should the PO number be left empty on a repeat (a new shipment usually has a new PO)? Proposed default: copied, editable.
+
+
+## DLV-025 ITS load number (defaults used, owner may change)
+1. Is a BOL required before a load can be booked? Default used: NO. Staff can book without a BOL; the "BOL pending" badge stays and the booking email tells Maria "The BOL will follow once uploaded". The BOL is emailed on its own when uploaded later. Making it mandatory is one extra condition in BookLoadForm (src/components/admin/LoadControls.tsx) and in bookLoad (src/lib/admin/load-actions.ts).
+2. Legacy loads that were booked before this change have no ITS number. Default: they keep working, Maria sees "Number pending" with the request ref, carriers see the request ref, and staff can add the number with "Edit ITS number". Should staff back-fill them? (needs the ITS numbers, only the owner has them)
+3. Should the booking email also go to Maria when staff correct the ITS number afterwards? Default: no (the correction is logged in the timeline only).

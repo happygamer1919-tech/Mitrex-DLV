@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Shell } from "@/components/Shell";
 import { LiveRefresh } from "@/components/LiveRefresh";
+import { LoadNumber } from "@/components/LoadNumber";
 import { Card, Notice, PageTitle, StatusChip, btnClass } from "@/components/ui";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -16,7 +17,7 @@ function Item({ l }: { l: BoardLoad }) {
   return (
     <Link href={`/admin/loads/${l.id}`} className="block rounded-[12px] border border-line bg-white p-2 hover:border-ink">
       <div className="flex flex-wrap items-center justify-between gap-1">
-        <span className="text-[13px] font-bold">{l.load_number}</span>
+        <span className="text-[13px] font-bold"><LoadNumber l={l} audience="staff" /></span>
         <StatusChip status={l.status} />
       </div>
       <p className="mt-1 text-[13px] text-muted">{pickupTimeLabel(l)}</p>

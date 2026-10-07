@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { as, forceStatus, insertLoad, loadRow, uniq } from "./support/helpers";
+import { as, forceStatus, insertLoad, loadRow, staffBook, uniq, uniqIts } from "./support/helpers";
 import { CARRIER_A } from "./support/users";
 
 test("Maria's list shows Booked within 5 s of staff booking, without a reload", async ({ browser }) => {
@@ -20,7 +20,7 @@ test("Maria's list shows Booked within 5 s of staff booking, without a reload", 
   await staff.page.getByRole("button", { name: "Save carrier" }).click();
   await expect(staff.page.getByText("Carrier", { exact: true }).first()).toBeVisible();
   await expect.poll(async () => (await loadRow(id)).carrier_id, { timeout: 15_000 }).not.toBeNull();
-  await staff.page.getByRole("button", { name: "Mark booked" }).click();
+  await staffBook(staff.page, uniqIts());
   await expect.poll(async () => (await loadRow(id)).status, { timeout: 15_000 }).toBe("booked");
 
   // No reload and no goto on Maria's page from here on.

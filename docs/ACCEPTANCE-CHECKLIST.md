@@ -12,17 +12,20 @@ Run these on the live portal, https://portal.dlvlogistics.com. Each step says wh
 Test load used below: Pickup **Mitrex**, Delivery **Howden**, 53 ft, pickup window tomorrow 8:00 AM to 11:00 AM, delivery appointment tomorrow 2:00 PM, contacts any name and phone, PO `TEST-<date>-1`.
 
 ## M1. Maria books a load and staff get the email
-- [ ] Maria: **Book a load**, fill the test load, tap **Request load**. You land on the load page with status **Requested** and a load number like MTX-0001.
-- [ ] Within about 1 minute the admin AND the CSR each receive an email "New load requested MTX-0001" with the route, equipment, times marked ET, contacts and a link to the load. (Check spam. The sender is DLV.)
-- [ ] The link opens the load in the staff view after sign-in.
-- [ ] Maria receives no email about it.
+- [ ] Maria: **Book a load**, fill the test load, tap **Request load**. You land on the load page with status **Requested**. The title says **Number pending** with a small grey "Request MTX-0001" next to it.
+- [ ] Within about 1 minute the admin AND the CSR each receive an email "New load requested (Request MTX-0001)" with the route, equipment, times marked ET, contacts, the line "ITS load number: not assigned yet. Enter it when you book." and a link to the load. (Check spam. The sender is DLV.)
+- [ ] The link opens the load in the staff view after sign-in. The title there reads "Request MTX-0001".
+- [ ] Maria receives no email at this point (she is emailed when the load is booked, see M2).
 
 ## M2. Carrier isolation
 - [ ] Staff: open the load (Admin, Board, the load). Choose carrier **Kaja Transport**, tap **Save carrier**.
 - [ ] Staff: **Upload BOL** (any small PDF or photo): drop the file on the dashed box or tap it, then tap **Upload BOL**. The "BOL pending" badge disappears after the upload.
-- [ ] Staff: tap **Mark booked**. Status becomes **Booked**.
-- [ ] Kaja owner receives an email "Load MTX-0001 assigned to you" with addresses, contacts, times and a link. The link opens the load.
-- [ ] Kaja owner: **My loads** shows the load.
+- [ ] Staff: **Mark booked** is greyed out and says what is missing ("Enter the ITS load number"). Type a real new ITS number from ITS (for a test, any unused number such as 9001) in the field **ITS load number (required to book)**, then tap **Mark booked**. Status becomes **Booked** and the title shows the ITS number. Try a letter or a number already used by another load: you get a clear message and nothing changes.
+- [ ] Kaja owner receives an email "Load 9001 assigned to you" (the ITS number) with addresses, contacts, times and a link. The link opens the load.
+- [ ] Maria and every other active user of Mitrex receive ONE email "Load 9001 booked" with the carrier, addresses, times (ET), contacts, equipment, a link to the load and the BOL attached as BOL-9001.pdf (open it: it is the file you uploaded).
+- [ ] Maria's **Loads** list and the load page now show 9001, not "Number pending".
+- [ ] Staff: **Edit ITS number** on the load, change it, save. The title and Maria's page show the new number and the timeline says "ITS load number changed from ... to ...".
+- [ ] Kaja owner: **My loads** shows the load with the ITS number.
 - [ ] FreightPro owner: **My loads** does NOT show it. Pasting the link from Kaja's email while signed in as FreightPro shows nothing (not found).
 - [ ] Maria's load page now says "Contact DLV to change this load" and has no Edit button.
 
@@ -46,7 +49,7 @@ Kaja owner on a phone (any mobile browser is fine).
 
 ## M6. CSV export opens in a spreadsheet
 - [ ] Staff: **Export**. Pick dates covering today and tomorrow, all statuses, download.
-- [ ] Open the file in Excel, Numbers or Google Sheets: columns are readable (21 columns starting load_number, created_at, pickup_location and ending eta, delivered_at), your TEST load row is there, times are Eastern, and nothing shows a formula error.
+- [ ] Open the file in Excel, Numbers or Google Sheets: columns are readable (22 columns starting load_number, request_ref, created_at and ending eta, delivered_at; load_number holds the ITS number, request_ref the MTX reference), your TEST load row is there, times are Eastern, and nothing shows a formula error.
 
 ## M7. Code login from the installed iPhone app
 - [ ] iPhone, Safari: open the portal, tap Share, **Add to Home Screen**, **Add**.
@@ -57,7 +60,7 @@ Kaja owner on a phone (any mobile browser is fine).
 
 ## M8. Request again
 - [ ] Maria: **Loads**, tap **Completed**. Delivered loads are listed newest first, each with its delivered date and a **Request again** button. A cancelled or open load has no such button.
-- [ ] Tap **Request again** on one. The booking form opens with the same locations, contacts, truck size, weight, pieces, PO and notes, and a note "Copied from MTX-nnnn. Choose the new dates and times." Every date and time is empty.
+- [ ] Tap **Request again** on one. The booking form opens with the same locations, contacts, truck size, weight, pieces, PO and notes, and a note "Copied from 9001. Choose the new dates and times." (the ITS number of the source load) Every date and time is empty.
 - [ ] Choose new dates and times, change one contact name, tap **Request load**. The new load shows the same details and the changed contact (use a TEST- PO number, and cancel it afterwards).
 - [ ] On **Book a load**, choose a pickup location you used before. Under the contact a line shows "Last contact at ...". Tap **Use last contact** and the line changes to "Same as last time".
 

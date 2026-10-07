@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { anon, as, insertLoad, isoDate, uniq } from "./support/helpers";
+import { anon, as, insertLoad, isoDate, uniq, uniqIts } from "./support/helpers";
 import { makeLocation, retireLocations } from "./support/book";
 import type { Who } from "./support/users";
 
@@ -267,7 +267,7 @@ test("customer pages and states", async ({ browser }) => {
       await scan(page, `/loads/[id] (${name})`, { path: new RegExp(`^/loads/${l.id}$`), h1: new RegExp(l.loadNumber), text: name[0].toUpperCase() + name.slice(1) });
     }
     await page.goto(`/loads/${requested.id}/edit`);
-    await scan(page, "/loads/[id]/edit", { path: new RegExp(`^/loads/${requested.id}/edit$`), h1: new RegExp(`Edit ${requested.loadNumber}`) });
+    await scan(page, "/loads/[id]/edit", { path: new RegExp(`^/loads/${requested.id}/edit$`), h1: new RegExp(`Edit Request ${requested.requestRef}`) });
     await page.goto("/locations");
     await scan(page, "/locations", { path: /^\/locations$/, h1: /Locations/ });
 
@@ -310,6 +310,39 @@ test("staff pages", async ({ browser }) => {
       if (label.includes("calendar")) await expect(page).toHaveURL(label.includes("(week)") ? /view=week/ : /view=month/);
       await scan(page, label, { path: pathRe, h1, text });
     }
+  });
+});
+
+test("staff booking card states: needs carrier and ITS number, refusal message, ITS ready, Edit ITS number", async ({ browser }) => {
+  const noCarrier = await insertLoad({ po: uniq("A11Y-BK0"), status: "requested", carrier: false });
+  const ready = await insertLoad({ po: uniq("A11Y-BK1"), status: "requested", carrier: true });
+  const booked = await insertLoad({ po: uniq("A11Y-BK2"), status: "booked" });
+  const h1 = (l: { requestRef: string }) => new RegExp(`Request ${l.requestRef}`);
+  await session(browser, "admin", async (page) => {
+    await page.goto(`/admin/loads/${noCarrier.id}`);
+    await scan(page, "/admin/loads/[id] (booking card: carrier and ITS number missing)", {
+      path: new RegExp(`^/admin/loads/${noCarrier.id}$`), h1: h1(noCarrier), text: "Assign a carrier. Enter the ITS load number.",
+    });
+    await page.goto(`/admin/loads/${ready.id}`);
+    await scan(page, "/admin/loads/[id] (booking card: ITS number missing)", {
+      path: new RegExp(`^/admin/loads/${ready.id}$`), h1: h1(ready), text: "Enter the ITS load number.",
+    });
+    await page.getByLabel("ITS load number (required to book)").fill("abc");
+    await page.getByRole("button", { name: "Mark booked" }).click();
+    await scan(page, "/admin/loads/[id] (booking card: refused number)", {
+      path: new RegExp(`^/admin/loads/${ready.id}$`), h1: h1(ready), text: /must be digits/,
+    });
+    await page.getByLabel("ITS load number (required to book)").fill(uniqIts());
+    await expect(page.getByRole("button", { name: "Mark booked" })).toBeEnabled();
+    await scan(page, "/admin/loads/[id] (booking card: ready to book)", {
+      path: new RegExp(`^/admin/loads/${ready.id}$`), h1: h1(ready), text: "Enter the new load number from ITS.",
+    });
+    await page.goto(`/admin/loads/${booked.id}`);
+    await page.getByRole("button", { name: "Edit ITS number" }).click();
+    await expect(page.getByTestId("its-edit-input")).toBeVisible();
+    await scan(page, "/admin/loads/[id] (Edit ITS number open)", {
+      path: new RegExp(`^/admin/loads/${booked.id}$`), h1: new RegExp(booked.loadNumber), text: "Save ITS number",
+    });
   });
 });
 

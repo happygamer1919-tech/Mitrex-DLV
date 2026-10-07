@@ -31,7 +31,7 @@ export type Customer = { id: string; name: string };
 export type Timing = "appointment" | "window";
 
 export type Load = {
-  id: string; load_number: string; customer_id: string; created_by: string;
+  id: string; load_number: string; its_load_number: string | null; customer_id: string; created_by: string;
   pickup_location_id: string; delivery_location_id: string;
   equipment_size: 26 | 36 | 53; moffett: boolean;
   weight_lbs: number | null; pieces: number | null; po_number: string | null; notes: string | null;

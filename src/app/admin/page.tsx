@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Shell } from "@/components/Shell";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { Notice, PageTitle } from "@/components/ui";
+import { LoadNumber } from "@/components/LoadNumber";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime } from "@/lib/format";
@@ -21,7 +22,7 @@ function LoadCard({ l }: { l: BoardLoad }) {
       className="block rounded-[16px] border border-line bg-card p-3 hover:border-ink"
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[16px] font-bold">{l.load_number}</span>
+        <span className="text-[16px] font-bold"><LoadNumber l={l} audience="staff" /></span>
         <span className="text-[13px] text-muted">{l.equipment_size} ft</span>
       </div>
       <p className="mt-1 break-words text-[15px]">{routeOf(l)}</p>

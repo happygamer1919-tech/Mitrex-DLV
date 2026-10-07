@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { StatusChip } from "@/components/ui";
+import { LoadNumber } from "@/components/LoadNumber";
 import { MoffettBadge } from "@/components/carrier/MoffettBadge";
 import { fmtDateTime, fmtSlot } from "@/lib/format";
 import type { CarrierLoad } from "@/lib/carrier/loads";
@@ -24,7 +25,7 @@ export function LoadCard({ load }: { load: CarrierLoad }) {
       className="block min-h-[48px] rounded-[16px] border border-line bg-card p-4 text-ink"
     >
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="text-[20px] font-bold">{load.load_number}</span>
+        <span className="text-[20px] font-bold"><LoadNumber l={load} audience="carrier" /></span>
         <StatusChip status={load.status} />
         {load.moffett ? <MoffettBadge /> : null}
       </div>

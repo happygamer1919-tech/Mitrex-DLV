@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { LiveRefresh } from "@/components/LiveRefresh";
+import { LoadNumber } from "@/components/LoadNumber";
+import { customerLabel } from "@/lib/load-number";
 import { Shell } from "@/components/Shell";
 import { Card, LinkButton, Notice, StatusChip } from "@/components/ui";
 import { requireCustomer } from "@/lib/auth";
@@ -32,11 +34,11 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
   const wanted = typeof booked === "string" ? [...new Set(booked.split(","))] : []; // duplicates collapse
   const bookedIds = wanted.length >= 2 && wanted.length <= 10 && wanted.every((x) => UUID.test(x)) ? wanted : [];
-  let bookedLoads: { id: string; load_number: string }[] = [];
+  let bookedLoads: { id: string; load_number: string; its_load_number: string | null }[] = [];
   if (bookedIds.length > 0) {
-    const { data: found } = await supabase.from("loads").select("id,load_number").in("id", bookedIds);
-    const byId = new Map(((found ?? []) as { id: string; load_number: string }[]).map((r) => [r.id, r]));
-    bookedLoads = bookedIds.map((id) => byId.get(id)).filter((r): r is { id: string; load_number: string } => Boolean(r));
+    const { data: found } = await supabase.from("loads").select("id,load_number,its_load_number").in("id", bookedIds);
+    const byId = new Map(((found ?? []) as { id: string; load_number: string; its_load_number: string | null }[]).map((r) => [r.id, r]));
+    bookedLoads = bookedIds.map((id) => byId.get(id)).filter((r): r is { id: string; load_number: string; its_load_number: string | null } => Boolean(r));
   }
 
   const chip = (active: boolean) =>
@@ -54,7 +56,7 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
         <div className="mb-4">
           <Notice tone="ok">
             <span data-testid="booked-banner">
-              {bookedLoads.length} {bookedLoads.length === 1 ? "load" : "loads"} requested: {bookedLoads.map((l) => l.load_number).join(", ")}. Each truck is its own load.
+              {bookedLoads.length} {bookedLoads.length === 1 ? "load" : "loads"} requested: {bookedLoads.map((l) => customerLabel(l)).join(", ")}. Each truck is its own load.
             </span>
           </Notice>
         </div>
@@ -80,7 +82,7 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
           <li key={l.id} className="rounded-[16px] border border-line bg-card hover:border-ink">
             <Link href={`/loads/${l.id}`} className="block rounded-[16px] p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[18px] font-bold">{l.load_number}</span>
+                <span className="text-[18px] font-bold"><LoadNumber l={l} audience="customer" /></span>
                 <StatusChip status={l.status} />
               </div>
               <p className="mt-1 text-[16px] break-words">

@@ -6,6 +6,7 @@ export type LocLite = { name: string; city: string; province: string };
 export type BoardLoad = {
   id: string;
   load_number: string;
+  its_load_number: string | null;
   status: LoadStatus;
   pickup_date: string;
   pickup_timing: "appointment" | "window";
@@ -21,7 +22,7 @@ export type BoardLoad = {
 };
 
 export const BOARD_SELECT =
-  "id,load_number,status,pickup_date,pickup_timing,pickup_time_start,pickup_time_end,equipment_size,eta,carrier_id," +
+  "id,load_number,its_load_number,status,pickup_date,pickup_timing,pickup_time_start,pickup_time_end,equipment_size,eta,carrier_id," +
   "pickup:locations!pickup_location_id(name,city,province)," +
   "delivery:locations!delivery_location_id(name,city,province)," +
   "carrier:carriers(name),load_documents(kind)";

@@ -7,7 +7,7 @@ async function loadNumbers(page: Page): Promise<string[]> {
   await page.goto("/my-loads");
   await expect(page.getByRole("heading", { name: "My loads" })).toBeVisible();
   const text = await page.locator("body").innerText();
-  return [...new Set(text.match(/MTX-\d+/g) ?? [])].sort();
+  return [...new Set(text.match(/\b\d{12,}\b/g) ?? [])].sort(); // seeded ITS numbers (digits)
 }
 
 test("owner adds a driver, driver signs in and sees the same loads, owner removes the driver", async ({ browser }) => {

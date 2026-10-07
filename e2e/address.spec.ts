@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminClient, as, insertLoad, uniq } from "./support/helpers";
+import { adminClient, as, insertLoad, staffBook, uniq, uniqIts } from "./support/helpers";
 import { makeLocation, retireLocations } from "./support/book";
 import { sentEmails } from "./support/mail-mock";
 import { addressWithName, nameIsStreet } from "../src/lib/address";
@@ -33,19 +33,20 @@ test("assignment email, carrier page, customer page and staff page print the sha
   const delivery = await makeLocation({ prefix: "E2E-ADDRD" }); // control: a name that differs from its street
   cleanup.push(pickup.id, delivery.id);
   try {
-    const { id, loadNumber } = await insertLoad({ po: uniq("ADDR"), status: "requested", pickupLocationId: pickup.id, deliveryLocationId: delivery.id });
+    const { id } = await insertLoad({ po: uniq("ADDR"), status: "requested", pickupLocationId: pickup.id, deliveryLocationId: delivery.id });
     const staff = await as(browser, "admin");
     await staff.page.goto(`/admin/loads/${id}`);
     await staff.page.getByLabel("Carrier").first().selectOption({ label: CARRIER_A });
     await staff.page.getByRole("button", { name: "Save carrier" }).click();
     await expect(staff.page.getByText("Carrier assigned.", { exact: true })).toBeVisible();
-    await staff.page.getByRole("button", { name: "Mark booked" }).click();
+    const its = uniqIts();
+    await staffBook(staff.page, its);
     await expect.poll(async () => (await adminClient().from("loads").select("status").eq("id", id).single()).data?.status).toBe("booked");
 
     // Email: the pickup line has the street once; the control line keeps name and street.
     let body = "";
     await expect.poll(async () => {
-      const m = (await sentEmails()).find((x) => (x.subject ?? "").includes(loadNumber));
+      const m = (await sentEmails()).find((x) => (x.subject ?? "").includes(`Load ${its} assigned`));
       body = m?.text ?? "";
       return body;
     }, { timeout: 15_000 }).not.toBe("");
