@@ -13,6 +13,8 @@ export type BoardLoad = {
   pickup_time_start: string;
   pickup_time_end: string | null;
   equipment_size: number;
+  pickup_location_id: string;
+  delivery_location_id: string;
   eta: string | null;
   carrier_id: string | null;
   pickup: LocLite | null;
@@ -22,7 +24,7 @@ export type BoardLoad = {
 };
 
 export const BOARD_SELECT =
-  "id,load_number,its_load_number,status,pickup_date,pickup_timing,pickup_time_start,pickup_time_end,equipment_size,eta,carrier_id," +
+  "id,load_number,its_load_number,status,pickup_date,pickup_timing,pickup_time_start,pickup_time_end,equipment_size,pickup_location_id,delivery_location_id,eta,carrier_id," +
   "pickup:locations!pickup_location_id(name,city,province)," +
   "delivery:locations!delivery_location_id(name,city,province)," +
   "carrier:carriers(name),load_documents(kind)";

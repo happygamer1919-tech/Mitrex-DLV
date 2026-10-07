@@ -10,6 +10,7 @@ function navFor(p: Profile): NavItem[] {
       { href: "/admin", label: "Board" },
       { href: "/admin/calendar", label: "Calendar" },
       { href: "/admin/locations", label: "Locations" },
+      { href: "/admin/lanes", label: "Lanes" },
       { href: "/admin/requests", label: "Requests" },
       { href: "/admin/export", label: "Export" },
     ];

@@ -5,6 +5,8 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 import { Card, StatusChip } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { AssignCarrierForm, BookLoadForm, EditItsForm, EtaForm, StaffUpload, StatusOverrideForm } from "@/components/admin/LoadControls";
+import { ItsCopyCard } from "@/components/admin/ItsCopyCard";
+import { laneLabel, resolve, type LaneReference } from "@/lib/admin/lane-reference";
 import { DeleteLoadCard } from "@/components/admin/DeleteLoadCard";
 import { LoadNumber } from "@/components/LoadNumber";
 import { itsOrRef, staffLabel } from "@/lib/load-number";
@@ -76,6 +78,16 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
       .forEach((p) => actors.set(p.id, p.full_name || p.email));
   }
 
+  // Staff only, evaluated live from the load's CURRENT pickup, delivery and size (no snapshot).
+  const scenario = { pickupId: load.pickup_location_id as string, deliveryId: load.delivery_location_id as string, size: Number(load.equipment_size) };
+  let reference: LaneReference | null = null;
+  let referenceFailed = false;
+  try {
+    reference = await resolve(supabase, scenario.pickupId, scenario.deliveryId, scenario.size);
+  } catch {
+    referenceFailed = true;
+  }
+
   const signed = await Promise.all(
     docs.map(async (d) => {
       const { data: s } = await supabase.storage.from("documents").createSignedUrl(d.storage_path, 300);
@@ -101,6 +113,15 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
         {status === "delivered" && !hasPod ? (
           <span data-testid="pod-pending" className="rounded-full bg-amber px-3 py-1 text-[13px] font-medium text-[#2B1500]">POD pending</span>
         ) : null}
+      </div>
+
+      <div className="mb-4 max-w-2xl">
+        <ItsCopyCard
+          reference={reference}
+          failed={referenceFailed}
+          scenario={scenario}
+          scenarioText={laneLabel(load.pickup?.name ?? "Unknown", load.delivery?.name ?? "Unknown", scenario.size)}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

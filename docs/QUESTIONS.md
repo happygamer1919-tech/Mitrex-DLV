@@ -65,3 +65,13 @@ Open question: should the PO number be left empty on a repeat (a new shipment us
 3. Can a delivered load with a POD be deleted? Default used: yes, any status, because the owner asked for "delete forever" and typing the number is the safeguard. A rule such as "only cancelled loads" would be one condition in the function.
 4. Should deleting a load email anyone (the carrier, Maria)? Default used: no email.
 
+
+
+## DLV-028 Lane references (defaults used, owner may change)
+1. Is the lane key pickup + delivery + truck size, with direction? Default used: YES (Mitrex to 481 and 481 to Mitrex are separate rows, as in the owner's table). Merging the two directions would be a different key.
+2. 36 ft has no rows yet (the owner said it exists for upcoming projects). Default used: allowed in the table and the forms, no rows, so a 36 ft request says "No ITS reference for this lane and size".
+3. Snapshot or live? Default used: LIVE. The number is read from the load's current route and size every time, nothing is copied onto the load. A lane edit therefore changes what existing Requested loads show.
+4. Who may edit lanes? Default used: both staff roles (admin and CSR), as for all operational work. Limiting edits to the admin is a one line change in the four policies of 0015 (dlv_is_staff() to dlv_is_admin()) and in requireStaff on the lanes actions.
+5. The five lanes the owner left out on purpose (125G, D Express and MTD to Etobicoke, 481 to Brampton, Mitrex to Winnipeg) are not in the data. Staff add them from the "Add it" link the first time they are needed, or by CSV once the old ITS numbers are known.
+6. Should the staff email include the lane note? Default used: no (number and scenario only). The note shows on the Lanes page.
+7. Maria will see the Moffett toggle locked on for 1HAM, 152 Sh, 831 Queen, Glengarry, Kitney site, Military Trailsite and PrimeFab from the day 0016 is applied (it already does for SAMIH). Please tell her. If a site should stay optional, untick Requires Moffett on the Locations page (the lane keeps its Y or N derived from the location).
