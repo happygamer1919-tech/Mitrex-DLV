@@ -109,3 +109,14 @@ Most likely the sign-in email cannot be sent. Check, in this order:
 - Developer: info@a-and-i-automation.com
 - Supabase account email: info@a-and-i-automation.com
 - Vercel account email: info@a-and-i-automation.com
+
+## Sign-in email design (Supabase template)
+
+The branded sign-in email lives in `supabase/templates/magic_link.html` (local stack reads it from `supabase/config.toml`). Hosted Supabase does NOT read the file, so after any change paste it by hand:
+
+1. Supabase dashboard, project for the portal, Authentication, Emails (Email Templates), tab Magic Link.
+2. Subject: `Your DLV sign-in code` (keep it exactly, the guides name this subject).
+3. Replace the message body with the full contents of `supabase/templates/magic_link.html` and save.
+4. Request a sign-in code for your own address on the portal login page and check the email shows the 8 digit code and the Sign in button.
+
+The template must keep `{{ .Token }}` (the code) and `{{ .ConfirmationURL }}` (the link). Only the Magic Link template is used: users are created by the invite form with no invitation email.
