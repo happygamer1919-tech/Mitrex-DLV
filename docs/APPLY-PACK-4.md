@@ -501,3 +501,13 @@ Rehearsed on the LOCAL stack only (127.0.0.1:54322), never production. Method: `
 
 ### Rehearsal re-run by the engineering assistant (2026-10-07)
 The reviewer could not execute the blocks, so they were re-run from the lead session: `supabase db reset --last 1` (journal max 0012, 12 rows), three production-like rows added (one staff admin, one customer user, one load), then blocks A, B, C extracted verbatim and run under `zsh -f` with `DATABASE_URL_DIRECT` exported to the local URL for those processes only. Result: PRECHECK_OK, APPLY_OK, POSTCHECK_OK. A first attempt without an admin row correctly stopped at PRECHECK_FAIL ("no active staff_admin"). `supabase db reset` restored all 13 migrations afterwards.
+
+## Production result (2026-10-07)
+
+Run by the engineering assistant under the owner's standing approval ("yes, apply the migrations when ready"). Blocks A, B and C were extracted verbatim from this file and run with `zsh -f` after loading the env file; no connection string was printed. PR #24 was merged only after the post-check passed (migrations first, then deploy).
+
+| Step | Result |
+| --- | --- |
+| Block A pre-check | PRECHECK_OK. Production at 0001 to 0012, 3 loads, 1 active staff_admin, no load with an unusual request ref, its_load_number and set_its_load_number absent. |
+| Block B apply | APPLY_OK at 2026-10-07T00:54:23Z. 0013 in one transaction, 0 ERROR lines. |
+| Block C post-check | POSTCHECK_OK. All 8 row counts unchanged; its_load_number column with the validated format CHECK (digits, optional dash and digits, at most 30 characters) and the partial unique index; set_its_load_number staff only, EXECUTE for authenticated and not anon or PUBLIC; set_load_status carries the new ITS rule, still has no POD requirement and keeps every earlier rule; security posture unchanged. |
