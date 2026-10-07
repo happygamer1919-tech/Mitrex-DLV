@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { Shell } from "@/components/Shell";
+import { customerLabel } from "@/lib/load-number";
 import { PageTitle } from "@/components/ui";
 import { LoadForm } from "@/components/customer/LoadForm";
 import { requireCustomer } from "@/lib/auth";
@@ -21,7 +22,7 @@ export default async function EditLoadPage({ params }: { params: Promise<{ id: s
   const { data: locs } = await supabase.from("locations").select("*").eq("is_active", true).order("name");
   return (
     <Shell profile={profile}>
-      <PageTitle>Edit {l.load_number}</PageTitle>
+      <PageTitle>Edit {customerLabel(l)}</PageTitle>
       <LoadForm mode="edit" loadId={id} locations={(locs ?? []) as Location[]}
         initial={loadToFormValues(l)} today={todayEastern()} />
     </Shell>

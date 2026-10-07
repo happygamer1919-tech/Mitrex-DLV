@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { assertLocalUrl } from "./guard";
 
@@ -10,7 +11,9 @@ export const MAIL_MOCK_PORT = Number(process.env.E2E_MAIL_MOCK_PORT ?? 3299);
 export const MAIL_MOCK_URL = `http://127.0.0.1:${MAIL_MOCK_PORT}`;
 assertLocalUrl(MAIL_MOCK_URL, "mail mock url");
 
-export type SentEmail = { from: string; to: string[]; subject: string; text?: string; html?: string };
+// Attachments are recorded as metadata (filename, decoded byte length, content type, sha256 of the bytes), not content.
+export type SentAttachment = { filename: string; bytes: number; contentType: string | null; sha256: string };
+export type SentEmail = { from: string; to: string[]; subject: string; text?: string; html?: string; attachments: SentAttachment[] };
 
 export function startMailMock(): Promise<Server> {
   assertLocalUrl(MAIL_MOCK_URL, "mail mock url");
@@ -32,7 +35,18 @@ export function startMailMock(): Promise<Server> {
       }
       if (req.method === "POST" && req.url === "/emails") {
         let body: SentEmail | null = null;
-        try { body = JSON.parse(raw) as SentEmail; } catch { body = null; }
+        try {
+          const j = JSON.parse(raw) as Omit<SentEmail, "attachments"> & {
+            attachments?: { filename: string; content?: string; content_type?: string }[];
+          };
+          body = {
+            ...j,
+            attachments: (j.attachments ?? []).map((a) => {
+              const buf = Buffer.from(a.content ?? "", "base64");
+              return { filename: a.filename, bytes: buf.length, contentType: a.content_type ?? null, sha256: createHash("sha256").update(buf).digest("hex") };
+            }),
+          };
+        } catch { body = null; }
         if (body) sent.push(body); // recorded even when the mock then answers with a failure
         if (status !== 200) return json(status, { name: "application_error", statusCode: status, message: "mock failure" });
         return json(200, { id: `mock-${sent.length}` });

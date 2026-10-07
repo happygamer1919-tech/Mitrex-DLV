@@ -2,6 +2,16 @@
 
 Admin pages are in the top menu when you sign in as staff admin. Never paste keys into chat, email or git.
 
+## Book a load (staff)
+DLV dispatches in ITS. Maria's request has only an internal request reference (MTX-0005) and shows "Number pending" to her. To book it:
+1. Open the load (Board, then the load). The title reads "Request MTX-0005".
+2. In **Carrier and booking**: pick the carrier and tap **Save carrier**.
+3. Upload the BOL in **Documents** (drop the file or tap the box, then **Upload BOL**). A BOL is not required to book: without it the load shows "BOL pending" and the booking email to Maria says the BOL will follow. If you upload the BOL after booking, Maria is emailed the file at once.
+4. Create the load in ITS first, then type the new ITS load number in **ITS load number (required to book)** (digits, a split such as 313-2 is fine). **Mark booked** stays grey until a carrier is saved and a number is typed, and says which is missing.
+5. Tap **Mark booked**. The carrier users and all active Mitrex users are emailed; the load is now named by the ITS number everywhere.
+6. Typed the wrong number? **Edit ITS number** on the load (any time after booking). The change is logged in the timeline. Two loads can never share an ITS number.
+A status override out of Requested also asks for the ITS number. A load booked before this feature has no ITS number: it keeps working, and **Edit ITS number** adds one.
+
 ## Add a location
 1. Open **Locations**.
 2. Tap **New location**.

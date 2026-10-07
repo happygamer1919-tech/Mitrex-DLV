@@ -71,14 +71,30 @@ export function uniq(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${process.pid}-${seq}`.toUpperCase();
 }
 
+// A unique ITS load number for a seeded load: digits only (the database CHECK), unique across runs and workers.
+let itsSeq = 0;
+export function uniqIts(): string {
+  itsSeq += 1;
+  return `${Date.now()}${String(process.pid % 1000).padStart(3, "0")}${String(itsSeq % 100).padStart(2, "0")}`;
+}
+
+// Staff booking through the real card: type the ITS number, tap Mark booked (the carrier must already be saved).
+export async function staffBook(page: Page, its: string): Promise<void> {
+  await page.getByLabel("ITS load number (required to book)").fill(its);
+  await page.getByRole("button", { name: "Mark booked" }).click();
+}
+
 export type SeedStatus = "requested" | "booked" | "at_pickup" | "loading" | "enroute" | "at_delivery" | "delivered" | "cancelled";
 
 // Inserts a load directly (service role, no JWT: the guard triggers allow it). Default: a booked load
-// for E2E carrier A, created by Maria. Returns the id and the load number.
+// for E2E carrier A, created by Maria. Returns the id and the numbers.
+// DLV-025: a seeded load that is past "requested" gets a unique ITS number (opts.its overrides it, null seeds a
+// legacy load WITHOUT one). A requested load has none ("Number pending"). `loadNumber` is the number people SEE
+// (the ITS number when set, else the request ref); `requestRef` is always the MTX-0005 style value.
 export async function insertLoad(opts: {
   po: string; status?: SeedStatus; carrier?: boolean; pickupDate?: string; eta?: string | null; notes?: string;
-  pickupLocationId?: string; deliveryLocationId?: string;
-}): Promise<{ id: string; loadNumber: string }> {
+  pickupLocationId?: string; deliveryLocationId?: string; its?: string | null;
+}): Promise<{ id: string; loadNumber: string; requestRef: string; itsNumber: string | null }> {
   const db = adminClient();
   const status = opts.status ?? "booked";
   const withCarrier = opts.carrier ?? status !== "requested";
@@ -89,6 +105,7 @@ export async function insertLoad(opts: {
     db.from("locations").select("id").eq("name", "Mitrex").single(),
     db.from("locations").select("id").eq("name", "Howden").single(),
   ]);
+  const its = opts.its !== undefined ? opts.its : status === "requested" ? null : uniqIts();
   const pickup = opts.pickupDate ?? isoDate(2);
   const eta = opts.eta !== undefined ? opts.eta : status === "enroute" || status === "at_delivery" ? new Date(Date.now() + 6 * 3_600_000).toISOString() : null;
   const { data, error } = await db.from("loads").insert({
@@ -97,13 +114,15 @@ export async function insertLoad(opts: {
     delivery_timing: "appointment", delivery_date: pickup, delivery_time_start: "14:00",
     pickup_contact_name: "Pat", pickup_contact_phone: "416-555-0101",
     delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102",
-    po_number: opts.po, notes: opts.notes ?? null, status,
+    po_number: opts.po, notes: opts.notes ?? null, status, its_load_number: its,
     carrier_id: withCarrier ? car!.id : null, eta,
     ...(status === "cancelled" ? { cancelled_at: new Date().toISOString() } : {}),
     ...(status === "delivered" ? { delivered_at: new Date().toISOString() } : {}),
-  }).select("id,load_number").single();
+  }).select("id,load_number,its_load_number").single();
   if (error) throw error;
-  return { id: data.id as string, loadNumber: data.load_number as string };
+  const ref = data.load_number as string;
+  const itsNumber = (data.its_load_number as string | null) ?? null;
+  return { id: data.id as string, loadNumber: itsNumber ?? ref, requestRef: ref, itsNumber };
 }
 
 export async function insertBookedLoad(po: string): Promise<string> {

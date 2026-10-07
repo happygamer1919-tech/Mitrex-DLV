@@ -203,7 +203,8 @@ select rlstest.err('customer cannot move a load forward', $q$select public.set_l
 select rlstest.cnt('customer cannot read other customer loads', $q$select 1 from public.loads where customer_id = '10000000-0000-0000-0000-000000000002'$q$, 0);
 select rlstest.back();
 
--- staff positive control for carrier_id and status
+-- staff positive control for carrier_id and status (0013: a request needs its ITS number before booking; seeded as the owner so no event is written, section 13 tests the function)
+update public.loads set its_load_number = '9001' where id = '30000000-0000-0000-0000-000000000001';
 select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
 select rlstest.rows('control: staff assigns carrier', $q$update public.loads set carrier_id = '20000000-0000-0000-0000-00000000000a' where id = '30000000-0000-0000-0000-000000000001'$q$, 1);
 select rlstest.err('staff cannot set status by direct update', $q$update public.loads set status = 'booked' where id = '30000000-0000-0000-0000-000000000001'$q$, 'set_load_status');
@@ -890,6 +891,7 @@ end $t$;
 
 -- full walk by the proper actors: staff books, the carrier owner drives it to delivered
 select rlstest.mkload(:'L20', 'requested', null);
+update public.loads set its_load_number = '9020' where id = :'L20';
 select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
 select rlstest.rows('control: staff assigns carrier A to L20', format($q$update public.loads set carrier_id = '20000000-0000-0000-0000-00000000000a' where id = %L$q$, :'L20'), 1);
 select rlstest.ok('walk: staff books', format($q$select public.set_load_status(%L, 'booked')$q$, :'L20'));
@@ -1111,6 +1113,126 @@ select rlstest.err('DB refuses a load with equipment_size 48', $q$insert into pu
 select rlstest.ok('control: DB accepts equipment_size 36', $q$insert into public.loads (customer_id, created_by, pickup_location_id, delivery_location_id, equipment_size, pickup_timing, pickup_date, pickup_time_start, delivery_timing, delivery_date, delivery_time_start, pickup_contact_name, pickup_contact_phone, delivery_contact_name, delivery_contact_phone)
   values ((select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000a1', (select id from public.locations where name = 'Mitrex'), (select id from public.locations where name = 'Howden'), 36, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00', 'P', '1', 'D', '2')$q$);
 select rlstest.back();
+
+-- 13. ITS load number (0013): set only through set_its_load_number, required before a request is booked -----------
+\set L50 '30000000-0000-0000-0000-000000000050'
+\set L51 '30000000-0000-0000-0000-000000000051'
+\set L52 '30000000-0000-0000-0000-000000000052'
+\set L53 '30000000-0000-0000-0000-000000000053'
+-- L50 and L51 requested with carrier A (no number), L52 legacy booked carrier A with no number, L53 requested for cancel
+select rlstest.mkload(:'L50', 'requested', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L51', 'requested', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L52', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L53', 'requested', null);
+select rlstest.chk('guard: L50 and L51 are requested with a carrier and no ITS number',
+  (select count(*) from public.loads where id in (:'L50', :'L51') and status = 'requested' and carrier_id is not null and its_load_number is null) = 2);
+select rlstest.chk('guard: L52 is a legacy booked load without an ITS number',
+  (select count(*) from public.loads where id = :'L52' and status = 'booked' and its_load_number is null) = 1);
+select rlstest.chk('request ref is still generated for every load (load_number kept)',
+  (select count(*) from public.loads where id in (:'L50', :'L51', :'L52', :'L53') and load_number ~ '^MTX-[0-9]{4,}$') = 4);
+
+-- customer and carriers cannot set the number (function) nor write it directly
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.err('customer cannot call set_its_load_number', format($q$select public.set_its_load_number(%L, '5001')$q$, :'L50'), 'not authorized');
+select rlstest.err('customer cannot write its_load_number directly', format($q$update public.loads set its_load_number = '5001' where id = %L$q$, :'L50'), 'only through set_its_load_number');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.err('carrier owner cannot call set_its_load_number', format($q$select public.set_its_load_number(%L, '5001')$q$, :'L52'), 'not authorized');
+select rlstest.rows('carrier owner cannot write its_load_number directly (row not updatable)', format($q$update public.loads set its_load_number = '5001' where id = %L$q$, :'L52'), 0,
+  format($q$select 1 from public.loads where id = %L$q$, :'L52'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b2');
+select rlstest.err('carrier driver cannot call set_its_load_number', format($q$select public.set_its_load_number(%L, '5001')$q$, :'L52'), 'not authorized');
+select rlstest.back();
+select rlstest.chk('nothing was written by the refused attempts',
+  (select count(*) from public.loads where id in (:'L50', :'L52') and its_load_number is not null) = 0);
+
+-- staff: guard, format, duplicate, set, change, book
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.err('staff cannot write its_load_number by direct update', format($q$update public.loads set its_load_number = '5002' where id = %L$q$, :'L50'), 'only through set_its_load_number');
+select rlstest.err('a request cannot be booked without an ITS number', format($q$select public.set_load_status(%L, 'booked')$q$, :'L50'), 'enter the ITS load number before booking');
+select rlstest.err('a staff override jump out of requested needs the ITS number too', format($q$select public.set_load_status(%L, 'loading', null, 'jump')$q$, :'L50'), 'enter the ITS load number before booking');
+select rlstest.ok('control: a request without a number can still be cancelled', format($q$select public.set_load_status(%L, 'cancelled', null, 'dup')$q$, :'L53'));
+select rlstest.err('format refused: abc', format($q$select public.set_its_load_number(%L, 'abc')$q$, :'L50'), 'must be digits');
+select rlstest.err('format refused: 12 3', format($q$select public.set_its_load_number(%L, '12 3')$q$, :'L50'), 'must be digits');
+select rlstest.err('format refused: 1-', format($q$select public.set_its_load_number(%L, '1-')$q$, :'L50'), 'must be digits');
+select rlstest.err('format refused: a1', format($q$select public.set_its_load_number(%L, 'a1')$q$, :'L50'), 'must be digits');
+select rlstest.err('format refused: 1-2-3', format($q$select public.set_its_load_number(%L, '1-2-3')$q$, :'L50'), 'must be digits');
+select rlstest.err('format refused: empty', format($q$select public.set_its_load_number(%L, '')$q$, :'L50'), 'enter the ITS load number');
+select rlstest.err('format refused: spaces only', format($q$select public.set_its_load_number(%L, '   ')$q$, :'L50'), 'enter the ITS load number');
+select rlstest.err('format refused: null', format($q$select public.set_its_load_number(%L, null)$q$, :'L50'), 'enter the ITS load number');
+select rlstest.err('unknown load refused', $q$select public.set_its_load_number('30000000-0000-0000-0000-0000000000ff', '5003')$q$, 'load not found');
+select rlstest.chk('guard: every refused format left the load without a number',
+  (select its_load_number from public.loads where id = :'L50') is null);
+select rlstest.ok('313-2 (a split) is accepted, and trimmed', format($q$select public.set_its_load_number(%L, '  313-2 ')$q$, :'L50'));
+select rlstest.chk('the stored number is exactly 313-2', (select its_load_number from public.loads where id = :'L50') = '313-2');
+select rlstest.err('duplicate refused, naming the other load request ref', format($q$select public.set_its_load_number(%L, '313-2')$q$, :'L51'), 'already used by another load \(request MTX-[0-9]+\)');
+select rlstest.ok('control: the same number on its own load is a no-op', format($q$select public.set_its_load_number(%L, '313-2')$q$, :'L50'));
+select rlstest.ok('control: another number is accepted for the other load', format($q$select public.set_its_load_number(%L, '314')$q$, :'L51'));
+select rlstest.ok('control: staff books a request that has a number', format($q$select public.set_load_status(%L, 'booked')$q$, :'L50'));
+select rlstest.ok('staff corrects the number after booking', format($q$select public.set_its_load_number(%L, '315')$q$, :'L50'));
+select rlstest.ok('legacy booked load without a number still advances', format($q$select public.set_load_status(%L, 'at_pickup')$q$, :'L52'));
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('L50 is booked with the corrected number', (select status::text || ':' || its_load_number from public.loads where id = '30000000-0000-0000-0000-000000000050') = 'booked:315');
+  perform rlstest.chk('the function wrote the set event (from = to = requested)',
+    (select count(*) from public.load_events where load_id = '30000000-0000-0000-0000-000000000050' and note = 'ITS load number set to 313-2' and from_status = 'requested' and to_status = 'requested' and actor_id = '00000000-0000-0000-0000-0000000000a2') = 1);
+  perform rlstest.chk('the function wrote the changed event (from = to = booked)',
+    (select count(*) from public.load_events where load_id = '30000000-0000-0000-0000-000000000050' and note = 'ITS load number changed from 313-2 to 315' and from_status = 'booked' and to_status = 'booked') = 1);
+  perform rlstest.chk('the no-op and every refusal wrote no event',
+    (select count(*) from public.load_events where load_id = '30000000-0000-0000-0000-000000000050' and note like 'ITS load number%') = 2);
+  perform rlstest.chk('legacy load L52 is still without a number after it advanced',
+    (select status::text || ':' || coalesce(its_load_number, 'none') from public.loads where id = '30000000-0000-0000-0000-000000000052') = 'at_pickup:none');
+end $t$;
+
+-- customers read the number of their own load, not of another customer's
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.cnt('customer reads the ITS number of their own booked load', format($q$select 1 from public.loads where id = %L and its_load_number = '315'$q$, :'L50'), 1);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c2');
+select rlstest.cnt('another customer cannot read that load or its number', $q$select 1 from public.loads where its_load_number = '315'$q$, 0,
+  $q$select 1 from public.loads where its_load_number = '315'$q$);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.cnt('carrier owner reads the ITS number of its booked load', format($q$select 1 from public.loads where id = %L and its_load_number = '315'$q$, :'L50'), 1);
+select rlstest.back();
+
+-- a customer insert cannot smuggle a number
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+do $t$
+declare v text; v_id uuid;
+begin
+  insert into public.loads (customer_id, created_by, pickup_location_id, delivery_location_id, equipment_size, pickup_timing, pickup_date,
+    pickup_time_start, delivery_timing, delivery_date, delivery_time_start, pickup_contact_name, pickup_contact_phone, delivery_contact_name,
+    delivery_contact_phone, its_load_number)
+  values ((select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1',
+    (select id from public.locations where name = 'Mitrex'), (select id from public.locations where name = 'Howden'),
+    53, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00', 'P', '416-000-0001', 'D', '416-000-0002', '777')
+  returning id, its_load_number into v_id, v;
+  perform rlstest.chk('a customer insert carrying an ITS number stores NULL', v is null, 'stored=' || coalesce(v, 'null'));
+end $t$;
+select rlstest.back();
+
+-- grants and definitions
+do $t$
+begin
+  perform rlstest.chk('anon has no EXECUTE on set_its_load_number', not has_function_privilege('anon', 'public.set_its_load_number(uuid, text)', 'execute'));
+  perform rlstest.chk('control: authenticated has EXECUTE on set_its_load_number', has_function_privilege('authenticated', 'public.set_its_load_number(uuid, text)', 'execute'));
+  perform rlstest.chk('PUBLIC has no EXECUTE on set_its_load_number',
+    not exists (select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+      where p.oid = 'public.set_its_load_number(uuid, text)'::regprocedure and a.grantee = 0 and a.privilege_type = 'EXECUTE'));
+  perform rlstest.chk('the partial UNIQUE index on its_load_number exists',
+    (select count(*) from pg_indexes where schemaname = 'public' and tablename = 'loads' and indexdef ilike '%unique%' and indexdef like '%(its_load_number)%' and indexdef ilike '%where%') = 1);
+  perform rlstest.chk('the format CHECK exists and is validated',
+    (select count(*) from pg_constraint where conrelid = 'public.loads'::regclass and conname = 'loads_its_load_number_format' and convalidated) = 1);
+  perform rlstest.chk('set_load_status carries the ITS rule',
+    pg_get_functiondef('public.set_load_status(uuid, public.load_status, timestamptz, text)'::regprocedure) like '%enter the ITS load number before booking%');
+end $t$;
+-- the table owner (service role path) is bound by the CHECK and the unique index too
+select rlstest.err('CHECK refuses a bad number even for the owner', format($q$update public.loads set its_load_number = 'abc' where id = %L$q$, :'L51'), 'loads_its_load_number_format');
+select rlstest.err('UNIQUE refuses a duplicate even for the owner', format($q$update public.loads set its_load_number = '315' where id = %L$q$, :'L51'), 'duplicate key|loads_its_load_number_key');
+select rlstest.ok('control: the owner may set a free number directly (service role path)', format($q$update public.loads set its_load_number = '316' where id = %L$q$, :'L51'));
 
 -- Summary ----------------------------------------------------------------
 select name, outcome, detail from rlstest.res where outcome <> 'OK' order by n;

@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { adminClient, as, insertLoad, isoDate, uniq, PNG_1X1 } from "./support/helpers";
+import { adminClient, as, insertLoad, isoDate, staffBook, uniq, uniqIts, PNG_1X1 } from "./support/helpers";
 import { CARRIER_A } from "./support/users";
 
 test.describe.configure({ mode: "serial" });
 
 const PO = `E2E-${Date.now()}`;
 let loadId = "";
-let loadNumber = "";
+let loadNumber = ""; // the request ref
+let its = ""; // the ITS number staff enter when booking
 
 test("SAMIH locks the Moffett toggle ON", async ({ browser }) => {
   const { ctx, page } = await as(browser, "maria");
@@ -60,7 +61,8 @@ test("staff assigns carrier A and marks booked", async ({ browser }) => {
   await page.getByLabel("Carrier").first().selectOption({ label: CARRIER_A });
   await page.getByRole("button", { name: "Save carrier" }).click();
   await expect(page.getByText(CARRIER_A).first()).toBeVisible();
-  await page.getByRole("button", { name: "Mark booked" }).click();
+  its = uniqIts();
+  await staffBook(page, its);
   await expect(page.getByText("Booked").first()).toBeVisible();
   await expect(page.getByText("BOL pending").first()).toBeVisible();
   await ctx.close();
@@ -77,16 +79,17 @@ test("Maria sees the contact-DLV message while the load is booked", async ({ bro
 test("carrier A sees the load, carrier B does not", async ({ browser }) => {
   const a = await as(browser, "carrierA");
   await a.page.goto("/my-loads");
-  await expect(a.page.getByText(loadNumber).first()).toBeVisible();
+  await expect(a.page.getByText(its).first()).toBeVisible();
+  await expect(a.page.getByText(loadNumber)).toHaveCount(0); // carriers see the ITS number, never the request ref
   await a.ctx.close();
 
   const b = await as(browser, "carrierB");
   await b.page.goto("/my-loads");
   await expect(b.page.getByRole("heading").first()).toBeVisible();
-  await expect(b.page.getByText(loadNumber)).toHaveCount(0);
+  await expect(b.page.getByText(its)).toHaveCount(0);
   const res = await b.page.goto(`/my-loads/${loadId}`);
   const body = await b.page.content();
-  expect(res?.status() === 404 || !body.includes(loadNumber)).toBeTruthy();
+  expect(res?.status() === 404 || !body.includes(its)).toBeTruthy();
   await b.ctx.close();
 });
 

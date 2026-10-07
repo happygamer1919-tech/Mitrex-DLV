@@ -1,13 +1,13 @@
 import { expect, test, type Browser } from "@playwright/test";
-import { adminClient, as, gotoSteady, insertLoad, isoDate, PNG_1X1, uniq } from "./support/helpers";
+import { adminClient, as, gotoSteady, insertLoad, isoDate, PNG_1X1, staffBook, uniq, uniqIts } from "./support/helpers";
 import { fillBooking, makeLocation, retireLocations } from "./support/book";
 import { BASE_URL } from "./support/env";
 import { sentEmails, setMockStatus, MAIL_MOCK_URL, type SentEmail } from "./support/mail-mock";
 import { assertLocalUrl } from "./support/guard";
 import { CARRIER_A } from "./support/users";
 
-// R21 staff are emailed when Maria books, R31 carrier users are emailed on assignment, nobody on status
-// changes. No real Resend: the app's resend SDK talks to a local mock (RESEND_BASE_URL, started by
+// R21 staff are emailed when Maria books, R31 carrier users are emailed on assignment, Maria on booking (see
+// e2e/its-load-number.spec.ts), nobody on status changes. No real Resend: the app's resend SDK talks to a local mock (RESEND_BASE_URL, started by
 // e2e/support/global-setup.ts, bodies recorded in memory). Real Resend delivery stays a manual gate.
 
 test.describe.configure({ mode: "serial", timeout: 180_000 });
@@ -122,10 +122,11 @@ test("when Maria books, ALL active staff get one email with route, equipment and
   expect(recipients(m)).toEqual(expected);
   expect(m.to).not.toContain(csrInactive);
   expect(m.to).not.toContain(MARIA);
-  expect(m.subject).toBe(`New load requested ${loadNumber}`);
+  expect(m.subject).toBe(`New load requested (Request ${loadNumber})`);
   expect(m.from).toBe("DLV <noreply@mock.test>");
   const body = m.text ?? "";
-  expect(body).toContain(`Load: ${loadNumber}`);
+  expect(body).toContain(`Request ref: ${loadNumber}`);
+  expect(body).toContain("ITS load number: not assigned yet. Enter it when you book.");
   expect(body).toContain(`Route: ${pickup.name} to ${delivery.name}`);
   expect(body).toContain("Equipment: 36 ft");
   expect(body).toContain(`PO number: ${po}`);
@@ -141,7 +142,7 @@ test("assigning a carrier and booking emails ALL active users of that carrier, w
   expect(expected).toContain(driverActive);
   expect(expected).not.toContain(driverInactive);
 
-  const { id, loadNumber } = await insertLoad({ po: uniq("MAIL-BOOK"), status: "requested" });
+  const { id, requestRef: loadNumber } = await insertLoad({ po: uniq("MAIL-BOOK"), status: "requested" });
   parked.push(id);
   const { ctx, page } = await as(browser, "admin");
   await page.goto(`/admin/loads/${id}`);
@@ -153,18 +154,22 @@ test("assigning a carrier and booking emails ALL active users of that carrier, w
   expect((await db().from("loads").select("carrier_id").eq("id", id).single()).data?.carrier_id).toBe(carrierAId);
   expect(await emailsFor(loadNumber, 1, 2500)).toHaveLength(0);
 
-  await page.getByRole("button", { name: "Mark booked" }).click();
+  const its = uniqIts();
+  await staffBook(page, its);
   // (The button and its message disappear with the "requested" state, so the database is the witness.)
   await expect.poll(async () => (await db().from("loads").select("status").eq("id", id).single()).data?.status).toBe("booked");
-  const mails = await emailsFor(loadNumber, 1);
+  const mails = (await emailsFor(its, 2)).filter((x) => x.subject.includes("assigned to you")); // the booking confirmation to the customer matches too
+  expect(mails.length).toBeGreaterThan(0);
   expect(mails).toHaveLength(1);
   const m = mails[0];
   expect(recipients(m)).toEqual(expected);
   expect(m.to).not.toContain(driverInactive);
   expect(m.to).not.toContain(MARIA);
   expect(m.to).not.toContain("owner-b@e2e.test");
-  expect(m.subject).toBe(`Load ${loadNumber} assigned to you`);
+  expect(m.subject).toBe(`Load ${its} assigned to you`);
   const body = m.text ?? "";
+  expect(body).toContain(`Load ${its} has been assigned to you.`);
+  expect(body).not.toContain(loadNumber); // the carrier never sees the request ref
   expect(body).toContain("PICKUP");
   expect(body).toContain("Mitrex, 41 Racine Rd, Toronto, ON M9W 2Z4");
   expect(body).toContain("DELIVERY");
@@ -250,19 +255,21 @@ test("a failing email service (HTTP 500) does not fail the booking or the assign
     await page.getByRole("button", { name: "Save carrier" }).click();
     await expect(page.getByText("Carrier assigned.", { exact: true })).toBeVisible();
     parked.push(id);
-    await page.getByRole("button", { name: "Mark booked" }).click();
+    const its = uniqIts();
+    await staffBook(page, its);
     await expect.poll(async () => (await db().from("loads").select("status").eq("id", id).single()).data?.status).toBe("booked");
-    // The attempt was made (and refused by the mock) for the carrier too.
-    const sent = await emailsFor(loadNumber, 2);
-    expect(sent.map((m) => m.subject)).toEqual([`New load requested ${loadNumber}`, `Load ${loadNumber} assigned to you`]);
+    // The attempts were made (and refused by the mock): the request email, then the carrier email and the customer confirmation.
+    expect((await emailsFor(loadNumber, 1)).map((m) => m.subject)).toEqual([`New load requested (Request ${loadNumber})`]);
+    expect((await emailsFor(its, 2)).map((m) => m.subject)).toEqual([`Load ${its} assigned to you`, `Load ${its} booked`]);
     await ctx.close();
   } finally {
     await setMockStatus(200);
   }
 });
 
-test("nothing recorded during the whole run was addressed to Maria", async () => {
+test("nothing recorded during the whole run was addressed to Maria except a booking confirmation or a late BOL", async () => {
   const all = await sentEmails();
   expect(all.length).toBeGreaterThan(0); // the log is not empty, so the check below is not vacuous
-  expect(all.filter((m) => m.to.includes(MARIA))).toEqual([]);
+  const toMaria = all.filter((m) => m.to.includes(MARIA));
+  for (const m of toMaria) expect(m.subject, "an email to Maria").toMatch(/^(Load \S+ booked|BOL for load \S+)$/);
 });

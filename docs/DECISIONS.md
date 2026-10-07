@@ -105,3 +105,15 @@
 
 ## 2026-10-06 admin board layout
 - The staff board shows one full-width band per status, stacked top to bottom, with load cards in a grid inside each band (1 column on a phone, 2 to 4 on a PC) and a jump bar with counts. No sideways scrolling. The shared header menu is one swipeable row on a phone so the board starts above the fold.
+
+
+## DLV-025 ITS load number (defaults, owner may change)
+- ITS is the source of truth. The generated MTX-0001 style value stays in loads.load_number as the internal REQUEST REF (unchanged, unique, generated at insert). The ITS number lives in the new nullable loads.its_load_number (digits with an optional dash and digits, partial unique index). Everyone sees the ITS number once it is set; one helper, src/lib/load-number.ts, decides what is shown (Maria: "Number pending" plus the small request ref; staff: "Request MTX-0005"; carriers: the ITS number, a legacy booked load shows its request ref).
+- Migration 0013 changes set_load_status by ONE added rule (a load leaves requested for anything but cancelled only with an ITS number; the diff against the 0011 body is exactly that block). Legacy loads already booked without a number keep moving forward. The two loads guards are the 0002 bodies plus one rule each. Setting or correcting a number goes through set_its_load_number (staff only, event logged, GUC dlv.its_fn).
+- A BOL is NOT required to book (owner default): "BOL pending" stays and the booking email says the BOL will follow. See QUESTIONS.md.
+- Booking sends: carrier users "Load <ITS> assigned to you" (as before, now with the ITS number) and ONE confirmation "Load <ITS> booked" to every active customer user of the load's customer (service role read after the staff check, inactive users excluded). This deliberately reverses the old "no status emails to Maria" rule for booking only; pickup, enroute and delivered stay app only. A staff override that leaves Requested for any status other than cancelled also sends the confirmation, because the load is then booked in effect.
+- Attachments: every BOL document of the load is downloaded with the service role client and attached as BOL-<ITS>.<ext> (a second one _2). Over 20 MB combined (Resend's limit is 40 MB, 20 MB leaves headroom for base64) nothing is attached and the email links to the app. A BOL uploaded after booking is sent on its own ("BOL for load <ITS>") by a staff only server action called from the upload; nothing is sent while the load is still requested (or cancelled).
+- The multi-truck staff email stays ONE email listing every request ref; each truck needs its own ITS number to be booked.
+- CSV: load_number holds the ITS number when set, else the request ref; request_ref is the new second column (22 columns).
+- Known limit: a BOL upload is client side (storage, then a row), then the server action sends the email. If the browser closes between the two, the file is stored and the customer is not emailed; staff can re-upload or the customer finds it in the app.
+- Apply: docs/APPLY-PACK-4.md (0013), a separate owner supervised session; migration first, then the app.

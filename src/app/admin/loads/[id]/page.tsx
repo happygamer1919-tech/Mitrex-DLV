@@ -4,14 +4,16 @@ import { Shell } from "@/components/Shell";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { Card, StatusChip } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
-import { AssignCarrierForm, EtaForm, StaffUpload, StatusOverrideForm } from "@/components/admin/LoadControls";
+import { AssignCarrierForm, BookLoadForm, EditItsForm, EtaForm, StaffUpload, StatusOverrideForm } from "@/components/admin/LoadControls";
+import { LoadNumber } from "@/components/LoadNumber";
+import { staffLabel } from "@/lib/load-number";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, fmtSlot, isoToEasternLocal, telHref } from "@/lib/format";
 import { STATUS_LABEL, type LoadDocument, type LoadEvent } from "@/lib/types";
 import { UUID } from "@/lib/admin/errors";
 import { nameIsStreet } from "@/lib/address";
-import { cancelLoad, markBooked } from "@/lib/admin/load-actions";
+import { cancelLoad } from "@/lib/admin/load-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +91,7 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
       <LiveRefresh />
       <Link href="/admin" className="mb-2 inline-flex min-h-[44px] items-center text-[15px] underline">Back to board</Link>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-[24px] font-bold">{load.load_number}</h1>
+        <h1 className="text-[24px] font-bold"><LoadNumber l={load} audience="staff" /></h1>
         <StatusChip status={status} />
         {!hasBol && ["booked", "at_pickup", "loading", "enroute", "at_delivery"].includes(status) ? (
           <span className="rounded-full bg-amber px-3 py-1 text-[13px] font-medium text-[#2B1500]">BOL pending</span>
@@ -104,6 +106,8 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
           <Card>
             <h2 className="mb-1 text-[20px] font-bold">Load details</h2>
             <dl className="divide-y divide-line">
+              <Row label="ITS load number"><span data-testid="its-number">{load.its_load_number ?? "Not assigned yet"}</span></Row>
+              <Row label="Request ref"><span data-testid="request-ref-row">{load.load_number}</span></Row>
               <Row label="Customer">{load.customer?.name ?? "Unknown"}</Row>
               <Row label="Pickup"><Address l={load.pickup} /></Row>
               <Row label="Pickup time">{fmtSlot(load.pickup_timing, load.pickup_date, load.pickup_time_start, load.pickup_time_end)}</Row>
@@ -166,16 +170,16 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
               <AssignCarrierForm loadId={load.id} carrierId={load.carrier_id} carriers={carriers} />
               {status === "requested" ? (
                 <div className="mt-4 border-t border-line pt-4">
-                  <p className="mb-2 text-[13px] text-muted">Booking emails every user of the assigned carrier.</p>
-                  <ActionForm
-                    action={markBooked}
-                    fields={{ load_id: load.id }}
-                    label="Mark booked"
-                    pendingLabel="Booking..."
-                    variant="primary"
-                  />
+                  <BookLoadForm loadId={load.id} carrierSaved={Boolean(load.carrier_id)} itsNumber={load.its_load_number} />
                 </div>
               ) : null}
+            </Card>
+          ) : null}
+
+          {status !== "requested" ? (
+            <Card>
+              <h2 className="mb-3 text-[20px] font-bold">ITS load number</h2>
+              <EditItsForm loadId={load.id} itsNumber={load.its_load_number} />
             </Card>
           ) : null}
 
@@ -219,7 +223,7 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
           <Card>
             <h2 className="mb-1 text-[20px] font-bold">Override status</h2>
             <p className="mb-3 text-[13px] text-muted">Use for corrections. A note is required and goes in the timeline.</p>
-            <StatusOverrideForm loadId={load.id} current={status} />
+            <StatusOverrideForm loadId={load.id} current={status} itsNumber={load.its_load_number} />
           </Card>
 
           {!closed ? (
@@ -230,7 +234,7 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
                 fields={{ load_id: load.id }}
                 label="Cancel load"
                 variant="danger"
-                confirm={`Cancel ${load.load_number}? The customer and carrier will see it as cancelled.`}
+                confirm={`Cancel ${staffLabel(load)}? The customer and carrier will see it as cancelled.`}
                 confirmLabel="Yes, cancel load"
                 pendingLabel="Cancelling..."
               />

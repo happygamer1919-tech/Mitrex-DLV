@@ -31,8 +31,11 @@ export async function notifyStaffOfRequest(args: {
       `${many ? `${args.loads.length} new loads were` : "A new load was"} requested${args.customerName ? ` by ${args.customerName}` : ""}.`,
       "",
       ...(many
-        ? [`Loads (${args.loads.length} trucks, same details):`, ...args.loads.map((l) => `${l.loadNumber}: ${site}/admin/loads/${l.id}`)]
-        : [`Load: ${numbers[0]}`]),
+        ? [`Loads (${args.loads.length} trucks, same details, one request ref each):`, ...args.loads.map((l) => `Request ${l.loadNumber}: ${site}/admin/loads/${l.id}`)]
+        : [`Request ref: ${numbers[0]}`]),
+      many
+        ? "ITS load numbers: not assigned yet. Enter one per truck when you book each load."
+        : "ITS load number: not assigned yet. Enter it when you book.",
       `Route: ${args.pickupName} to ${args.deliveryName}`,
       `Equipment: ${v.equipment_size} ft${args.moffett ? ", Moffett required" : ""}`,
       `Pickup: ${fmtSlot(v.pickup_timing, v.pickup_date, v.pickup_time_start, v.pickup_time_end || null)}`,
@@ -46,8 +49,8 @@ export async function notifyStaffOfRequest(args: {
     if (v.notes.trim()) lines.push(`Notes: ${v.notes.trim()}`);
     if (!many) lines.push("", `Open in the portal: ${site}/admin/loads/${args.loads[0].id}`);
     const subject = many
-      ? `New loads requested ${loadNumberSummary(numbers)} (${numbers.length} trucks)`
-      : `New load requested ${numbers[0]}`;
+      ? `New loads requested (Request ${loadNumberSummary(numbers)}, ${numbers.length} trucks)`
+      : `New load requested (Request ${numbers[0]})`;
     await sendEmail(to, subject, lines.join("\n"));
   } catch {
     // swallow: notification failure must not fail the booking

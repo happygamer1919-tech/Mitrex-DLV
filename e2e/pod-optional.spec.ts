@@ -124,7 +124,7 @@ test("staff and customer: POD pending on the board and the load page, then gone;
   await staff.page.goto("/admin");
   await expect(staff.page.locator(`a[href="/admin/loads/${id}"]`)).toBeVisible();
   await expect(staff.page.locator(`a[href="/admin/loads/${id}"]`)).not.toContainText("POD pending");
-  expect(loadNumber).toMatch(/^MTX-/);
+  expect((await adminClient().from("loads").select("load_number,its_load_number").eq("id", id).single()).data).toMatchObject({ load_number: expect.stringMatching(/^MTX-/), its_load_number: loadNumber }); // the shown number of a seeded delivered load is its ITS number
   await staff.ctx.close();
 });
 

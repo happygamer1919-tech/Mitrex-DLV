@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { LiveRefresh } from "@/components/LiveRefresh";
+import { LoadNumber } from "@/components/LoadNumber";
+import { customerLabel } from "@/lib/load-number";
 import { Shell } from "@/components/Shell";
 import { Card, LinkButton, StatusChip, btnClass } from "@/components/ui";
 import { CancelLoad } from "@/components/customer/CancelLoad";
@@ -74,14 +76,14 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
       <LiveRefresh />
       <Link href="/loads" className="mb-3 inline-flex min-h-[44px] items-center text-[15px] underline">All loads</Link>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-[24px] font-bold">{l.load_number}</h1>
+        <h1 className="text-[24px] font-bold"><LoadNumber l={l} audience="customer" /></h1>
         <StatusChip status={l.status} />
       </div>
 
       {editable ? (
         <div className="mb-4 flex flex-wrap items-start gap-3">
           <LinkButton href={`/loads/${l.id}/edit`} variant="dark">Edit load</LinkButton>
-          <CancelLoad loadId={l.id} loadNumber={l.load_number} />
+          <CancelLoad loadId={l.id} loadNumber={customerLabel(l)} />
         </div>
       ) : null}
       {frozen ? <p data-testid="load-state-note" className="mb-4 text-[15px] font-medium">Contact DLV to change this load</p> : null}

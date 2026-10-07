@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { adminClient, as, gotoSteady, insertLoad, isoDate, uniq } from "./support/helpers";
+import { adminClient, as, gotoSteady, insertLoad, isoDate, staffBook, uniq, uniqIts } from "./support/helpers";
 import { fillBooking, makeLocation, retireLocations, type TestLocation } from "./support/book";
 import { BASE_URL } from "./support/env";
 import { sentEmails, MAIL_MOCK_URL, type SentEmail } from "./support/mail-mock";
@@ -108,7 +108,7 @@ test("Maria books quantity 4: four identical requested loads, Truck i of 4 notes
 
   // Banner lists the 4 numbers in order, and every load is in the list.
   const banner = page.getByTestId("booked-banner");
-  await expect(banner).toContainText(`4 loads requested: ${order.map((r) => r.load_number).join(", ")}`);
+  await expect(banner).toContainText(`4 loads requested: ${order.map((r) => `Request ${r.load_number}`).join(", ")}`);
   for (const n of nums) await expect(page.locator("ul").getByText(n, { exact: true })).toBeVisible();
 
   // The parameter is not trusted: malformed values and other people's ids show nothing.
@@ -119,7 +119,7 @@ test("Maria books quantity 4: four identical requested loads, Truck i of 4 notes
   }
   // Valid shape but unknown ids: only loads the customer can read are listed.
   await gotoSteady(page, `/loads?booked=${encodeURIComponent(`${order[0].id},00000000-0000-4000-8000-000000000000`)}`);
-  await expect(page.getByTestId("booked-banner")).toContainText(`1 load requested: ${order[0].load_number}.`);
+  await expect(page.getByTestId("booked-banner")).toContainText(`1 load requested: Request ${order[0].load_number}.`);
   await ctx.close();
 });
 
@@ -222,7 +222,7 @@ test("staff get exactly ONE email for a 4 truck booking: range subject, 4 number
   expect([...m.to].sort()).toEqual(staff);
   expect(m.to).not.toContain(email);
   expect(m.to).not.toContain("maria@e2e.test");
-  expect(m.subject).toBe(`New loads requested ${loadNumberSummary(nums)} (4 trucks)`);
+  expect(m.subject).toBe(`New loads requested (Request ${loadNumberSummary(nums)}, 4 trucks)`);
   expect(m.subject).toContain(" to ");
   const body = m.text ?? "";
   for (const r of rows) {
@@ -278,7 +278,7 @@ test("staff assign a different carrier to each of the 4 loads and each keeps its
   }
   // Only the first load is booked.
   await page.goto(`/admin/loads/${rows[0].id}`);
-  await page.getByRole("button", { name: "Mark booked" }).click();
+  await staffBook(page, uniqIts());
   await expect.poll(async () => (await loadsByPo(po)).find((r) => r.id === rows[0].id)?.status).toBe("booked");
 
   const now = await loadsByPo(po);

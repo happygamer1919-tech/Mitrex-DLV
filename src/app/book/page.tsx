@@ -1,3 +1,4 @@
+import { customerLabel } from "@/lib/load-number";
 import { Shell } from "@/components/Shell";
 import { PageTitle } from "@/components/ui";
 import { LoadForm } from "@/components/customer/LoadForm";
@@ -36,7 +37,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
       const pickupOk = locations.some((x) => x.id === l.pickup_location_id && x.can_ship);
       const deliveryOk = locations.some((x) => x.id === l.delivery_location_id && x.can_receive);
       initial = requestAgainValues(l, { pickupOk, deliveryOk });
-      copiedFrom = l.load_number;
+      copiedFrom = customerLabel(l);
     }
   }
 

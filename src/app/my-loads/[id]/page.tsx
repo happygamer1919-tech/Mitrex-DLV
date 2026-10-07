@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { LiveRefresh } from "@/components/LiveRefresh";
+import { LoadNumber } from "@/components/LoadNumber";
 import { btnClass, Card, Notice, StatusChip } from "@/components/ui";
 import { MoffettBadge } from "@/components/carrier/MoffettBadge";
 import { Progress } from "@/components/carrier/Progress";
@@ -64,7 +65,7 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
         </Link>
 
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-[24px] font-bold">{load.load_number}</h1>
+          <h1 className="text-[24px] font-bold"><LoadNumber l={load} audience="carrier" /></h1>
           <StatusChip status={load.status} />
           {load.moffett ? <MoffettBadge /> : null}
         </div>

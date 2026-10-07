@@ -212,7 +212,7 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
     const last = mode === "create" && locId ? lastContacts[side][locId] : undefined;
     const same = last ? v[nameKey].trim() === last.name && v[phoneKey].trim() === last.phone : false;
     const hasDefault = Boolean(loc?.default_contact_name || loc?.default_contact_phone);
-    const when = last ? `${last.loadNumber}, ${fmtDateEt(last.createdAt)}` : "";
+    const when = last ? `${last.label}, ${fmtDateEt(last.createdAt)}` : "";
     return (
       <div className="mt-4 space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">

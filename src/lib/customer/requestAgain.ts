@@ -1,6 +1,7 @@
 // Request again and last contact hints (R20, R22). Pure (no Next imports) and relative imports only, so the e2e
 // specs can load this file directly.
 import type { Load } from "../types";
+import { customerLabel } from "../load-number";
 import { EMPTY_LOAD_FORM, type LoadFormValues } from "./validate";
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -44,13 +45,14 @@ export function requestAgainValues(
 
 export type HistoryRow = Pick<Load,
   "id" | "load_number" | "created_at" | "pickup_location_id" | "delivery_location_id" |
-  "pickup_contact_name" | "pickup_contact_phone" | "delivery_contact_name" | "delivery_contact_phone">;
+  "pickup_contact_name" | "pickup_contact_phone" | "delivery_contact_name" | "delivery_contact_phone"> & { its_load_number?: string | null };
 
 export const HISTORY_COLUMNS =
-  "id,load_number,created_at,pickup_location_id,delivery_location_id,pickup_contact_name,pickup_contact_phone,delivery_contact_name,delivery_contact_phone";
+  "id,load_number,its_load_number,created_at,pickup_location_id,delivery_location_id,pickup_contact_name,pickup_contact_phone,delivery_contact_name,delivery_contact_phone";
 export const HISTORY_LIMIT = 200;
 
-export type LastContact = { name: string; phone: string; loadNumber: string; createdAt: string };
+// loadNumber is the request ref; label is what the customer sees (the ITS number, else "Request MTX-0005").
+export type LastContact = { name: string; phone: string; loadNumber: string; label: string; createdAt: string };
 export type LastContacts = { pickup: Record<string, LastContact>; delivery: Record<string, LastContact> };
 
 // Rows (any order) of the customer's recent loads -> the most recent contact per location, by created_at desc.
@@ -62,10 +64,10 @@ export function buildLastContacts(rows: HistoryRow[]): LastContacts {
     a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : num(b.load_number) - num(a.load_number));
   for (const r of sorted) {
     if (!out.pickup[r.pickup_location_id]) {
-      out.pickup[r.pickup_location_id] = { name: r.pickup_contact_name, phone: r.pickup_contact_phone, loadNumber: r.load_number, createdAt: r.created_at };
+      out.pickup[r.pickup_location_id] = { name: r.pickup_contact_name, phone: r.pickup_contact_phone, loadNumber: r.load_number, label: customerLabel(r), createdAt: r.created_at };
     }
     if (!out.delivery[r.delivery_location_id]) {
-      out.delivery[r.delivery_location_id] = { name: r.delivery_contact_name, phone: r.delivery_contact_phone, loadNumber: r.load_number, createdAt: r.created_at };
+      out.delivery[r.delivery_location_id] = { name: r.delivery_contact_name, phone: r.delivery_contact_phone, loadNumber: r.load_number, label: customerLabel(r), createdAt: r.created_at };
     }
   }
   return out;

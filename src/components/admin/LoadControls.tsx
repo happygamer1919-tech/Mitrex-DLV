@@ -1,11 +1,12 @@
 "use client";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 import { DropZone } from "@/components/DropZone";
 import { createClient } from "@/lib/supabase/client";
 import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
-import { assignCarrier, overrideStatus, setEta } from "@/lib/admin/load-actions";
+import { assignCarrier, bookLoad, notifyBolUploaded, overrideStatus, setEta, setItsNumber } from "@/lib/admin/load-actions";
+import { validateIts } from "@/lib/load-number";
 import type { ActionState } from "@/lib/admin/state";
 
 export function AssignCarrierForm({
@@ -32,7 +33,93 @@ export function AssignCarrierForm({
   );
 }
 
-export function StatusOverrideForm({ loadId, current }: { loadId: string; current: LoadStatus }) {
+// Mark booked: needs a saved carrier AND the ITS load number (the database enforces the number too).
+export function BookLoadForm({ loadId, carrierSaved, itsNumber }: { loadId: string; carrierSaved: boolean; itsNumber: string | null }) {
+  const [its, setIts] = useState(itsNumber ?? "");
+  const [pending, start] = useTransition();
+  const [state, setState] = useState<ActionState>({});
+  const missing: string[] = [];
+  if (!carrierSaved) missing.push("Assign a carrier");
+  if (!its.trim()) missing.push("Enter the ITS load number");
+  const blocked = missing.length > 0;
+  function book() {
+    const bad = validateIts(its);
+    if (bad) { setState({ error: bad }); return; }
+    setState({});
+    start(async () => {
+      try {
+        setState(await bookLoad(loadId, its));
+      } catch {
+        setState({ error: "Something went wrong. Please try again." });
+      }
+    });
+  }
+  return (
+    <div className="space-y-3" data-testid="book-card">
+      <Field label="ITS load number (required to book)" hint="Enter the new load number from ITS.">
+        <Input name="its_load_number" inputMode="numeric" autoComplete="off" maxLength={30} value={its}
+          onChange={(e) => setIts(e.target.value)} data-testid="its-input" />
+      </Field>
+      <p className="text-[13px] text-muted">Booking emails every user of the assigned carrier and every active customer user, with the BOL if there is one.</p>
+      <Button type="button" variant="primary" disabled={blocked || pending} onClick={book}>
+        {pending ? "Booking..." : "Mark booked"}
+      </Button>
+      {blocked ? (
+        <p data-testid="book-missing" className="text-[14px] font-medium">{missing.join(". ")}.</p>
+      ) : null}
+      {state.error ? <Notice tone="error">{state.error}</Notice> : null}
+      {state.ok ? <Notice tone="ok">{state.ok}</Notice> : null}
+    </div>
+  );
+}
+
+// Staff correct the ITS number after booking (same database function, the change is logged in the timeline).
+export function EditItsForm({ loadId, itsNumber }: { loadId: string; itsNumber: string | null }) {
+  const [open, setOpen] = useState(false);
+  const [its, setIts] = useState(itsNumber ?? "");
+  const [pending, start] = useTransition();
+  const [state, setState] = useState<ActionState>({});
+  function save() {
+    const bad = validateIts(its);
+    if (bad) { setState({ error: bad }); return; }
+    setState({});
+    start(async () => {
+      try {
+        const r = await setItsNumber(loadId, its);
+        setState(r);
+        if (r.ok) setOpen(false);
+      } catch {
+        setState({ error: "Something went wrong. Please try again." });
+      }
+    });
+  }
+  return (
+    <div className="space-y-3" data-testid="its-card">
+      <p className="text-[15px]">
+        ITS load number: <span data-testid="its-current" className="font-bold">{itsNumber ?? "not set (legacy load)"}</span>
+      </p>
+      {!open ? (
+        <Button type="button" variant="ghost" onClick={() => { setIts(itsNumber ?? ""); setState({}); setOpen(true); }}>
+          Edit ITS number
+        </Button>
+      ) : (
+        <div className="space-y-3">
+          <Field label="ITS load number" hint="Enter the load number from ITS. The change is logged in the timeline.">
+            <Input inputMode="numeric" autoComplete="off" maxLength={30} value={its} onChange={(e) => setIts(e.target.value)} data-testid="its-edit-input" />
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={save} disabled={pending || !its.trim()}>{pending ? "Saving..." : "Save ITS number"}</Button>
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>Keep</Button>
+          </div>
+        </div>
+      )}
+      {state.error ? <Notice tone="error">{state.error}</Notice> : null}
+      {state.ok ? <Notice tone="ok">{state.ok}</Notice> : null}
+    </div>
+  );
+}
+
+export function StatusOverrideForm({ loadId, current, itsNumber }: { loadId: string; current: LoadStatus; itsNumber: string | null }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(overrideStatus, {});
   const [status, setStatus] = useState<LoadStatus | "">("");
   const statusRef = useRef<HTMLSelectElement>(null);
@@ -55,6 +142,11 @@ export function StatusOverrideForm({ loadId, current }: { loadId: string; curren
       {status === "enroute" ? (
         <Field label="ETA (Eastern time, ET)">
           <Input type="datetime-local" name="eta" required />
+        </Field>
+      ) : null}
+      {current === "requested" && status && status !== "cancelled" ? (
+        <Field label="ITS load number (required to leave Requested)" hint="Enter the new load number from ITS.">
+          <Input name="its_load_number" inputMode="numeric" autoComplete="off" maxLength={30} required defaultValue={itsNumber ?? ""} data-testid="override-its-input" />
         </Field>
       ) : null}
       <Field label="Note (required)" hint="Recorded in the timeline.">
@@ -132,6 +224,10 @@ export function StaffUpload({ loadId, kind }: { loadId: string; kind: "bol" | "p
       }
       setFile(null);
       setOk(`${KIND} uploaded.`);
+      if (kind === "bol") {
+        // Booked load: the customer gets the BOL by email. The server action decides (staff only, not while requested).
+        try { await notifyBolUploaded(loadId, path); } catch { /* the upload itself succeeded */ }
+      }
       router.refresh();
     } finally {
       inflight.current = false;
