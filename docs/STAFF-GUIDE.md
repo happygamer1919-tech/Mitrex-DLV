@@ -28,3 +28,12 @@ The load page shows an amber box "No ITS reference for this lane and size". Use 
 
 ## Fix or change a number
 Open **Lanes** in the top menu. Tap **Edit** on the row, change the number, tap **Save**. To change many rows at once use **Export CSV**, edit the file and **Import CSV** (the page tells you which rows are wrong; nothing is imported until every row is right).
+
+## Rate requests (Maria asks for a price on a new lane)
+This is separate from booking. A rate request is not a load and creates no load.
+1. The admin gets an email "Rate request RQ-0001: Toronto, ON to Buffalo, NY, 53 ft" with the lane, equipment, weight, dimensions, notes and a link. (Only active admins get it; CSR staff see the same requests under **Rate requests** in the top menu, and the board shows "Open rate requests" with a count.)
+2. Open **Rate requests** (top menu). **Open** requests are listed first, then **Quoted**, then **Cancelled**. Tap a request.
+3. Check the details, then under **Enter the rate** type the amount (numbers, up to two decimals), choose **CAD** (default) or **USD**, add notes for Maria if you want, and a **Valid until** date if the price expires. Tap **Save rate**. Admin and CSR can both do this.
+4. The page says "Rate saved. The customer was emailed that the rate is in the app." Maria gets an email that says the rate is ready; the email never shows the price. She sees the amount on her **Rates** page. If the page says the email could not be sent, tell Maria by phone that the rate is in the app.
+5. Entered the wrong amount? Open the request again: **Current rate** is shown and the form is filled in. Change it and tap **Correct the rate**. Maria gets a short email "Your rate was updated in the app" (still no price).
+6. If Maria cancelled the request the page says so and the form is gone.

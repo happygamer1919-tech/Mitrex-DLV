@@ -12,6 +12,7 @@ function navFor(p: Profile): NavItem[] {
       { href: "/admin/locations", label: "Locations" },
       { href: "/admin/lanes", label: "Lanes" },
       { href: "/admin/requests", label: "Requests" },
+      { href: "/admin/rates", label: "Rate requests" },
       { href: "/admin/export", label: "Export" },
     ];
     if (p.role === "staff_admin") {
@@ -27,6 +28,7 @@ function navFor(p: Profile): NavItem[] {
   return [
     { href: "/loads", label: "Loads" },
     { href: "/book", label: "Book a load" },
+    { href: "/rates", label: "Rates" },
     { href: "/locations", label: "Locations" },
   ];
 }

@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { adminClient, anon, as, insertLoad, isoDate, uniq, uniqIts } from "./support/helpers";
 import { makeLocation, retireLocations } from "./support/book";
+import { RATE_MARK, seedRate } from "./support/rates";
 import type { Who } from "./support/users";
 
 // C5b accessibility gate. Run with: npx playwright test e2e/a11y.spec.ts --project=chromium
@@ -411,6 +412,44 @@ test("lane references: /admin/lanes states (list, prefilled add form, refused ad
   } finally {
     await db.from("lane_references").delete().eq("id", lane.data!.id);
     await retireLocations([a.id, b.id]);
+  }
+});
+
+test("rate requests: /rates (empty form, refused form, open, quoted and cancelled rows, cancel ask), /admin/rates, /admin/rates/[id] (open, quoted, cancelled)", async ({ browser }) => {
+  const db = adminClient();
+  const mitrex = (await db.from("customers").select("id").eq("name", "Mitrex").single()).data!.id as string;
+  const maria = (await db.from("profiles").select("id").eq("email", "maria@e2e.test").single()).data!.id as string;
+  const open = await seedRate({ customerId: mitrex, requestedBy: maria, notes: uniq(RATE_MARK), city: uniq("A11YO") });
+  const quoted = await seedRate({ customerId: mitrex, requestedBy: maria, notes: uniq(RATE_MARK), city: uniq("A11YQ"), status: "quoted", amount: 1850.5, currency: "CAD", quoteNotes: "fuel included" });
+  const cancelled = await seedRate({ customerId: mitrex, requestedBy: maria, notes: uniq(RATE_MARK), city: uniq("A11YC"), status: "cancelled" });
+  try {
+    const rates = { path: /^\/rates$/, h1: /^Rates$/ };
+    await session(browser, "maria", async (page) => {
+      await page.goto("/rates");
+      await scan(page, "/rates (form and rows)", { ...rates, text: "1,850.50 CAD" });
+      await page.getByRole("button", { name: "Request a rate" }).click();
+      await expect(page.getByRole("alert").filter({ hasText: "Pickup city is required." })).toBeVisible();
+      await scan(page, "/rates (refused form with errors)", { ...rates, text: "Pickup city is required." });
+      await page.goto("/rates");
+      await page.locator(`[data-testid="rate-row"][data-ref="${open.ref}"]`).getByRole("button", { name: "Cancel request" }).click();
+      await scan(page, "/rates (cancel asks to confirm)", { ...rates, text: `Cancel rate request ${open.ref}?` });
+    });
+    await session(browser, "admin", async (page) => {
+      const list = { path: /^\/admin\/rates$/, h1: /^Rate requests$/ };
+      await page.goto("/admin/rates");
+      await scan(page, "/admin/rates (open, quoted, cancelled)", { ...list, text: quoted.ref });
+      for (const [name, r, text] of [["open", open, "Enter the rate"], ["quoted", quoted, "Current rate"], ["cancelled", cancelled, /The customer cancelled this request/]] as const) {
+        await page.goto(`/admin/rates/${r.id}`);
+        await scan(page, `/admin/rates/[id] (${name})`, { path: new RegExp(`^/admin/rates/${r.id}$`), h1: new RegExp(`Rate request ${r.ref}`), text });
+      }
+      await page.goto(`/admin/rates/${open.id}`);
+      await page.getByLabel("Amount").fill("0");
+      await page.getByRole("button", { name: "Save rate" }).click();
+      await expect(page.getByRole("alert").filter({ hasText: "greater than 0" })).toBeVisible();
+      await scan(page, "/admin/rates/[id] (refused amount)", { path: new RegExp(`^/admin/rates/${open.id}$`), h1: new RegExp(`Rate request ${open.ref}`), text: /greater than 0/ });
+    });
+  } finally {
+    await db.from("rate_requests").delete().in("id", [open.id, quoted.id, cancelled.id]);
   }
 });
 

@@ -271,5 +271,6 @@ test("nothing recorded during the whole run was addressed to Maria except a book
   const all = await sentEmails();
   expect(all.length).toBeGreaterThan(0); // the log is not empty, so the check below is not vacuous
   const toMaria = all.filter((m) => m.to.includes(MARIA));
-  for (const m of toMaria) expect(m.subject, "an email to Maria").toMatch(/^(Load \S+ booked|BOL for load \S+)$/);
+  // (DLV-030: a rate request answer is also allowed, "Your rate is ready in the app (RQ-0001)" or "... was updated ...".)
+  for (const m of toMaria) expect(m.subject, "an email to Maria").toMatch(/^(Load \S+ booked|BOL for load \S+|Your rate (is ready|was updated) in the app \(RQ-\d+\))$/);
 });
