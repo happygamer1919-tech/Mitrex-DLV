@@ -621,3 +621,13 @@ Method: `supabase_migrations.schema_migrations` was read first (14 rows, max ver
 
 ### Rehearsal re-run by the engineering assistant (2026-10-07)
 The builder and reviewer sandboxes could not execute the zsh block files, so the blocks were run verbatim from the lead session: `supabase db reset --last 1` (journal max 0013, 13 rows), three production-like rows added (one staff admin, one customer user, one load), then blocks A, B and C extracted and run under `zsh -f` with `DATABASE_URL_DIRECT` exported to the local URL for those processes only. Result: PRECHECK_OK, APPLY_OK, POSTCHECK_OK (58 PASS), and a second run of block B was idempotent (APPLY_OK). `supabase db reset` restored all 14 migrations afterwards.
+
+## Production result (2026-10-07)
+
+Run by the engineering assistant under the owner's standing approval ("yes, apply the migrations when ready"). Blocks A, B and C were extracted verbatim from this file and run with `zsh -f` after loading the env file; no connection string was printed. PR #26 was merged only after the post-check passed (migrations first, then deploy).
+
+| Step | Result |
+| --- | --- |
+| Block A pre-check | PRECHECK_OK. Production at 0001 to 0013, 3 loads, 2 document rows, 1 active staff_admin; load_deletions and both functions absent. |
+| Block B apply | APPLY_OK at 2026-10-07T02:53:54Z. 0014 in one transaction, 0 ERROR lines. |
+| Block C post-check | POSTCHECK_OK, 58 of 58 PASS: audit table with RLS and no client writes; delete_load_forever and record_load_deletion_orphans SECURITY DEFINER with EXECUTE for authenticated only; no DELETE privilege or policy on loads for clients; all pack 4 assertions and the security posture unchanged; row counts unchanged. |
