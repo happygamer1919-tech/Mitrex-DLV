@@ -711,3 +711,11 @@ To be filled in by the lead: run the four blocks verbatim under `zsh -f` against
 ### Lead rehearsal of the real blocks (2026-10-07)
 
 The blocks were extracted verbatim and run under `zsh -f` against the local stack only, from `supabase db reset --last 1` (state 0017) plus production-like rows. Block A: PRECHECK_OK. Block B: APPLY_OK. Block C: 54 PASS, POSTCHECK_OK. Block B again: APPLY_OK (idempotent). Block C again: POSTCHECK_OK. Rollback-0018, then block C: POSTCHECK_FAIL on the column, constraint and policy checks. Block B again restored it and block C gave POSTCHECK_OK.
+
+## Production result (2026-10-07)
+
+- Block A: PRECHECK_OK. Production held 1 load, status Booked; 0 loads in loading or at_delivery, so no in-flight load needed a photo.
+- Block B: APPLY_OK at 2026-10-07T16:40:54Z, 0018 applied with no errors.
+- Block C: POSTCHECK_OK, 54 PASS, 0 FAIL.
+- App PR #32 merged as 50c037e after all three checks passed. The production deploy succeeded; /api/health returned ok and /login returned 200.
+- Not yet done: manual gate M12 (a real iPhone and a real Android phone, including the camera permission prompt).
