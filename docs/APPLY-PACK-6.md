@@ -870,3 +870,7 @@ Method: `supabase_migrations.schema_migrations` was read first (16 rows, max ver
 | Negative arm: a location renamed (Howden to Howden X) | Block A: 1 FAIL, `all 17 names resolve to exactly one location (got Howden (0 matches), want )`, so the missing name is printed; PRECHECK FAIL. Restored afterwards. |
 | Rollback 0016 SQL | The SQL of block rollback-0016 ran with the recorded site list: DELETE 25, UPDATE 7; lane rows 25 to 0, Moffett locations 8 to 1. |
 | Functional rules of 0015 and 0016 | Not part of the blocks. supabase/tests/rls.sql section 15 (full seed set compared, derived Moffett for all 25 rows, staff admin and csr read and write, customer, other customer, carrier owner, carrier driver and inactive staff refused with guards, constraints, updated_by, applying 0016 twice more, a missing name writes nothing) runs on a fresh `supabase db reset`; nine mutations of the migration or data were each caught by it. |
+
+### Lead rehearsal of the real blocks (2026-10-07)
+
+The blocks were extracted verbatim and run under `zsh -f` against the local stack only, from `supabase db reset --last 2` (state 0014) plus production-like rows (one staff admin, one customer user, two loads) with the seven Moffett sites set to false. Block A: PRECHECK_OK. Block B: APPLY_OK. Block C: 76 PASS, POSTCHECK_OK. Block B again: APPLY_OK (idempotent). Block C again: POSTCHECK_OK. Rollback-0016, then block C: POSTCHECK_FAIL on exactly the lane checks. Block B again restored it and block C gave POSTCHECK_OK.
