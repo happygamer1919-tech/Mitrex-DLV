@@ -3,14 +3,12 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { btnClass, Button, Card, Notice } from "@/components/ui";
-import { DropZone } from "@/components/DropZone";
+import { PodPicker } from "@/components/camera/PodPicker";
 import { storePodPhoto } from "@/lib/carrier/pod-upload";
 import { failure, goToLogin, withTimeout } from "@/lib/client/action-guard";
 
-export const POD_EXTS = ["jpg", "jpeg", "png", "webp", "heic"];
-export const POD_MAX_BYTES = 15 * 1024 * 1024;
-
-// Carrier "Proof of delivery" card on a delivered load: add the POD photo after delivery, or another one.
+// Carrier "Proof of delivery" card on a delivered load: add the POD after delivery, or another one. The in-app camera
+// is the primary way; a small "Choose a file instead" link covers a PDF the receiver handed over.
 export function PodCard({ loadId, userId, pods }: { loadId: string; userId: string; pods: { id: string; url: string | null }[] }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -23,7 +21,7 @@ export function PodCard({ loadId, userId, pods }: { loadId: string; userId: stri
 
   async function add() {
     if (inflight.current) return;
-    if (!file) { setError("Choose or take a photo first."); return; }
+    if (!file) { setError("Take the POD photo first, or choose a file."); return; }
     inflight.current = true;
     const attempt = { cancelled: false };
     setBusy(true);
@@ -74,18 +72,7 @@ export function PodCard({ loadId, userId, pods }: { loadId: string; userId: stri
       )}
       {adding ? (
         <div className="space-y-3">
-          <DropZone
-            file={file}
-            onFile={(f) => { setError(""); setOk(""); pathRef.current = null; setFile(f); }}
-            exts={POD_EXTS}
-            maxBytes={POD_MAX_BYTES}
-            typeError="Use a photo (jpg, png, webp or heic)."
-            sizeError="The photo is larger than 15 MB."
-            label="POD photo"
-            camera
-            driver
-            disabled={busy}
-          />
+          <PodPicker file={file} onFile={(f) => { setError(""); setOk(""); pathRef.current = null; setFile(f); }} label="Take POD photo" disabled={busy} />
           {error ? <Notice tone="error">{error}</Notice> : null}
           <Button type="button" className="min-h-[56px] w-full" variant="dark" onClick={add} disabled={busy} data-testid="pod-add">
             {busy ? "Uploading..." : failed ? "Try again" : "Add POD photo"}

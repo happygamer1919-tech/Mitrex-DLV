@@ -4,7 +4,7 @@ import { Shell } from "@/components/Shell";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { Card, StatusChip } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
-import { AssignCarrierForm, BookLoadForm, EditItsForm, EtaForm, StaffUpload, StatusOverrideForm } from "@/components/admin/LoadControls";
+import { AssignCarrierForm, BookLoadForm, EditItsForm, EtaForm, RemovePhotoButton, StaffUpload, StatusOverrideForm } from "@/components/admin/LoadControls";
 import { ItsCopyCard } from "@/components/admin/ItsCopyCard";
 import { laneLabel, resolve, type LaneReference } from "@/lib/admin/lane-reference";
 import { DeleteLoadCard } from "@/components/admin/DeleteLoadCard";
@@ -13,13 +13,15 @@ import { itsOrRef, staffLabel } from "@/lib/load-number";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, fmtSlot, isoToEasternLocal, telHref } from "@/lib/format";
-import { STATUS_LABEL, type LoadDocument, type LoadEvent } from "@/lib/types";
+import { STATUS_LABEL, type DocKind, type LoadDocument, type LoadEvent } from "@/lib/types";
 import { UUID } from "@/lib/admin/errors";
 import { nameIsStreet } from "@/lib/address";
 import { cancelLoad } from "@/lib/admin/load-actions";
 import { routeOf } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
+
+const DOC_NAME: Record<DocKind, string> = { bol: "BOL", pod: "POD", pickup_photo: "Pickup photo", delivery_photo: "Delivery photo" };
 
 type Loc = {
   name: string; address_line: string; city: string; province: string; postal_code: string | null;
@@ -213,17 +215,22 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
             ) : (
               <ul className="mb-4 divide-y divide-line">
                 {signed.map(({ d, url }) => (
-                  <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <li key={d.id} data-testid="doc-row" data-kind={d.kind} className="flex flex-wrap items-center justify-between gap-2 py-2">
                     <div>
-                      <p className="text-[15px] font-bold">{d.kind === "bol" ? "BOL" : "POD"}</p>
-                      <p className="text-[13px] text-muted">{fmtDateTime(d.created_at)}</p>
+                      <p className="text-[15px] font-bold">{DOC_NAME[d.kind]}</p>
+                      <p className="text-[13px] text-muted" data-testid="doc-time">{fmtDateTime(d.created_at)}</p>
                     </div>
-                    {url ? (
-                      <a href={url} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex min-h-[44px] items-center rounded-full border border-line px-5 text-[15px] font-bold">
-                        Download
-                      </a>
-                    ) : <span className="text-[13px] text-muted">Link unavailable</span>}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {url ? (
+                        <a href={url} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex min-h-[44px] items-center rounded-full border border-line px-5 text-[15px] font-bold">
+                          {d.kind === "pickup_photo" || d.kind === "delivery_photo" ? "Open" : "Download"}
+                        </a>
+                      ) : <span className="text-[13px] text-muted">Link unavailable</span>}
+                      {d.kind === "pickup_photo" || d.kind === "delivery_photo" ? (
+                        <RemovePhotoButton loadId={load.id} docId={d.id} label={DOC_NAME[d.kind]} />
+                      ) : null}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -232,6 +239,8 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
               <div className="space-y-6">
                 <StaffUpload loadId={load.id} kind="bol" />
                 <StaffUpload loadId={load.id} kind="pod" />
+                <StaffUpload loadId={load.id} kind="pickup_photo" />
+                <StaffUpload loadId={load.id} kind="delivery_photo" />
               </div>
             ) : null}
           </Card>
@@ -245,7 +254,7 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
 
           <Card>
             <h2 className="mb-1 text-[20px] font-bold">Override status</h2>
-            <p className="mb-3 text-[13px] text-muted">Use for corrections. A note is required and goes in the timeline.</p>
+            <p className="mb-3 text-[13px] text-muted">Use for corrections. A note is required and goes in the timeline. Moving past a missing pickup or delivery photo is allowed for staff and is recorded in the timeline.</p>
             <StatusOverrideForm loadId={load.id} current={status} itsNumber={load.its_load_number} />
           </Card>
 

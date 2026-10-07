@@ -161,12 +161,15 @@ test("staff uploads a POD on behalf of the carrier by drag and drop; POD pending
   await ctx.close();
 });
 
-test("the carrier POD upload uses the same drop area with the camera on phones, and 48px targets", async ({ browser }) => {
+test("the carrier POD upload offers the in-app camera first and the same drop area as a secondary choice, with 48px targets", async ({ browser }) => {
   const { id } = await insertLoad({ po: uniq("DZCAM"), status: "delivered" });
   const { ctx, page } = await as(browser, "carrierA");
   await page.goto(`/my-loads/${id}`);
   const card = page.getByTestId("pod-card");
-  await expect(card.getByTestId("dropzone-input")).toHaveAttribute("capture", "environment");
+  await expect(card.getByTestId("pod-take")).toBeVisible();
+  await expect(card.getByTestId("dropzone")).toHaveCount(0);
+  await card.getByTestId("pod-choose-file").click();
+  await expect(card.getByTestId("dropzone-input")).not.toHaveAttribute("capture", /.*/); // a file the receiver gave them, not a camera shortcut
   const zone = card.getByTestId("dropzone");
   const [chooser] = await Promise.all([page.waitForEvent("filechooser"), zone.click()]);
   await chooser.setFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });

@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { adminClient, as, insertLoad, loadRow, PNG_1X1, uniq } from "./support/helpers";
+import { adminClient, as, insertLoad, loadRow, PNG_1X1, uniq, podChooseFile } from "./support/helpers";
 
 // Card 2 of DLV-021: the POD is optional at delivery and can be added afterwards.
 // Every claim is read back through the service role.
@@ -44,13 +44,15 @@ test("delivered without a photo: the carrier page shows POD not uploaded yet and
   const card = page.getByTestId("pod-card");
   await expect(card.getByTestId("pod-missing")).toHaveText("POD not uploaded yet");
   await expect(card.getByRole("link", { name: /View POD/ })).toHaveCount(0);
-  await expect(card.getByTestId("dropzone-input")).toHaveAttribute("capture", "environment");
+  // The in-app camera is the primary way; the file area is a small secondary choice (a PDF the receiver gave them).
+  await expect(card.getByTestId("pod-take")).toBeVisible();
+  await expect(card.getByTestId("dropzone-input")).toHaveCount(0);
   // Nothing chosen: refused with a message.
   await card.getByTestId("pod-add").click();
-  await expect(card.getByText("Choose or take a photo first.")).toBeVisible();
+  await expect(card.getByText("Take the POD photo first, or choose a file.")).toBeVisible();
   expect(await podRows(id)).toEqual([]);
 
-  await card.getByTestId("dropzone-input").setInputFiles({ name: "late.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(card, { name: "late.png", mimeType: "image/png", buffer: PNG_1X1 });
   await card.getByTestId("pod-add").click();
   await expect(card.getByRole("link", { name: "View POD" })).toBeVisible({ timeout: 30_000 });
   await expect(card.getByTestId("pod-missing")).toHaveCount(0);
@@ -61,7 +63,7 @@ test("delivered without a photo: the carrier page shows POD not uploaded yet and
 
   // Add another: a second photo, a second row, both linked.
   await card.getByRole("button", { name: "Add another" }).click();
-  await card.getByTestId("dropzone-input").setInputFiles({ name: "second.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(card, { name: "second.png", mimeType: "image/png", buffer: PNG_1X1 });
   await card.getByTestId("pod-add").click();
   await expect(card.getByRole("link", { name: /^View POD/ })).toHaveCount(2, { timeout: 30_000 });
   expect(await podRows(id)).toHaveLength(2);
@@ -74,7 +76,7 @@ test("the late POD photo is stored as a JPEG of at most 1600px and one stored pa
   const { ctx, page } = await as(browser, "carrierA");
   await openFresh(page, `/my-loads/${id}`);
   const card = page.getByTestId("pod-card");
-  await card.getByTestId("dropzone-input").setInputFiles({ name: "late.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(card, { name: "late.png", mimeType: "image/png", buffer: PNG_1X1 });
   await card.getByTestId("pod-add").click();
   await expect(card.getByRole("link", { name: "View POD" })).toBeVisible({ timeout: 30_000 });
   const rows = await podRows(id);
@@ -106,7 +108,7 @@ test("staff and customer: POD pending on the board and the load page, then gone;
   const carrier = await as(browser, "carrierA");
   await carrier.page.goto(`/my-loads/${id}`);
   const card = carrier.page.getByTestId("pod-card");
-  await card.getByTestId("dropzone-input").setInputFiles({ name: "p.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(card, { name: "p.png", mimeType: "image/png", buffer: PNG_1X1 });
   await card.getByTestId("pod-add").click();
   await expect(card.getByRole("link", { name: "View POD" })).toBeVisible({ timeout: 30_000 });
   await carrier.ctx.close();
@@ -138,7 +140,7 @@ test("a failed photo upload offers Try again and Mark delivered without photo; n
 
   await page.getByTestId("next-step").click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByTestId("dropzone-input").setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(dialog, { name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
   await dialog.getByTestId("pod-submit").click();
   await expect(dialog.getByRole("alert")).toContainText("The photo did not upload");
   await expect(dialog.getByTestId("pod-retry")).toHaveText("Try again");

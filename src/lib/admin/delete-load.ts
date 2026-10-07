@@ -4,9 +4,9 @@
 // the load, returns the document paths), then the files, then the orphan log when the files could not be removed.
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-// Same shape as dlv_can_access_doc and the load_documents CHECK: {load uuid}/{bol|pod}/{file uuid}.{ext}
+// Same shape as dlv_can_access_doc and the load_documents CHECK: {load uuid}/{bol|pod}/{file uuid}.{ext} or {load uuid}/{pickup_photo|delivery_photo}/{file uuid}.{jpg|jpeg|png|webp} (0018)
 export const DOC_PATH_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(bol|pod)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]{2,5}$/;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/((bol|pod)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]{2,5}|(pickup_photo|delivery_photo)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|jpeg|png|webp))$/;
 
 export const MAX_CONFIRM_LENGTH = 40;
 

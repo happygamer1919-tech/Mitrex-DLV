@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page, type Route } from "@playwright/test";
-import { adminClient, as, anon, insertLoad, isoDate, loadRow, PNG_1X1, uniq } from "./support/helpers";
+import { adminClient, as, anon, insertLoad, isoDate, loadRow, PNG_1X1, uniq, podChooseFile } from "./support/helpers";
 import { clearMail, latestCode } from "./support/mail";
 import type { Who } from "./support/users";
 import { safeNext } from "../src/lib/safe-next";
@@ -176,7 +176,7 @@ for (const mode of ["abort", "http500"] as const) {
 
     await NEXT_STEP(page).click();
     const dialog = page.getByRole("dialog");
-    await dialog.locator('input[type="file"]').setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
+    await podChooseFile(dialog, { name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
     await dialog.getByTestId("pod-submit").click();
 
     await expect(dialog.getByRole("alert")).toContainText("The photo did not upload");
@@ -213,7 +213,7 @@ test("POD saved but the final status call fails: not claimed delivered; retry re
 
   await NEXT_STEP(page).click();
   const dialog = page.getByRole("dialog");
-  await dialog.locator('input[type="file"]').setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(dialog, { name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
   await dialog.getByTestId("pod-submit").click();
 
   await expect(dialog.getByRole("alert")).toContainText("Could not reach the server");
@@ -298,7 +298,7 @@ test("delivered modal is double submit safe: one POD row, one event", async ({ b
   await openFresh(page, `/my-loads/${id}`);
   await NEXT_STEP(page).click();
   const dialog = page.getByRole("dialog");
-  await dialog.locator('input[type="file"]').setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(dialog, { name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
   await dialog.getByTestId("pod-submit").dblclick();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect.poll(() => status(id)).toBe("delivered");
@@ -505,7 +505,7 @@ test("dead network during the POD photo upload: watchdog, no stray rows; a late 
   await openFresh(page, `/my-loads/${id}`);
   await NEXT_STEP(page).click();
   const dialog = page.getByRole("dialog");
-  await dialog.locator('input[type="file"]').setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(dialog, { name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
   const hole = blackhole();
   const restore = onUpload(page, hole.behaviour);
   const before = page.url();
@@ -541,7 +541,7 @@ test("POD row insert held past the watchdog, retry inserts, then the held one la
   await openFresh(page, `/my-loads/${id}`);
   await NEXT_STEP(page).click();
   const dialog = page.getByRole("dialog");
-  await dialog.locator('input[type="file"]').setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(dialog, { name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
   await dialog.getByTestId("pod-submit").click();
   await expect(dialog.getByRole("alert")).toContainText("taking too long", { timeout: 12_000 });
   expect(held).toHaveLength(1);

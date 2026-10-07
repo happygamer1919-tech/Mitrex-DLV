@@ -32,3 +32,4 @@
 | Production migrations 0015 and 0016 applied (lane references); pack 6 result | #29 | merged |
 | Rate requests: Maria asks for a rate, staff enter it, emails both ways (migration 0017) | #30 | merged |
 | Production migration 0017 applied (rate requests); pack 7 result | #31 | merged |
+| Required pickup and delivery photos, in-app camera, customer sees photos (migration 0018) | #32 | merged |

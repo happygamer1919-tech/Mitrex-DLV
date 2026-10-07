@@ -29,6 +29,29 @@ Open **My loads**, then tap your load. One big button moves the load to the next
 
 Tap it once per step. It also tells you the "Next status".
 
+Two steps need a photo first. The big button is grey until you have taken it (see the next two sections).
+
+## Photo of the loaded freight
+When the load is in **Loading**, a white box **Loaded photo** appears with a big green button **Take loaded photo**.
+1. Tap **Take loaded photo**. The camera opens inside the app. The first time, your phone asks to allow the camera: tap **Allow**.
+2. Point the phone at the loaded freight and tap **Take photo**.
+3. Look at the picture. Tap **Use this photo**, or **Retake** to take it again.
+4. The photo appears in the box with its time (Eastern time). Now **Leave for delivery** turns green and you can tap it.
+
+You can take more than one photo (up to 6): tap **Take another photo**. Took a bad one? Tap **Remove** under it. You cannot go on without at least one photo.
+
+The picture is taken in the app. You cannot pick one from your gallery. The time on it is set by DLV, not by your phone.
+
+## Photo at delivery
+When the load is **At delivery**, the box says **Delivery photo** with a button **Take delivery photo**. Do the same four steps. After that **Mark delivered** turns green. You cannot mark the load delivered without the delivery photo.
+
+## If the camera does not open
+The box explains why (for example "The camera is blocked") and shows **Open the phone camera**.
+1. Tap **Open the phone camera**, take the picture, and confirm it in your phone's camera.
+2. The picture comes back to the app. Tap **Use this photo**.
+3. If the camera is blocked, open your phone settings, allow the camera for the DLV app, then tap **Try the camera again**.
+4. Still not working? Call dispatch. They can fix the load.
+
 ## Leaving for delivery (ETA)
 When you tap **Leave for delivery**, a box asks for your delivery ETA (Eastern time). It starts at the delivery appointment time. Change it to when you really expect to arrive, then tap **Confirm ETA and leave**. Dispatch and the customer see it.
 
@@ -37,13 +60,14 @@ While Enroute or At delivery, tap **Update ETA** next to "Delivery ETA", set the
 
 ## Proof of delivery (POD)
 1. Tap **Mark delivered**.
-2. If you have the signed paperwork, tap the big box (**Drop the file here, or tap to choose**) and take a clear photo. Check the preview.
-3. Tap **Mark delivered**.
+2. If you have the signed paperwork, tap **Take POD photo**. The camera opens in the app. Tap **Take photo**, check it, tap **Use this POD photo**.
+3. The receiver gave you a PDF instead? Tap **Choose a file instead** and pick the file.
+4. Tap **Mark delivered**.
 
-The photo is optional. No photo yet? Just tap **Mark delivered**. The load is delivered and you add the photo later.
+The POD is optional. No POD yet? Just tap **Mark delivered**. The load is delivered and you add the POD later.
 
 ## Add the POD photo later
-Open the delivered load from **My loads**. The **Proof of delivery** card says **POD not uploaded yet** in orange. Tap the box, take the photo, then tap **Add POD photo**. Once a POD is saved the card shows **View POD** and **Add another** (for a second page).
+Open the delivered load from **My loads**. The **Proof of delivery** card says **POD not uploaded yet** in orange. Tap **Take POD photo**, take the picture, tap **Use this POD photo**, then tap **Add POD photo**. Once a POD is saved the card shows **View POD** and **Add another** (for a second page).
 
 ## If the photo fails
 You will see "The photo did not upload" with two buttons.

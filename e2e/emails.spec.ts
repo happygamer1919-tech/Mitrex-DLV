@@ -1,5 +1,5 @@
 import { expect, test, type Browser } from "@playwright/test";
-import { adminClient, as, gotoSteady, insertLoad, isoDate, PNG_1X1, staffBook, uniq, uniqIts } from "./support/helpers";
+import { addLoadPhoto, adminClient, as, gotoSteady, insertLoad, isoDate, PNG_1X1, staffBook, uniq, uniqIts, podChooseFile } from "./support/helpers";
 import { fillBooking, makeLocation, retireLocations } from "./support/book";
 import { BASE_URL } from "./support/env";
 import { sentEmails, setMockStatus, MAIL_MOCK_URL, type SentEmail } from "./support/mail-mock";
@@ -204,6 +204,8 @@ test("status changes by the carrier (at pickup to delivered) send no email at al
   await expect(page.getByRole("button", { name: "Start loading" })).toBeVisible();
   await page.getByRole("button", { name: "Start loading" }).click();
   await expect(page.getByRole("button", { name: "Leave for delivery" })).toBeVisible();
+  await addLoadPhoto(id, "pickup_photo"); // the photo gate (DLV-032)
+  await page.reload();
   await page.getByRole("button", { name: "Leave for delivery" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.locator('input[type="datetime-local"]').fill(`${isoDate(4)}T15:30`);
@@ -211,9 +213,11 @@ test("status changes by the carrier (at pickup to delivered) send no email at al
   await expect(page.getByRole("button", { name: "Arrived at delivery" })).toBeVisible();
   await page.getByRole("button", { name: "Arrived at delivery" }).click();
   await expect(page.getByRole("button", { name: "Mark delivered" })).toBeVisible();
+  await addLoadPhoto(id, "delivery_photo"); // the photo gate (DLV-032)
+  await page.reload();
   await page.getByRole("button", { name: "Mark delivered" }).click();
   const pod = page.getByRole("dialog");
-  await pod.locator('input[type="file"]').setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(pod, { name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
   await pod.getByRole("button", { name: "Mark delivered" }).click();
   await expect.poll(async () => (await db().from("loads").select("status").eq("id", id).single()).data?.status, { timeout: 30_000 }).toBe("delivered");
   const steps = (await db().from("load_events").select("to_status").eq("load_id", id).order("created_at")).data?.map((e) => e.to_status);

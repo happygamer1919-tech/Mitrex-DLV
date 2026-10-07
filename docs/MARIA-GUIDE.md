@@ -64,6 +64,15 @@ Open the load from the **Loads** list.
 - **POD**: under **Documents**, button **View POD**, once it is uploaded. A load can be delivered before the POD photo arrives: the page then says **POD not uploaded yet.** and the button appears by itself (within about 15 seconds) when it is added.
 - The **Timeline** shows every status change.
 
+## Photos of your load
+The driver takes two photos with the app's own camera: the freight loaded on the truck, and the freight at delivery. The time on each photo is set by DLV, not by the driver's phone.
+- Open the load from the **Loads** list and look at the **Photos** card.
+- The photo of the loaded freight appears once the truck has left for delivery (**Enroute** or later).
+- The delivery photo appears once the load is **Delivered**.
+- Tap a photo to open it full size. Each photo shows the date and time (Eastern time).
+- Before that the card tells you when the photos will appear. The page updates by itself.
+- You only see the photos of your own loads. You cannot add or remove photos; ask DLV if one is missing.
+
 ## Locations
 On the **Locations** page you can:
 - Save the default contact for a location (**Save contact**).

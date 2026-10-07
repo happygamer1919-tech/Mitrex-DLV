@@ -17,7 +17,16 @@ export default defineConfig({
   globalSetup: "./e2e/support/global-setup.ts",
   use: { baseURL: `http://localhost:${PORT}`, trace: "retain-on-failure" },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // DLV-032: a fake camera for the in-app camera tests. The flags only matter when a page calls getUserMedia;
+        // no spec grants the camera permission except the ones that test the camera (context option permissions).
+        // WebKit has no fake camera: on WebKit the specs test the fallback input path and the gate behaviour.
+        launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] },
+      },
+    },
     { name: "webkit", use: { ...devices["iPhone 13"] } },
   ],
   webServer: {

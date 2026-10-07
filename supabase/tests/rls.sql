@@ -85,6 +85,11 @@ begin
   else perform rlstest.rec(p_name, 'FAIL', 'count=' || n || ' expected=' || p_expected); end if;
 end $f$;
 
+-- 0018: a photo row needs its picture in the bucket first (the app uploads, then inserts). Text of a DO block that stores
+-- the image object and the row as the CURRENT user, in that order.
+create function rlstest.pdins(p_load text, p_kind text, p_path text) returns text language sql immutable as $f$
+  select format($q$do $x$ begin insert into storage.objects (bucket_id, name, owner, metadata) values ('documents', %L, auth.uid(), '{"mimetype":"image/jpeg"}'::jsonb); insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, %L, %L, auth.uid()); end $x$$q$, p_path, p_load, p_kind, p_path) $f$;
+
 grant execute on all functions in schema rlstest to authenticated, anon;
 
 -- Fixtures -------------------------------------------------------------
@@ -229,7 +234,9 @@ select rlstest.ok('control: carrier moves one step', $q$select public.set_load_s
 select rlstest.ok('control: carrier moves to loading', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'loading')$q$);
 select rlstest.err('enroute without eta rejected', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'enroute')$q$, 'eta is required');
 select rlstest.err('eta cannot change before enroute', $q$select public.set_load_eta('30000000-0000-0000-0000-000000000002', now() + interval '2 hours')$q$, 'only while enroute');
-select rlstest.ok('control: enroute with eta', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'enroute', now() + interval '3 hours')$q$);
+select rlstest.err('enroute with an eta but without a pickup photo is refused (0018)', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'enroute', now() + interval '3 hours')$q$, 'photo of the loaded freight');
+select rlstest.ok('control: carrier adds the pickup photo while loading (0018)', rlstest.pdins('30000000-0000-0000-0000-000000000002', 'pickup_photo', '30000000-0000-0000-0000-000000000002/pickup_photo/a0000000-0000-0000-0000-0000000000f5.jpg'));
+select rlstest.ok('control: enroute with eta',$q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'enroute', now() + interval '3 hours')$q$);
 select rlstest.ok('control: eta editable while enroute', $q$select public.set_load_eta('30000000-0000-0000-0000-000000000002', now() + interval '4 hours')$q$);
 select rlstest.ok('control: carrier moves to at_delivery', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'at_delivery')$q$);
 select rlstest.err('carrier cannot upload a BOL', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000002', 'bol', '30000000-0000-0000-0000-000000000002/bol/a0000000-0000-0000-0000-0000000000f2.pdf', '00000000-0000-0000-0000-0000000000b1')$q$, 'row-level security');
@@ -237,7 +244,9 @@ select rlstest.err('carrier A cannot upload POD to carrier B load', $q$insert in
 select rlstest.ok('control: carrier uploads POD row', $q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-000000000002', 'pod', '30000000-0000-0000-0000-000000000002/pod/a0000000-0000-0000-0000-0000000000f1.jpg', '00000000-0000-0000-0000-0000000000b1')$q$);
 select rlstest.ok('control: carrier uploads POD file', $q$insert into storage.objects (bucket_id, name, owner) values ('documents', '30000000-0000-0000-0000-000000000002/pod/a0000000-0000-0000-0000-0000000000f1.jpg', '00000000-0000-0000-0000-0000000000b1')$q$);
 select rlstest.err('carrier cannot upload a BOL file', $q$insert into storage.objects (bucket_id, name, owner) values ('documents', '30000000-0000-0000-0000-000000000002/bol/a0000000-0000-0000-0000-0000000000f2.pdf', '00000000-0000-0000-0000-0000000000b1')$q$, 'row-level security');
-select rlstest.ok('control: delivered with POD', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'delivered')$q$);
+select rlstest.err('delivered without a delivery photo is refused even with a POD on file (0018)', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'delivered')$q$, 'Take a delivery photo first');
+select rlstest.ok('control: carrier adds the delivery photo at_delivery (0018)', rlstest.pdins('30000000-0000-0000-0000-000000000002', 'delivery_photo', '30000000-0000-0000-0000-000000000002/delivery_photo/a0000000-0000-0000-0000-0000000000f6.jpg'));
+select rlstest.ok('control: delivered with POD',$q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'delivered')$q$);
 select rlstest.err('delivered load is final for carrier', $q$select public.set_load_status('30000000-0000-0000-0000-000000000002', 'at_delivery')$q$, 'one step|final');
 select rlstest.back();
 
@@ -899,10 +908,12 @@ select rlstest.back();
 select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
 select rlstest.ok('walk: carrier at_pickup', format($q$select public.set_load_status(%L, 'at_pickup')$q$, :'L20'));
 select rlstest.ok('walk: carrier loading', format($q$select public.set_load_status(%L, 'loading')$q$, :'L20'));
-select rlstest.ok('walk: carrier enroute', format($q$select public.set_load_status(%L, 'enroute', now() + interval '3 hours')$q$, :'L20'));
+select rlstest.ok('walk: carrier pickup photo', rlstest.pdins(:'L20', 'pickup_photo', :'L20' || '/pickup_photo/a0000000-0000-0000-0000-000000000021.jpg'));
+select rlstest.ok('walk: carrier enroute',format($q$select public.set_load_status(%L, 'enroute', now() + interval '3 hours')$q$, :'L20'));
 select rlstest.ok('walk: carrier at_delivery', format($q$select public.set_load_status(%L, 'at_delivery')$q$, :'L20'));
 select rlstest.ok('walk: carrier uploads POD row', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L, 'pod', %L, '00000000-0000-0000-0000-0000000000b1')$q$, :'L20', :'L20' || '/pod/a0000000-0000-0000-0000-000000000020.jpg'));
-select rlstest.ok('walk: carrier delivered', format($q$select public.set_load_status(%L, 'delivered')$q$, :'L20'));
+select rlstest.ok('walk: carrier delivery photo', rlstest.pdins(:'L20', 'delivery_photo', :'L20' || '/delivery_photo/a0000000-0000-0000-0000-000000000022.jpg'));
+select rlstest.ok('walk: carrier delivered',format($q$select public.set_load_status(%L, 'delivered')$q$, :'L20'));
 select rlstest.back();
 do $t$
 declare
@@ -1067,8 +1078,10 @@ select rlstest.chk('guard: L40 has no document and sits at_delivery',
 select rlstest.chk('guard: L41 and L42 are delivered with no document',
   (select count(*) from public.loads where id in (:'L41', :'L42') and status = 'delivered') = 2
   and (select count(*) from public.load_documents where load_id in (:'L41', :'L42')) = 0);
+insert into public.load_documents (load_id, kind, storage_path, uploaded_by)
+  values (:'L40', 'delivery_photo', :'L40' || '/delivery_photo/c1000000-0000-0000-0000-0000000000f0.jpg', '00000000-0000-0000-0000-0000000000b1');
 select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
-select rlstest.ok('delivered without a POD is allowed (carrier owner)', $q$select public.set_load_status('30000000-0000-0000-0000-000000000040', 'delivered')$q$);
+select rlstest.ok('delivered without a POD is allowed (carrier owner)',$q$select public.set_load_status('30000000-0000-0000-0000-000000000040', 'delivered')$q$);
 select rlstest.err('control: delivered stays final for a carrier', $q$select public.set_load_status('30000000-0000-0000-0000-000000000040', 'at_delivery')$q$, 'one step|final');
 select rlstest.ok('carrier owner uploads a POD after delivered (storage)', rlstest.sins(:'L41' || '/pod/c1000000-0000-0000-0000-000000000001.jpg'));
 select rlstest.ok('carrier owner uploads a POD after delivered (load_documents)', rlstest.dins(:'L41', 'pod', :'L41' || '/pod/c1000000-0000-0000-0000-000000000001.jpg'));
@@ -2150,6 +2163,357 @@ begin
   perform rlstest.chk('the cap refusal left no row (guard: the 30 seed rows and the control row exist)',
     (select count(*) from public.rate_requests where notes = 'cap seed') = 30 and (select count(*) from public.rate_requests where notes = 'cap control') = 1
     and (select count(*) from public.rate_requests where notes = 'cap over') = 0);
+end $t$;
+
+-- 18. load photos (0018) ------------------------------------------------------------------------------------------------------
+\set LP1 '30000000-0000-0000-0000-0000000000e1'
+\set LP2 '30000000-0000-0000-0000-0000000000e2'
+\set LP3 '30000000-0000-0000-0000-0000000000e3'
+\set LP4 '30000000-0000-0000-0000-0000000000e4'
+\set LP5 '30000000-0000-0000-0000-0000000000e5'
+\set LP6 '30000000-0000-0000-0000-0000000000e6'
+\set LP7 '30000000-0000-0000-0000-0000000000e7'
+\set LP8 '30000000-0000-0000-0000-0000000000e8'
+\set LP9 '30000000-0000-0000-0000-0000000000e9'
+-- LP1 booked A, LP2 at_pickup A, LP3 loading A, LP4 enroute A, LP5 at_delivery A, LP6 delivered A,
+-- LP7 loading B (Maria's), LP8 delivered A owned by the OTHER customer, LP9 loading A (cap and delete tests)
+select rlstest.mkload(:'LP1', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'LP2', 'at_pickup', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'LP3', 'loading', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'LP4', 'enroute', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'LP5', 'at_delivery', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'LP6', 'delivered', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'LP7', 'loading', '20000000-0000-0000-0000-00000000000b');
+select rlstest.mkload2(:'LP8', '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000c2', 'delivered', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'LP9', 'loading', '20000000-0000-0000-0000-00000000000a');
+update public.loads set eta = now() + interval '5 hours' where id in (:'LP4', :'LP5');
+
+-- 18a. the table shape (as the table owner, RLS bypassed)
+select rlstest.ok('control: owner inserts a well-formed pickup_photo row', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, 'pickup_photo', %L, '00000000-0000-0000-0000-0000000000b1')$q$, :'LP6', :'LP6' || '/pickup_photo/e0000000-0000-0000-0000-000000000001.jpg'));
+select rlstest.ok('control: owner inserts a well-formed delivery_photo row (webp)', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, 'delivery_photo', %L, '00000000-0000-0000-0000-0000000000b1')$q$, :'LP6', :'LP6' || '/delivery_photo/e0000000-0000-0000-0000-000000000002.webp'));
+select rlstest.err('a photo kind cannot name a pdf', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, 'pickup_photo', %L, '00000000-0000-0000-0000-0000000000b1')$q$, :'LP6', :'LP6' || '/pickup_photo/e0000000-0000-0000-0000-000000000003.pdf'), 'load_documents_path_ck');
+select rlstest.err('a photo kind cannot name a heic file', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, 'delivery_photo', %L, '00000000-0000-0000-0000-0000000000b1')$q$, :'LP6', :'LP6' || '/delivery_photo/e0000000-0000-0000-0000-000000000004.heic'), 'load_documents_path_ck');
+select rlstest.err('the folder must equal the kind (pickup_photo row in the delivery_photo folder)', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, 'pickup_photo', %L, '00000000-0000-0000-0000-0000000000b1')$q$, :'LP6', :'LP6' || '/delivery_photo/e0000000-0000-0000-0000-000000000005.jpg'), 'load_documents_path_ck');
+select rlstest.err('an unknown kind is refused', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, 'selfie', %L, '00000000-0000-0000-0000-0000000000b1')$q$, :'LP6', :'LP6' || '/selfie/e0000000-0000-0000-0000-000000000006.jpg'), 'load_documents_kind_check');
+select rlstest.ok('control: a bol still takes a pdf', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, 'bol', %L, '00000000-0000-0000-0000-0000000000a1')$q$, :'LP6', :'LP6' || '/bol/e0000000-0000-0000-0000-000000000007.pdf'));
+do $t$
+begin
+  perform rlstest.chk('captured_at exists, is timestamptz and nullable',
+    (select data_type = 'timestamp with time zone' and is_nullable = 'YES' from information_schema.columns
+      where table_schema = 'public' and table_name = 'load_documents' and column_name = 'captured_at'));
+end $t$;
+-- the official time is the server time of the insert, whatever captured_at claims
+insert into public.load_documents (load_id, kind, storage_path, uploaded_by, captured_at)
+  values (:'LP6', 'delivery_photo', :'LP6' || '/delivery_photo/e0000000-0000-0000-0000-000000000008.jpg', '00000000-0000-0000-0000-0000000000b1', '2001-02-03 04:05:06+00');
+do $t$
+begin
+  perform rlstest.chk('created_at is the server time (now), not the captured_at the browser sent (guard: both set)',
+    (select captured_at = '2001-02-03 04:05:06+00' and created_at > now() - interval '1 minute' and created_at <= now() + interval '1 minute'
+       from public.load_documents where storage_path like '%/e0000000-0000-0000-0000-000000000008.jpg'));
+end $t$;
+
+-- 18b. who may write a photo, and when (row and object)
+insert into storage.objects (bucket_id, name, metadata) values
+  ('documents', :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000020.jpg', '{"mimetype":"application/pdf"}'::jsonb);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.err('carrier A cannot write a pickup photo while booked', rlstest.dins(:'LP1', 'pickup_photo', :'LP1' || '/pickup_photo/e1000000-0000-0000-0000-000000000001.jpg'), 'row-level security');
+select rlstest.ok('control: carrier A writes a pickup photo at_pickup', rlstest.pdins(:'LP2', 'pickup_photo', :'LP2' || '/pickup_photo/e1000000-0000-0000-0000-000000000002.jpg'));
+select rlstest.err('carrier A cannot write a delivery photo at_pickup', rlstest.dins(:'LP2', 'delivery_photo', :'LP2' || '/delivery_photo/e1000000-0000-0000-0000-000000000003.jpg'), 'row-level security');
+select rlstest.ok('control: carrier A writes a pickup photo while loading', rlstest.pdins(:'LP3', 'pickup_photo', :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000004.jpg'));
+select rlstest.err('carrier A cannot write a delivery photo while loading', rlstest.dins(:'LP3', 'delivery_photo', :'LP3' || '/delivery_photo/e1000000-0000-0000-0000-000000000005.jpg'), 'row-level security');
+select rlstest.err('carrier A cannot write a pickup photo once enroute', rlstest.dins(:'LP4', 'pickup_photo', :'LP4' || '/pickup_photo/e1000000-0000-0000-0000-000000000006.jpg'), 'row-level security');
+select rlstest.err('carrier A cannot write a delivery photo while enroute', rlstest.dins(:'LP4', 'delivery_photo', :'LP4' || '/delivery_photo/e1000000-0000-0000-0000-000000000007.jpg'), 'row-level security');
+select rlstest.ok('control: carrier A writes a delivery photo at_delivery', rlstest.pdins(:'LP5', 'delivery_photo', :'LP5' || '/delivery_photo/e1000000-0000-0000-0000-000000000008.jpg'));
+select rlstest.err('carrier A cannot write a pickup photo at_delivery', rlstest.dins(:'LP5', 'pickup_photo', :'LP5' || '/pickup_photo/e1000000-0000-0000-0000-000000000009.jpg'), 'row-level security');
+select rlstest.err('carrier A cannot write a delivery photo once delivered', rlstest.dins(:'LP6', 'delivery_photo', :'LP6' || '/delivery_photo/e1000000-0000-0000-0000-00000000000a.jpg'), 'row-level security');
+select rlstest.err('carrier A cannot write a photo to carrier B load (loading, so only the carrier is wrong)', rlstest.dins(:'LP7', 'pickup_photo', :'LP7' || '/pickup_photo/e1000000-0000-0000-0000-00000000000b.jpg'), 'row-level security');
+select rlstest.err('a photo row is refused when its file is not an image (a stored pdf under a photo name)', rlstest.dins(:'LP3', 'pickup_photo', :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000020.jpg'), 'row-level security');
+select rlstest.err('a photo row is refused when there is no file at all (the gate cannot be satisfied with an empty row)', rlstest.dins(:'LP3', 'pickup_photo', :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000021.jpg'), 'row-level security');
+select rlstest.err('a photo row cannot name another load folder', rlstest.dins(:'LP3', 'pickup_photo', :'LP9' || '/pickup_photo/e1000000-0000-0000-0000-00000000000c.jpg'), 'row-level security|violates check');
+select rlstest.ok('control: carrier A writes a pickup photo OBJECT while loading (image/jpeg)', format($q$insert into storage.objects (bucket_id, name, owner, metadata) values ('documents', %L, '00000000-0000-0000-0000-0000000000b1', '{"mimetype":"image/jpeg"}'::jsonb)$q$, :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-00000000000d.jpg'));
+select rlstest.err('a pdf mimetype is refused on a photo path (object)', format($q$insert into storage.objects (bucket_id, name, owner, metadata) values ('documents', %L, '00000000-0000-0000-0000-0000000000b1', '{"mimetype":"application/pdf"}'::jsonb)$q$, :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-00000000000e.jpg'), 'row-level security');
+select rlstest.err('a photo object with no declared mimetype is refused', format($q$insert into storage.objects (bucket_id, name, owner) values ('documents', %L, '00000000-0000-0000-0000-0000000000b1')$q$, :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-00000000000f.jpg'), 'row-level security');
+select rlstest.err('a photo object is refused in a closed window (enroute)', format($q$insert into storage.objects (bucket_id, name, owner, metadata) values ('documents', %L, '00000000-0000-0000-0000-0000000000b1', '{"mimetype":"image/jpeg"}'::jsonb)$q$, :'LP4' || '/pickup_photo/e1000000-0000-0000-0000-000000000010.jpg'), 'row-level security');
+select rlstest.ok('control: a POD object needs no mimetype (rules unchanged)', format($q$insert into storage.objects (bucket_id, name, owner) values ('documents', %L, '00000000-0000-0000-0000-0000000000b1')$q$, :'LP4' || '/pod/e1000000-0000-0000-0000-000000000011.jpg'));
+select rlstest.back();
+
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b2');
+select rlstest.ok('control: a DRIVER of carrier A writes a pickup photo while loading', rlstest.pdins(:'LP3', 'pickup_photo', :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000012.jpg'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b3');
+select rlstest.err('carrier B cannot write a photo to carrier A load', rlstest.dins(:'LP3', 'pickup_photo', :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000013.jpg'), 'row-level security');
+select rlstest.ok('control: carrier B writes a pickup photo to its OWN loading load', rlstest.pdins(:'LP7', 'pickup_photo', :'LP7' || '/pickup_photo/e1000000-0000-0000-0000-000000000014.jpg'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.err('a customer cannot write a pickup photo (row)', rlstest.dins(:'LP3', 'pickup_photo', :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000015.jpg'), 'row-level security');
+select rlstest.err('a customer cannot write a delivery photo (row)', rlstest.dins(:'LP5', 'delivery_photo', :'LP5' || '/delivery_photo/e1000000-0000-0000-0000-000000000016.jpg'), 'row-level security');
+select rlstest.err('a customer cannot write a photo object', format($q$insert into storage.objects (bucket_id, name, owner, metadata) values ('documents', %L, '00000000-0000-0000-0000-0000000000c1', '{"mimetype":"image/jpeg"}'::jsonb)$q$, :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000017.jpg'), 'row-level security');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.ok('control: staff writes a pickup photo on a booked load (any status)', rlstest.pdins(:'LP1', 'pickup_photo', :'LP1' || '/pickup_photo/e1000000-0000-0000-0000-000000000018.jpg'));
+select rlstest.ok('control: staff writes a delivery photo object on a delivered load', format($q$insert into storage.objects (bucket_id, name, owner, metadata) values ('documents', %L, '00000000-0000-0000-0000-0000000000a2', '{"mimetype":"image/png"}'::jsonb)$q$, :'LP6' || '/delivery_photo/e1000000-0000-0000-0000-000000000019.png'));
+select rlstest.back();
+
+-- 18c. who may read a photo, and when (customer by status; never another customer; never another carrier)
+insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values
+  (:'LP3', 'delivery_photo', :'LP3' || '/delivery_photo/e2000000-0000-0000-0000-000000000001.jpg', '00000000-0000-0000-0000-0000000000a1'),
+  (:'LP4', 'pickup_photo', :'LP4' || '/pickup_photo/e2000000-0000-0000-0000-000000000002.jpg', '00000000-0000-0000-0000-0000000000a1'),
+  (:'LP4', 'delivery_photo', :'LP4' || '/delivery_photo/e2000000-0000-0000-0000-000000000003.jpg', '00000000-0000-0000-0000-0000000000a1'),
+  (:'LP5', 'pickup_photo', :'LP5' || '/pickup_photo/e2000000-0000-0000-0000-000000000004.jpg', '00000000-0000-0000-0000-0000000000a1'),
+  (:'LP8', 'pickup_photo', :'LP8' || '/pickup_photo/e2000000-0000-0000-0000-000000000005.jpg', '00000000-0000-0000-0000-0000000000a1'),
+  (:'LP8', 'delivery_photo', :'LP8' || '/delivery_photo/e2000000-0000-0000-0000-000000000006.jpg', '00000000-0000-0000-0000-0000000000a1');
+insert into storage.objects (bucket_id, name, metadata) values
+  ('documents', :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-00000000000d.jpg', '{"mimetype":"image/jpeg"}'),
+  ('documents', :'LP4' || '/pickup_photo/e2000000-0000-0000-0000-000000000002.jpg', '{"mimetype":"image/jpeg"}'),
+  ('documents', :'LP6' || '/delivery_photo/e1000000-0000-0000-0000-000000000019.png', '{"mimetype":"image/png"}'),
+  ('documents', :'LP8' || '/delivery_photo/e2000000-0000-0000-0000-000000000006.jpg', '{"mimetype":"image/jpeg"}')
+  on conflict do nothing;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.cnt('control: the customer sees the pickup photo once the load is enroute', format($q$select 1 from public.load_documents where load_id = %L and kind = 'pickup_photo'$q$, :'LP4'), 1);
+select rlstest.cnt('control: the customer sees the pickup photo at_delivery', format($q$select 1 from public.load_documents where load_id = %L and kind = 'pickup_photo'$q$, :'LP5'), 1);
+select rlstest.cnt('the customer sees NO pickup photo while the load is still loading', format($q$select 1 from public.load_documents where load_id = %L and kind = 'pickup_photo'$q$, :'LP3'), 0,
+  format($q$select 1 from public.load_documents where load_id = %L and kind = 'pickup_photo'$q$, :'LP3'));
+select rlstest.cnt('the customer sees NO delivery photo while the load is enroute', format($q$select 1 from public.load_documents where load_id = %L and kind = 'delivery_photo'$q$, :'LP4'), 0,
+  format($q$select 1 from public.load_documents where load_id = %L and kind = 'delivery_photo'$q$, :'LP4'));
+select rlstest.cnt('the customer sees NO delivery photo while the load is loading', format($q$select 1 from public.load_documents where load_id = %L and kind = 'delivery_photo'$q$, :'LP3'), 0,
+  format($q$select 1 from public.load_documents where load_id = %L and kind = 'delivery_photo'$q$, :'LP3'));
+select rlstest.cnt('control: the customer sees both photo kinds once delivered', format($q$select 1 from public.load_documents where load_id = %L and kind in ('pickup_photo','delivery_photo')$q$, :'LP6'), 3);
+select rlstest.cnt('the customer cannot see the photos of ANOTHER customer load', format($q$select 1 from public.load_documents where load_id = %L$q$, :'LP8'), 0,
+  format($q$select 1 from public.load_documents where load_id = %L$q$, :'LP8'));
+select rlstest.cnt('the customer cannot list the objects of another customer load either', format($q$select 1 from storage.objects where bucket_id = 'documents' and name like %L$q$, :'LP8' || '/%'), 0,
+  format($q$select 1 from storage.objects where bucket_id = 'documents' and name like %L$q$, :'LP8' || '/%'));
+select rlstest.cnt('the customer sees NO pickup photo object while loading', format($q$select 1 from storage.objects where bucket_id = 'documents' and name like %L$q$, :'LP3' || '/pickup_photo/%'), 0,
+  format($q$select 1 from storage.objects where bucket_id = 'documents' and name like %L$q$, :'LP3' || '/pickup_photo/%'));
+select rlstest.cnt('control: the customer sees the pickup photo object once enroute', format($q$select 1 from storage.objects where bucket_id = 'documents' and name like %L$q$, :'LP4' || '/pickup_photo/%'), 1);
+select rlstest.cnt('control: the customer sees the delivery photo object once delivered', format($q$select 1 from storage.objects where bucket_id = 'documents' and name like %L$q$, :'LP6' || '/delivery_photo/%'), 1);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c2');
+select rlstest.cnt('control: the other customer sees the photos of its own delivered load', format($q$select 1 from public.load_documents where load_id = %L$q$, :'LP8'), 2);
+select rlstest.cnt('the other customer cannot see the first customer delivered photos', format($q$select 1 from public.load_documents where load_id = %L$q$, :'LP6'), 0,
+  format($q$select 1 from public.load_documents where load_id = %L$q$, :'LP6'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b3');
+select rlstest.cnt('carrier B cannot read carrier A photos', format($q$select 1 from public.load_documents where load_id = %L and kind in ('pickup_photo','delivery_photo')$q$, :'LP3'), 0,
+  format($q$select 1 from public.load_documents where load_id = %L and kind in ('pickup_photo','delivery_photo')$q$, :'LP3'));
+select rlstest.cnt('control: carrier B reads its own load photos', format($q$select 1 from public.load_documents where load_id = %L and kind = 'pickup_photo'$q$, :'LP7'), 1);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.cnt('control: carrier A reads the photos of its own loading load (pickup and the staff seeded delivery photo)', format($q$select 1 from public.load_documents where load_id = %L and kind in ('pickup_photo','delivery_photo')$q$, :'LP3'), 3);
+select rlstest.back();
+
+-- 18d. max 6 photos per kind per load (database trigger)
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.ok('cap: photo 1 of 6 on LP9', rlstest.pdins(:'LP9', 'pickup_photo', :'LP9' || '/pickup_photo/e3000000-0000-0000-0000-000000000001.jpg'));
+select rlstest.ok('cap: photo 2 of 6 on LP9', rlstest.pdins(:'LP9', 'pickup_photo', :'LP9' || '/pickup_photo/e3000000-0000-0000-0000-000000000002.jpg'));
+select rlstest.ok('cap: photo 3 of 6 on LP9', rlstest.pdins(:'LP9', 'pickup_photo', :'LP9' || '/pickup_photo/e3000000-0000-0000-0000-000000000003.jpg'));
+select rlstest.ok('cap: photo 4 of 6 on LP9', rlstest.pdins(:'LP9', 'pickup_photo', :'LP9' || '/pickup_photo/e3000000-0000-0000-0000-000000000004.jpg'));
+select rlstest.ok('cap: photo 5 of 6 on LP9', rlstest.pdins(:'LP9', 'pickup_photo', :'LP9' || '/pickup_photo/e3000000-0000-0000-0000-000000000005.jpg'));
+select rlstest.ok('cap: photo 6 of 6 on LP9', rlstest.pdins(:'LP9', 'pickup_photo', :'LP9' || '/pickup_photo/e3000000-0000-0000-0000-000000000006.jpg'));
+select rlstest.err('cap: the 7th pickup photo on LP9 is refused (file stored first, so only the cap can refuse)', rlstest.pdins(:'LP9', 'pickup_photo', :'LP9' || '/pickup_photo/e3000000-0000-0000-0000-000000000007.jpg'), 'at most 6 photos');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('cap: exactly 6 pickup photos are stored on LP9 (the refusal left no row)',
+    (select count(*) from public.load_documents where load_id = '30000000-0000-0000-0000-0000000000e9' and kind = 'pickup_photo') = 6);
+end $t$;
+-- the cap is per kind and per load: another kind and another load are unaffected; a staff insert is capped too
+insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values
+  (:'LP9', 'delivery_photo', :'LP9' || '/delivery_photo/e3000000-0000-0000-0000-000000000008.jpg', '00000000-0000-0000-0000-0000000000a1');
+select rlstest.err('cap: the owner (table owner, no RLS) is capped as well', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, 'pickup_photo', %L, '00000000-0000-0000-0000-0000000000a1')$q$, :'LP9', :'LP9' || '/pickup_photo/e3000000-0000-0000-0000-000000000009.jpg'), 'at most 6 photos');
+select rlstest.ok('control: the cap does not touch a POD or BOL on the same load', format($q$insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values (%L::uuid, 'pod', %L, '00000000-0000-0000-0000-0000000000a1')$q$, :'LP9', :'LP9' || '/pod/e3000000-0000-0000-0000-00000000000a.jpg'));
+
+-- 18e. delete_load_photo: the only delete path
+create function rlstest.docid(p_path text) returns uuid language sql security definer as $f$
+  select id from public.load_documents where storage_path = p_path $f$;
+grant execute on function rlstest.docid(text) to authenticated;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.err('carrier A cannot remove a photo uploaded by staff', format($q$select public.delete_load_photo((select id from public.load_documents where storage_path = %L))$q$, :'LP3' || '/delivery_photo/e2000000-0000-0000-0000-000000000001.jpg'), 'cannot remove');
+select rlstest.err('carrier A cannot remove the photo of a driver (own photos only)', format($q$select public.delete_load_photo((select id from public.load_documents where storage_path = %L))$q$, :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000012.jpg'), 'cannot remove');
+select rlstest.err('carrier A cannot remove a BOL with this function', format($q$select public.delete_load_photo((select id from public.load_documents where storage_path = %L))$q$, :'LP6' || '/bol/e0000000-0000-0000-0000-000000000007.pdf'), 'only photos');
+select rlstest.err('carrier A cannot remove the photo of a closed step (enroute)', format($q$select public.delete_load_photo((select id from public.load_documents where storage_path = %L))$q$, :'LP4' || '/pickup_photo/e2000000-0000-0000-0000-000000000002.jpg'), 'cannot remove');
+select rlstest.err('an unknown photo id is refused', $q$select public.delete_load_photo('00000000-0000-0000-0000-0000000000ff')$q$, 'photo not found');
+do $t$
+declare p text;
+begin
+  p := public.delete_load_photo((select id from public.load_documents where storage_path = '30000000-0000-0000-0000-0000000000e3/pickup_photo/e1000000-0000-0000-0000-000000000004.jpg'));
+  perform rlstest.chk('control: carrier A removes its OWN photo while the step is open; the function returns its path', p = '30000000-0000-0000-0000-0000000000e3/pickup_photo/e1000000-0000-0000-0000-000000000004.jpg');
+end $t$;
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('the removed photo row is gone and the refused ones are still there',
+    (select count(*) from public.load_documents where storage_path = '30000000-0000-0000-0000-0000000000e3/pickup_photo/e1000000-0000-0000-0000-000000000004.jpg') = 0
+    and (select count(*) from public.load_documents where storage_path in (
+      '30000000-0000-0000-0000-0000000000e3/delivery_photo/e2000000-0000-0000-0000-000000000001.jpg',
+      '30000000-0000-0000-0000-0000000000e3/pickup_photo/e1000000-0000-0000-0000-000000000012.jpg',
+      '30000000-0000-0000-0000-0000000000e4/pickup_photo/e2000000-0000-0000-0000-000000000002.jpg')) = 3);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.err('a customer cannot remove a photo', format($q$select public.delete_load_photo((select id from public.load_documents where storage_path = %L))$q$, :'LP4' || '/pickup_photo/e2000000-0000-0000-0000-000000000002.jpg'), 'cannot remove');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b3');
+select rlstest.err('carrier B cannot remove a photo of carrier A (it cannot even see the id)', format($q$select public.delete_load_photo((select id from public.load_documents where storage_path = %L))$q$, :'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000012.jpg'), 'photo not found');
+select rlstest.err('carrier B cannot remove a photo of carrier A even with the id in hand', format($q$select public.delete_load_photo(%L::uuid)$q$, rlstest.docid(:'LP3' || '/pickup_photo/e1000000-0000-0000-0000-000000000012.jpg')), 'cannot remove');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.ok('control: staff removes any photo (even on a closed step)', format($q$select public.delete_load_photo((select id from public.load_documents where storage_path = %L))$q$, :'LP4' || '/pickup_photo/e2000000-0000-0000-0000-000000000002.jpg'));
+select rlstest.err('staff cannot remove a BOL with this function either', format($q$select public.delete_load_photo((select id from public.load_documents where storage_path = %L))$q$, :'LP6' || '/bol/e0000000-0000-0000-0000-000000000007.pdf'), 'only photos');
+select rlstest.err('nobody has a DELETE privilege on load_documents (staff direct delete)', format($q$delete from public.load_documents where load_id = %L$q$, :'LP3'), 'permission denied');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('anon has no EXECUTE on delete_load_photo', not has_function_privilege('anon', 'public.delete_load_photo(uuid)', 'execute'));
+  perform rlstest.chk('control: authenticated has EXECUTE on delete_load_photo', has_function_privilege('authenticated', 'public.delete_load_photo(uuid)', 'execute'));
+  perform rlstest.chk('authenticated and anon have no EXECUTE on the cap trigger function',
+    not has_function_privilege('authenticated', 'public.load_documents_photo_cap()', 'execute') and not has_function_privilege('anon', 'public.load_documents_photo_cap()', 'execute'));
+  perform rlstest.chk('control: the cap trigger exists on load_documents',
+    exists (select 1 from pg_trigger where tgrelid = 'public.load_documents'::regclass and tgname = 'load_documents_photo_cap' and not tgisinternal));
+  perform rlstest.chk('control: authenticated still has no DELETE privilege on load_documents', not has_table_privilege('authenticated', 'public.load_documents', 'delete'));
+  perform rlstest.chk('delete_load_photo and the cap trigger are SECURITY DEFINER with a pinned search_path',
+    (select count(*) from pg_proc where oid in ('public.delete_load_photo(uuid)'::regprocedure, 'public.load_documents_photo_cap()'::regprocedure)
+        and prosecdef and exists (select 1 from unnest(proconfig) c where c like 'search_path=%')) = 2);
+end $t$;
+
+-- 18f. set_load_status photo gates: carrier roles refused, staff exempt and the skip is recorded in the event note
+select rlstest.mkload('30000000-0000-0000-0000-0000000000f1', 'loading', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload('30000000-0000-0000-0000-0000000000f2', 'at_delivery', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload('30000000-0000-0000-0000-0000000000f3', 'loading', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload('30000000-0000-0000-0000-0000000000f4', 'at_delivery', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload('30000000-0000-0000-0000-0000000000f5', 'loading', '20000000-0000-0000-0000-00000000000a');
+update public.loads set eta = now() + interval '5 hours' where id in ('30000000-0000-0000-0000-0000000000f2', '30000000-0000-0000-0000-0000000000f4');
+select rlstest.chk('guard: F1..F5 exist and none has a photo', (select count(*) from public.loads where id::text like '30000000-0000-0000-0000-0000000000f%') = 5
+  and (select count(*) from public.load_documents where load_id::text like '30000000-0000-0000-0000-0000000000f%') = 0);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.err('carrier OWNER: loading to enroute is refused without a pickup photo', $q$select public.set_load_status('30000000-0000-0000-0000-0000000000f1', 'enroute', now() + interval '3 hours')$q$, 'photo of the loaded freight');
+select rlstest.err('carrier OWNER: at_delivery to delivered is refused without a delivery photo', $q$select public.set_load_status('30000000-0000-0000-0000-0000000000f2', 'delivered')$q$, 'Take a delivery photo first');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b2');
+select rlstest.err('carrier DRIVER: loading to enroute is refused without a pickup photo', $q$select public.set_load_status('30000000-0000-0000-0000-0000000000f1', 'enroute', now() + interval '3 hours')$q$, 'photo of the loaded freight');
+select rlstest.err('carrier DRIVER: at_delivery to delivered is refused without a delivery photo', $q$select public.set_load_status('30000000-0000-0000-0000-0000000000f2', 'delivered')$q$, 'Take a delivery photo first');
+select rlstest.ok('control: the driver adds the pickup photo', rlstest.pdins('30000000-0000-0000-0000-0000000000f1', 'pickup_photo', '30000000-0000-0000-0000-0000000000f1/pickup_photo/f1000000-0000-0000-0000-000000000001.jpg'));
+select rlstest.ok('control: the driver then leaves for delivery', $q$select public.set_load_status('30000000-0000-0000-0000-0000000000f1', 'enroute', now() + interval '3 hours')$q$);
+select rlstest.ok('control: the driver adds the delivery photo', rlstest.pdins('30000000-0000-0000-0000-0000000000f2', 'delivery_photo', '30000000-0000-0000-0000-0000000000f2/delivery_photo/f1000000-0000-0000-0000-000000000002.jpg'));
+select rlstest.ok('control: the driver then marks delivered', $q$select public.set_load_status('30000000-0000-0000-0000-0000000000f2', 'delivered')$q$);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.ok('staff override loading to enroute works without a photo', $q$select public.set_load_status('30000000-0000-0000-0000-0000000000f3', 'enroute', now() + interval '3 hours', 'dispatch fix')$q$);
+select rlstest.ok('staff next step at_delivery to delivered works without a photo and without a note', $q$select public.set_load_status('30000000-0000-0000-0000-0000000000f4', 'delivered')$q$);
+select rlstest.ok('staff jump loading to delivered works without any photo', $q$select public.set_load_status('30000000-0000-0000-0000-0000000000f5', 'delivered', null, 'manual close')$q$);
+select rlstest.back();
+do $t$
+declare n text;
+begin
+  select note into n from public.load_events where load_id = '30000000-0000-0000-0000-0000000000f3' and to_status = 'enroute';
+  perform rlstest.chk('the staff skip of the pickup photo is in the event note, together with the staff note', n = 'dispatch fix. Staff skipped the pickup photo (none on file).', 'note=' || coalesce(n, 'null'));
+  select note into n from public.load_events where load_id = '30000000-0000-0000-0000-0000000000f4' and to_status = 'delivered';
+  perform rlstest.chk('the staff skip of the delivery photo is the whole note when staff gave none', n = 'Staff skipped the delivery photo (none on file).', 'note=' || coalesce(n, 'null'));
+  select note into n from public.load_events where load_id = '30000000-0000-0000-0000-0000000000f5' and to_status = 'delivered';
+  perform rlstest.chk('a staff jump over both steps records the missing delivery photo',  n like 'manual close. Staff skipped the delivery photo%', 'note=' || coalesce(n, 'null'));
+  select note into n from public.load_events where load_id = '30000000-0000-0000-0000-0000000000f1' and to_status = 'enroute';
+  perform rlstest.chk('control: a carrier move WITH a photo has no skip text in its note', coalesce(n, '') !~* 'skipped', 'note=' || coalesce(n, 'null'));
+end $t$;
+-- staff move WITH the photo present: nothing to skip, so no skip text
+select rlstest.mkload('30000000-0000-0000-0000-0000000000f6', 'loading', '20000000-0000-0000-0000-00000000000a');
+insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values ('30000000-0000-0000-0000-0000000000f6', 'pickup_photo', '30000000-0000-0000-0000-0000000000f6/pickup_photo/f1000000-0000-0000-0000-000000000006.jpg', '00000000-0000-0000-0000-0000000000a1');
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.ok('staff moves a load that HAS its pickup photo', $q$select public.set_load_status('30000000-0000-0000-0000-0000000000f6', 'enroute', now() + interval '3 hours', 'with photo')$q$);
+select rlstest.back();
+do $t$
+declare n text;
+begin
+  select note into n from public.load_events where load_id = '30000000-0000-0000-0000-0000000000f6' and to_status = 'enroute';
+  perform rlstest.chk('control: no skip text when the photo exists', n = 'with photo', 'note=' || coalesce(n, 'null'));
+  perform rlstest.chk('set_load_status carries both photo gates and still has no POD requirement',
+    pg_get_functiondef('public.set_load_status(uuid, public.load_status, timestamptz, text)'::regprocedure) like '%pickup_photo%'
+    and pg_get_functiondef('public.set_load_status(uuid, public.load_status, timestamptz, text)'::regprocedure) like '%delivery_photo%'
+    and pg_get_functiondef('public.set_load_status(uuid, public.load_status, timestamptz, text)'::regprocedure) !~* 'pod');
+end $t$;
+
+-- 18g. delete_load_forever returns the photo paths too, and the orphan log accepts them
+select rlstest.mkload('30000000-0000-0000-0000-0000000000fa', 'delivered', '20000000-0000-0000-0000-00000000000a');
+update public.loads set its_load_number = '9918' where id = '30000000-0000-0000-0000-0000000000fa';
+insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values
+  ('30000000-0000-0000-0000-0000000000fa', 'bol', '30000000-0000-0000-0000-0000000000fa/bol/fa000000-0000-0000-0000-000000000001.pdf', '00000000-0000-0000-0000-0000000000a1'),
+  ('30000000-0000-0000-0000-0000000000fa', 'pickup_photo', '30000000-0000-0000-0000-0000000000fa/pickup_photo/fa000000-0000-0000-0000-000000000002.jpg', '00000000-0000-0000-0000-0000000000a1'),
+  ('30000000-0000-0000-0000-0000000000fa', 'delivery_photo', '30000000-0000-0000-0000-0000000000fa/delivery_photo/fa000000-0000-0000-0000-000000000003.webp', '00000000-0000-0000-0000-0000000000a1');
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a3');
+do $t$
+declare v text[];
+begin
+  v := public.delete_load_forever('30000000-0000-0000-0000-0000000000fa', '9918');
+  perform rlstest.chk('delete_load_forever returns the BOL and BOTH photo paths',
+    v is not null and cardinality(v) = 3
+    and v @> array['30000000-0000-0000-0000-0000000000fa/bol/fa000000-0000-0000-0000-000000000001.pdf',
+                   '30000000-0000-0000-0000-0000000000fa/pickup_photo/fa000000-0000-0000-0000-000000000002.jpg',
+                   '30000000-0000-0000-0000-0000000000fa/delivery_photo/fa000000-0000-0000-0000-000000000003.webp']);
+end $t$;
+select rlstest.ok('control: the orphan log accepts the photo paths of the deleted load', format($q$select public.record_load_deletion_orphans(%L, array[%L, %L])$q$, '30000000-0000-0000-0000-0000000000fa',
+  '30000000-0000-0000-0000-0000000000fa/pickup_photo/fa000000-0000-0000-0000-000000000002.jpg', '30000000-0000-0000-0000-0000000000fa/delivery_photo/fa000000-0000-0000-0000-000000000003.webp'));
+select rlstest.err('the orphan log still refuses a photo path with a pdf extension', format($q$select public.record_load_deletion_orphans(%L, array[%L])$q$, '30000000-0000-0000-0000-0000000000fa',
+  '30000000-0000-0000-0000-0000000000fa/pickup_photo/fa000000-0000-0000-0000-000000000004.pdf'), 'does not belong');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('the orphan row holds exactly the two photo paths and the load is gone (cascade removed the document rows)',
+    (select cardinality(orphan_paths) from public.load_deletions where load_id = '30000000-0000-0000-0000-0000000000fa') = 2
+    and (select count(*) from public.load_documents where load_id = '30000000-0000-0000-0000-0000000000fa') = 0);
+end $t$;
+
+-- 18h. dlv_can_access_doc directly (never as anon: assert the privilege instead)
+do $t$
+begin
+  perform rlstest.chk('anon has no EXECUTE on dlv_can_access_doc (photo kinds change nothing)', not has_function_privilege('anon', 'public.dlv_can_access_doc(text, boolean)', 'execute'));
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a3');
+do $t$
+declare v_bad int := 0; p text;
+begin
+  perform rlstest.chk('control: admin can read and write a well-formed photo path',
+    public.dlv_can_access_doc('30000000-0000-0000-0000-0000000000e3/pickup_photo/e9000000-0000-0000-0000-000000000001.jpg', true));
+  foreach p in array array[
+    '30000000-0000-0000-0000-0000000000e3/pickup_photo/e9000000-0000-0000-0000-000000000001.pdf',
+    '30000000-0000-0000-0000-0000000000e3/pickup_photo/e9000000-0000-0000-0000-000000000001.heic',
+    '30000000-0000-0000-0000-0000000000e3/pickup_photo/e9000000-0000-0000-0000-000000000001.JPG',
+    '30000000-0000-0000-0000-0000000000e3/pickup_photo/../e9000000-0000-0000-0000-000000000001.jpg',
+    '30000000-0000-0000-0000-0000000000e3/Pickup_Photo/e9000000-0000-0000-0000-000000000001.jpg',
+    '30000000-0000-0000-0000-0000000000e3/selfie/e9000000-0000-0000-0000-000000000001.jpg',
+    '30000000-0000-0000-0000-0000000000e3/delivery_photo/e9000000-0000-0000-0000-000000000001.jpg
+'] loop
+    if public.dlv_can_access_doc(p, false) or public.dlv_can_access_doc(p, true) then v_bad := v_bad + 1; end if;
+  end loop;
+  perform rlstest.chk('dlv_can_access_doc rejects every malformed photo path (read and write)', v_bad = 0, 'bad=' || v_bad);
+end $t$;
+select rlstest.back();
+
+-- 18j. review fix (DLV-032 review): a signed-in carrier cannot back-date a photo by sending created_at; the server time wins
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.ok('control: carrier A inserts a pickup photo row that claims created_at 2001 (the insert itself is allowed)', $q$do $x$ begin
+  insert into storage.objects (bucket_id, name, owner, metadata) values ('documents', '30000000-0000-0000-0000-0000000000e2/pickup_photo/ea000000-0000-0000-0000-000000000001.jpg', auth.uid(), '{"mimetype":"image/jpeg"}'::jsonb);
+  insert into public.load_documents (load_id, kind, storage_path, uploaded_by, created_at) values ('30000000-0000-0000-0000-0000000000e2', 'pickup_photo', '30000000-0000-0000-0000-0000000000e2/pickup_photo/ea000000-0000-0000-0000-000000000001.jpg', auth.uid(), '2001-01-01 00:00:00+00');
+end $x$$q$);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('a carrier cannot back-date a photo: created_at is the server time (guard: the row exists)',
+    (select count(*) from public.load_documents where storage_path like '%/ea000000-0000-0000-0000-000000000001.jpg') = 1
+    and (select created_at > now() - interval '1 minute' and created_at <= now() + interval '1 minute'
+           from public.load_documents where storage_path like '%/ea000000-0000-0000-0000-000000000001.jpg'));
+end $t$;
+
+-- 18i. the migration is idempotent: apply the REAL file again, nothing changes -------------------------------------------------
+create table rlstest.ph_before as select id, load_id, kind, storage_path, created_at from public.load_documents;
+\i supabase/migrations/0018_load_photos.sql
+do $t$
+begin
+  perform rlstest.chk('0018 applied again: the same document rows (guard: rows exist)',
+    (select count(*) from rlstest.ph_before) > 20
+    and (select count(*) from (select id, load_id, kind, storage_path, created_at from public.load_documents except select * from rlstest.ph_before) q) = 0
+    and (select count(*) from (select * from rlstest.ph_before except select id, load_id, kind, storage_path, created_at from public.load_documents) q) = 0);
+  perform rlstest.chk('0018 applied again: still exactly one cap trigger, one insert policy, and no DELETE privilege',
+    (select count(*) from pg_trigger where tgrelid = 'public.load_documents'::regclass and tgname = 'load_documents_photo_cap' and not tgisinternal) = 1
+    and (select count(*) from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'documents_insert') = 1
+    and not has_table_privilege('authenticated', 'public.load_documents', 'delete')
+    and not has_function_privilege('anon', 'public.delete_load_photo(uuid)', 'execute'));
 end $t$;
 
 -- Summary ----------------------------------------------------------------

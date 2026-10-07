@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { Button, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 import { DropZone } from "@/components/DropZone";
 import { createClient } from "@/lib/supabase/client";
-import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
+import { STATUS_LABEL, type DocKind, type LoadStatus } from "@/lib/types";
+import { removeLoadPhoto } from "@/lib/carrier/photo-actions";
 import { assignCarrier, bookLoad, notifyBolUploaded, overrideStatus, setEta, setItsNumber } from "@/lib/admin/load-actions";
 import { validateIts } from "@/lib/load-number";
 import type { ActionState } from "@/lib/admin/state";
@@ -181,18 +182,29 @@ export function EtaForm({ loadId, etaLocal }: { loadId: string; etaLocal: string
 
 const MAX_BYTES = 15 * 1024 * 1024;
 const ALLOWED = ["pdf", "png", "jpg", "jpeg", "webp", "heic"];
+const PHOTO_ALLOWED = ["png", "jpg", "jpeg", "webp"]; // the database accepts only these for a photo kind (0018)
+const KIND_NAME: Record<DocKind, string> = { bol: "BOL", pod: "POD", pickup_photo: "Pickup photo", delivery_photo: "Delivery photo" };
+const KIND_HELP: Record<DocKind, string> = {
+  bol: "Bill of lading (PDF or image, max 15 MB)",
+  pod: "Proof of delivery, on behalf of the carrier (PDF or image, max 15 MB)",
+  pickup_photo: "Pickup photo of the loaded freight, on behalf of the carrier (png, jpg or webp, max 15 MB)",
+  delivery_photo: "Delivery photo, on behalf of the carrier (png, jpg or webp, max 15 MB)",
+};
 
 // Some browsers leave file.type empty (heic on non-Apple platforms); the bucket only accepts listed mime types.
 const MIME_BY_EXT: Record<string, string> = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", heic: "image/heic" };
 
-// Staff upload of a BOL, or of a POD on behalf of the carrier.
-export function StaffUpload({ loadId, kind }: { loadId: string; kind: "bol" | "pod" }) {
+// Staff upload of a BOL, or of a POD or a pickup or delivery photo on behalf of the carrier.
+export function StaffUpload({ loadId, kind }: { loadId: string; kind: DocKind }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
-  const KIND = kind === "bol" ? "BOL" : "POD";
+  const KIND = KIND_NAME[kind];
+  const isPhoto = kind === "pickup_photo" || kind === "delivery_photo";
+  const allowed = isPhoto ? PHOTO_ALLOWED : ALLOWED;
+  const typeText = isPhoto ? "Use a photo (png, jpg or webp)." : "Use a PDF or an image (png, jpg, webp, heic).";
 
   const inflight = useRef(false); // synchronous lock: a double click or double tap uploads once
 
@@ -202,7 +214,7 @@ export function StaffUpload({ loadId, kind }: { loadId: string; kind: "bol" | "p
     setOk("");
     if (!file) { setError("Choose a file first."); return; }
     const ext = (file.name.split(".").pop() ?? "").toLowerCase();
-    if (!ALLOWED.includes(ext)) { setError("Use a PDF or an image (png, jpg, webp, heic)."); return; }
+    if (!allowed.includes(ext)) { setError(typeText); return; }
     if (file.size > MAX_BYTES) { setError("The file is larger than 15 MB."); return; }
 
     inflight.current = true;
@@ -238,21 +250,50 @@ export function StaffUpload({ loadId, kind }: { loadId: string; kind: "bol" | "p
   return (
     <div className="space-y-3" data-testid={`upload-${kind}`}>
       <p className="text-[13px] font-medium text-muted">
-        {kind === "bol" ? "Bill of lading (PDF or image, max 15 MB)" : "Proof of delivery, on behalf of the carrier (PDF or image, max 15 MB)"}
+        {KIND_HELP[kind]}
       </p>
       <DropZone
         file={file}
         onFile={(f) => { setError(""); setOk(""); setFile(f); }}
-        exts={ALLOWED}
+        exts={allowed}
         maxBytes={MAX_BYTES}
-        typeError="Use a PDF or an image (png, jpg, webp, heic)."
+        typeError={typeText}
         sizeError="The file is larger than 15 MB."
-        label={kind === "bol" ? "Bill of lading" : "Proof of delivery"}
+        label={kind === "bol" ? "Bill of lading" : kind === "pod" ? "Proof of delivery" : KIND_NAME[kind]}
         disabled={busy}
       />
       <Button type="button" onClick={upload} disabled={busy}>{busy ? "Uploading..." : `Upload ${KIND}`}</Button>
       {error ? <Notice tone="error">{error}</Notice> : null}
       {ok ? <Notice tone="ok">{ok}</Notice> : null}
     </div>
+  );
+}
+
+// Staff remove a stored photo (any photo, any status). The database function decides; the file goes with it.
+export function RemovePhotoButton({ loadId, docId, label }: { loadId: string; docId: string; label: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function remove() {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await removeLoadPhoto(loadId, docId);
+      if (!r.ok) setError(r.error);
+      router.refresh();
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <span className="inline-flex flex-col gap-1">
+      <button type="button" onClick={() => void remove()} disabled={busy} aria-label={`Remove ${label}`} data-testid="staff-photo-remove"
+        className="inline-flex min-h-[44px] cursor-pointer items-center rounded-full border border-line px-5 text-[15px] font-bold disabled:opacity-50">
+        {busy ? "Removing..." : "Remove"}
+      </button>
+      {error ? <span role="alert" className="text-[13px] text-[#7A1F1F]">{error}</span> : null}
+    </span>
   );
 }
