@@ -487,3 +487,9 @@ To be filled in by the lead: run the four blocks verbatim under `zsh -f` against
 ### Lead rehearsal of the real blocks (2026-10-07)
 
 The blocks were extracted verbatim and run under `zsh -f` against the local stack only, from `supabase db reset --last 1` (state 0016) plus production-like rows. Block A: PRECHECK_OK. Block B: APPLY_OK. Block C: 53 PASS, POSTCHECK_OK. Block B again: APPLY_OK (idempotent). Block C again: POSTCHECK_OK. Rollback-0017, then block C: POSTCHECK_FAIL on the table, empty and column checks. Block B again restored it and block C gave POSTCHECK_OK.
+
+## Production result (2026-10-07)
+
+- Block A: PRECHECK_OK. Block B: APPLY_OK at 2026-10-07T14:25:02Z, 0017 applied with no errors.
+- Block C: POSTCHECK_OK, 53 PASS, 0 FAIL. No live traffic disturbed the counts this time.
+- App PR #30 merged as d6d2dab after all three checks passed. The production deploy of that commit succeeded; /api/health returned ok and /login returned 200.
