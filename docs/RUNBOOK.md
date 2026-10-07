@@ -27,6 +27,9 @@ Open **Lanes** in the top menu (admin and CSR alike). Each row says: for this pi
 3. **Apply import** stays grey until every row is OK, and imports nothing otherwise (at most 500 rows). Rows that already exist are updated, new rows are added; nothing is ever deleted by an import.
 **The request email.** Each "New load requested" email to staff has a line "ITS load to copy: 1269 (Mitrex to 481 University Ave, 26 ft)" or "No ITS reference for this lane and size yet. Add it: <link>" (the link opens Lanes with the lane filled in). Maria does not get that line, nor the carrier.
 
+## Rate requests (staff)
+Open **Rate requests** in the top menu (admin and CSR alike). Maria asks for a rate on a new lane on her **Rates** page; the active admins are emailed. Open the request, type the amount, choose CAD or USD, add notes and a valid until date if you want, tap **Save rate**. Maria is emailed that the rate is in the app (the email never carries the amount) and sees it on her Rates page. To change a rate open the request again and tap **Correct the rate**. A request Maria cancelled cannot be quoted. A rate request is not a load: nothing is created on the board. Table: rate_requests (migration 0017); the only writes after the insert are the functions set_rate_quote and cancel_rate_request, there is no delete.
+
 ## Delete a load forever (admin only)
 Only the staff admin account (chris@dlvlogistics.com) can do this. The CSR (Luca), customers and carriers never see the button and the database refuses them. **This cannot be undone.** The only way back is the weekly backup, which brings back everything else from that day too, so use **Cancel load** instead unless the load must disappear (a test load, a duplicate, a load entered by mistake).
 1. Open the load (Board, then the load). Scroll to the bottom: the **Danger zone** card.

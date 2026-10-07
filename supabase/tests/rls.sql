@@ -1806,6 +1806,352 @@ begin
     (select count(*) from public.lane_references) = 25 and (select count(*) from public.locations where name = 'Howden') = 1);
 end $t$;
 
+-- 16. Rate requests (0017): customers request, staff quote through a function, nobody deletes -------------------------
+-- Ids are fixed so the statements below can name them. Rows are written as the table owner (no auth.uid(), so the
+-- insert trigger keeps what is sent); the client paths are then tested as each role.
+insert into auth.users (id, aud, role, email) values
+  ('00000000-0000-0000-0000-0000000000c3', 'authenticated', 'authenticated', 'maria2@t.test');
+insert into public.profiles (id, email, role, customer_id, carrier_id) values
+  ('00000000-0000-0000-0000-0000000000c3', 'maria2@t.test', 'customer', (select id from public.customers where name = 'Mitrex'), null);
+insert into public.rate_requests (id, customer_id, requested_by, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes) values
+  ('40000000-0000-0000-0000-000000000001', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'Toronto', 'ON', 'Buffalo', 'NY', 53, 'RQ-A open'),
+  ('40000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000c2', 'Windsor', 'ON', 'Detroit', 'MI', 36, 'RQ-B other customer open');
+
+-- 16a. grants, flags, policies, definitions ---------------------------------------------------------------------------
+do $t$
+begin
+  perform rlstest.chk('rate_requests: RLS is enabled', (select relrowsecurity from pg_class where oid = 'public.rate_requests'::regclass));
+  perform rlstest.chk('rate_requests: anon holds no table privilege (grants only, never called as anon)',
+    not has_table_privilege('anon', 'public.rate_requests', 'select') and not has_table_privilege('anon', 'public.rate_requests', 'insert')
+    and not has_table_privilege('anon', 'public.rate_requests', 'update') and not has_table_privilege('anon', 'public.rate_requests', 'delete'));
+  perform rlstest.chk('rate_requests: PUBLIC holds no privilege',
+    not exists (select 1 from pg_class c, aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a where c.oid = 'public.rate_requests'::regclass and a.grantee = 0));
+  perform rlstest.chk('control: authenticated holds select and insert on rate_requests', has_table_privilege('authenticated', 'public.rate_requests', 'select') and has_any_column_privilege('authenticated', 'public.rate_requests', 'insert'));
+  perform rlstest.chk('rate_requests: authenticated holds no update, delete, truncate, references or trigger',
+    not has_table_privilege('authenticated', 'public.rate_requests', 'update') and not has_table_privilege('authenticated', 'public.rate_requests', 'delete')
+    and not has_table_privilege('authenticated', 'public.rate_requests', 'truncate') and not has_table_privilege('authenticated', 'public.rate_requests', 'references')
+    and not has_table_privilege('authenticated', 'public.rate_requests', 'trigger'));
+  perform rlstest.chk('rate_requests: no column UPDATE privilege on any column for authenticated',
+    (select count(*) from information_schema.columns c where c.table_schema = 'public' and c.table_name = 'rate_requests'
+       and has_column_privilege('authenticated', 'public.rate_requests', c.column_name, 'update')) = 0);
+  perform rlstest.chk('rate_requests: the INSERT grant is column level and names exactly the 9 request columns',
+    (select count(*) from information_schema.columns c where c.table_schema = 'public' and c.table_name = 'rate_requests'
+       and has_column_privilege('authenticated', 'public.rate_requests', c.column_name, 'insert')) = 9
+    and has_column_privilege('authenticated', 'public.rate_requests', 'pickup_city', 'insert')
+    and has_column_privilege('authenticated', 'public.rate_requests', 'customer_id', 'insert'));
+  perform rlstest.chk('rate_requests: no INSERT privilege on id, ref, requested_by, status, any quote column or timestamp',
+    (select count(*) from information_schema.columns c where c.table_schema = 'public' and c.table_name = 'rate_requests'
+       and c.column_name in ('id','ref','requested_by','status','quoted_amount','quoted_currency','quote_notes','quote_valid_until','quoted_by','quoted_at','created_at','updated_at')
+       and has_column_privilege('authenticated', 'public.rate_requests', c.column_name, 'insert')) = 0);
+  perform rlstest.chk('rate_requests: exactly two policies (select, insert), authenticated only, no update, delete or all policy',
+    (select count(*) from pg_policies where schemaname = 'public' and tablename = 'rate_requests') = 2
+    and (select count(*) from pg_policies where schemaname = 'public' and tablename = 'rate_requests' and cmd in ('SELECT', 'INSERT') and roles = '{authenticated}') = 2);
+  perform rlstest.chk('rate_requests: no policy is open (true) and none names a carrier role',
+    (select count(*) from pg_policies where schemaname = 'public' and tablename = 'rate_requests'
+       and coalesce(qual, '') !~ '(^|[^a-z_])true([^a-z_]|$)' and coalesce(with_check, '') !~ '(^|[^a-z_])true([^a-z_]|$)' and coalesce(qual, with_check) !~ 'carrier') = 2);
+  perform rlstest.chk('anon has no EXECUTE on set_rate_quote', not has_function_privilege('anon', 'public.set_rate_quote(uuid, numeric, text, text, date)', 'execute'));
+  perform rlstest.chk('anon has no EXECUTE on cancel_rate_request', not has_function_privilege('anon', 'public.cancel_rate_request(uuid)', 'execute'));
+  perform rlstest.chk('control: authenticated has EXECUTE on set_rate_quote and cancel_rate_request',
+    has_function_privilege('authenticated', 'public.set_rate_quote(uuid, numeric, text, text, date)', 'execute') and has_function_privilege('authenticated', 'public.cancel_rate_request(uuid)', 'execute'));
+  perform rlstest.chk('the insert trigger function is not executable by anon or authenticated',
+    not has_function_privilege('anon', 'public.dlv_rate_requests_before_insert()', 'execute') and not has_function_privilege('authenticated', 'public.dlv_rate_requests_before_insert()', 'execute'));
+  perform rlstest.chk('control: the insert trigger function is executable by service_role', has_function_privilege('service_role', 'public.dlv_rate_requests_before_insert()', 'execute'));
+  perform rlstest.chk('set_rate_quote and cancel_rate_request are SECURITY DEFINER with a fixed search_path',
+    (select count(*) from pg_proc where oid in ('public.set_rate_quote(uuid, numeric, text, text, date)'::regprocedure, 'public.cancel_rate_request(uuid)'::regprocedure)
+       and prosecdef and exists (select 1 from unnest(proconfig) c where c like 'search_path=%')) = 2);
+  perform rlstest.chk('control: the realtime publication exists and carries loads', exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'loads'));
+  perform rlstest.chk('rate_requests is NOT in the realtime publication', not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'rate_requests'));
+  perform rlstest.chk('rate_requests has no foreign key to or from loads (a rate request is not a load)',
+    (select count(*) from pg_constraint where contype = 'f' and (conrelid = 'public.rate_requests'::regclass and confrelid = 'public.loads'::regclass or confrelid = 'public.rate_requests'::regclass)) = 0);
+  perform rlstest.chk('the owner inserted fixtures are in place (guard)', (select count(*) from public.rate_requests where id in ('40000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000002')) = 2);
+end $t$;
+
+-- 16b. customer insert -------------------------------------------------------------------------------------------------
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.ok('maria inserts a rate request (padded city, lower case state, blank dims)',
+  $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, weight_lbs, dims, notes)
+     values ((select id from public.customers where name = 'Mitrex'), '  Toronto ', 'on', 'Chicago', 'il', 26, 12000, '   ', 'maria made')$q$);
+select rlstest.err('maria cannot name status on insert', $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, status)
+  values ((select id from public.customers where name = 'Mitrex'), 'A', 'ON', 'B', 'NY', 26, 'quoted')$q$, 'permission denied');
+select rlstest.err('maria cannot name a quote amount on insert', $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, quoted_amount)
+  values ((select id from public.customers where name = 'Mitrex'), 'A', 'ON', 'B', 'NY', 26, 1)$q$, 'permission denied');
+select rlstest.err('maria cannot name requested_by on insert', $q$insert into public.rate_requests (customer_id, requested_by, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size)
+  values ((select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c2', 'A', 'ON', 'B', 'NY', 26)$q$, 'permission denied');
+select rlstest.err('maria cannot name ref or id on insert', $q$insert into public.rate_requests (id, ref, customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size)
+  values (gen_random_uuid(), 'RQ-9999', (select id from public.customers where name = 'Mitrex'), 'A', 'ON', 'B', 'NY', 26)$q$, 'permission denied');
+select rlstest.err('maria cannot insert for ANOTHER customer', $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size)
+  values ('10000000-0000-0000-0000-000000000002', 'A', 'ON', 'B', 'NY', 26)$q$, 'row-level security');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('maria row: requested_by is maria, status open, no quote, ref RQ-nnnn, text normalised, blank dims is null',
+    (select count(*) from public.rate_requests where notes = 'maria made' and requested_by = '00000000-0000-0000-0000-0000000000c1' and status = 'open'
+       and quoted_amount is null and quoted_currency is null and quoted_by is null and quoted_at is null and quote_notes is null and quote_valid_until is null
+       and ref ~ '^RQ-[0-9]{4,}$' and pickup_city = 'Toronto' and pickup_state = 'ON' and delivery_state = 'IL' and dims is null and weight_lbs = 12000) = 1);
+  perform rlstest.chk('the refused maria inserts left no row (only the two fixtures and the one valid insert exist)', (select count(*) from public.rate_requests) = 3);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c3');
+select rlstest.ok('control: a second Mitrex user inserts too', $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes)
+  values ((select id from public.customers where name = 'Mitrex'), 'Oshawa', 'ON', 'Albany', 'NY', 36, 'maria2 made')$q$);
+select rlstest.back();
+create function rlstest.rq_insert_denied(p_who text, p_uid uuid) returns void language plpgsql as $f$
+begin
+  perform rlstest.as_user(p_uid);
+  perform rlstest.err(p_who || ' cannot INSERT a rate request',
+    $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size)
+       values ((select id from public.customers where name = 'Mitrex'), 'A', 'ON', 'B', 'NY', 26)$q$, 'row-level security');
+  perform rlstest.back();
+end $f$;
+grant execute on function rlstest.rq_insert_denied(text, uuid) to authenticated, anon;
+select rlstest.rq_insert_denied('staff_admin', '00000000-0000-0000-0000-0000000000a1');
+select rlstest.rq_insert_denied('staff_csr', '00000000-0000-0000-0000-0000000000a2');
+select rlstest.rq_insert_denied('carrier owner', '00000000-0000-0000-0000-0000000000b1');
+select rlstest.rq_insert_denied('carrier driver', '00000000-0000-0000-0000-0000000000b2');
+select rlstest.set_active('00000000-0000-0000-0000-0000000000c3', false);
+select rlstest.rq_insert_denied('inactive customer user', '00000000-0000-0000-0000-0000000000c3');
+select rlstest.set_active('00000000-0000-0000-0000-0000000000c3', true);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c3');
+select rlstest.ok('control: the same customer user inserts once active again', $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes)
+  values ((select id from public.customers where name = 'Mitrex'), 'Oshawa', 'ON', 'Albany', 'NY', 36, 'maria2 again')$q$);
+select rlstest.back();
+
+-- 16c. who reads what --------------------------------------------------------------------------------------------------
+-- 5 rows now: Mitrex has A, 'maria made', 'maria2 made', 'maria2 again' (4); the other customer has B (1).
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.cnt('maria reads the 4 Mitrex requests, including a colleague''s', 'select 1 from public.rate_requests', 4);
+select rlstest.cnt('maria cannot read the other customer''s request (row exists: guard)', format($q$select 1 from public.rate_requests where id = %L$q$, '40000000-0000-0000-0000-000000000002'), 0, format($q$select 1 from public.rate_requests where id = %L$q$, '40000000-0000-0000-0000-000000000002'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c2');
+select rlstest.cnt('the other customer reads exactly its 1 request', 'select 1 from public.rate_requests', 1);
+select rlstest.cnt('the other customer cannot read a Mitrex request (row exists: guard)', format($q$select 1 from public.rate_requests where id = %L$q$, '40000000-0000-0000-0000-000000000001'), 0, format($q$select 1 from public.rate_requests where id = %L$q$, '40000000-0000-0000-0000-000000000001'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.cnt('staff_admin reads all 5', 'select 1 from public.rate_requests', 5);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.cnt('staff_csr reads all 5', 'select 1 from public.rate_requests', 5);
+select rlstest.back();
+create function rlstest.rq_read_denied(p_who text, p_uid uuid) returns void language plpgsql as $f$
+begin
+  perform rlstest.as_user(p_uid);
+  perform rlstest.cnt(p_who || ' reads no rate request (rows exist: guard)', 'select 1 from public.rate_requests', 0, 'select 1 from public.rate_requests');
+  perform rlstest.back();
+end $f$;
+grant execute on function rlstest.rq_read_denied(text, uuid) to authenticated, anon;
+select rlstest.rq_read_denied('carrier owner', '00000000-0000-0000-0000-0000000000b1');
+select rlstest.rq_read_denied('carrier driver', '00000000-0000-0000-0000-0000000000b2');
+select rlstest.set_active('00000000-0000-0000-0000-0000000000c1', false);
+select rlstest.rq_read_denied('inactive customer', '00000000-0000-0000-0000-0000000000c1');
+select rlstest.set_active('00000000-0000-0000-0000-0000000000c1', true);
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a3', false);
+select rlstest.rq_read_denied('inactive staff_admin', '00000000-0000-0000-0000-0000000000a3');
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a3', true);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a3');
+select rlstest.cnt('control: the same admin reads all 5 once active again', 'select 1 from public.rate_requests', 5);
+select rlstest.back();
+
+-- 16d. no direct UPDATE or DELETE for any client role -------------------------------------------------------------------
+create function rlstest.rq_write_denied(p_who text, p_uid uuid) returns void language plpgsql as $f$
+begin
+  perform rlstest.as_user(p_uid);
+  perform rlstest.err(p_who || ' cannot UPDATE status directly', format($q$update public.rate_requests set status = 'cancelled' where id = %L$q$, '40000000-0000-0000-0000-000000000001'), 'permission denied');
+  perform rlstest.err(p_who || ' cannot UPDATE quote fields directly', $q$update public.rate_requests set quoted_amount = 1, quoted_currency = 'CAD', status = 'quoted'$q$, 'permission denied');
+  perform rlstest.err(p_who || ' cannot DELETE a rate request', $q$delete from public.rate_requests$q$, 'permission denied');
+  perform rlstest.back();
+end $f$;
+grant execute on function rlstest.rq_write_denied(text, uuid) to authenticated, anon;
+select rlstest.rq_write_denied('maria', '00000000-0000-0000-0000-0000000000c1');
+select rlstest.rq_write_denied('other customer', '00000000-0000-0000-0000-0000000000c2');
+select rlstest.rq_write_denied('staff_admin', '00000000-0000-0000-0000-0000000000a1');
+select rlstest.rq_write_denied('staff_csr', '00000000-0000-0000-0000-0000000000a2');
+select rlstest.rq_write_denied('carrier owner', '00000000-0000-0000-0000-0000000000b1');
+do $t$
+begin
+  perform rlstest.chk('after the refused writes all 5 rows are open and unquoted (guard: they exist)',
+    (select count(*) from public.rate_requests) = 5 and (select count(*) from public.rate_requests where status = 'open' and quoted_amount is null) = 5);
+end $t$;
+
+-- 16e. set_rate_quote: active staff only --------------------------------------------------------------------------------
+create function rlstest.rq_quote_denied(p_who text, p_uid uuid) returns void language plpgsql as $f$
+begin
+  perform rlstest.as_user(p_uid);
+  perform rlstest.err(p_who || ' cannot call set_rate_quote', format($q$select public.set_rate_quote(%L, 1500, 'CAD', 'x', null)$q$, '40000000-0000-0000-0000-000000000001'), 'not authorized');
+  perform rlstest.back();
+end $f$;
+grant execute on function rlstest.rq_quote_denied(text, uuid) to authenticated, anon;
+select rlstest.rq_quote_denied('maria', '00000000-0000-0000-0000-0000000000c1');
+select rlstest.rq_quote_denied('other customer', '00000000-0000-0000-0000-0000000000c2');
+select rlstest.rq_quote_denied('carrier owner', '00000000-0000-0000-0000-0000000000b1');
+select rlstest.rq_quote_denied('carrier driver', '00000000-0000-0000-0000-0000000000b2');
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a3', false);
+select rlstest.rq_quote_denied('inactive staff_admin', '00000000-0000-0000-0000-0000000000a3');
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a3', true);
+do $t$
+begin
+  perform rlstest.chk('after the refused quote calls request A is still open and unquoted (guard: it exists)',
+    (select count(*) from public.rate_requests where id = '40000000-0000-0000-0000-000000000001' and status = 'open' and quoted_amount is null and quoted_by is null) = 1);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.err('csr: amount 0 is refused', format($q$select public.set_rate_quote(%L, 0, 'CAD', null, null)$q$, '40000000-0000-0000-0000-000000000001'), 'amount must be greater than 0');
+select rlstest.err('csr: a negative amount is refused', format($q$select public.set_rate_quote(%L, -5, 'CAD', null, null)$q$, '40000000-0000-0000-0000-000000000001'), 'amount must be greater than 0');
+select rlstest.err('csr: a null amount is refused', format($q$select public.set_rate_quote(%L, null, 'CAD', null, null)$q$, '40000000-0000-0000-0000-000000000001'), 'amount must be greater than 0');
+select rlstest.err('csr: an amount that rounds to 0.00 is refused', format($q$select public.set_rate_quote(%L, 0.004, 'CAD', null, null)$q$, '40000000-0000-0000-0000-000000000001'), 'amount must be greater than 0');
+select rlstest.err('csr: an absurd amount is refused', format($q$select public.set_rate_quote(%L, 100000000, 'CAD', null, null)$q$, '40000000-0000-0000-0000-000000000001'), 'amount must be greater than 0');
+select rlstest.err('csr: currency EUR is refused', format($q$select public.set_rate_quote(%L, 1500, 'EUR', null, null)$q$, '40000000-0000-0000-0000-000000000001'), 'currency must be CAD or USD');
+select rlstest.err('csr: lower case currency is refused', format($q$select public.set_rate_quote(%L, 1500, 'cad', null, null)$q$, '40000000-0000-0000-0000-000000000001'), 'currency must be CAD or USD');
+select rlstest.err('csr: a null currency is refused', format($q$select public.set_rate_quote(%L, 1500, null, null, null)$q$, '40000000-0000-0000-0000-000000000001'), 'currency must be CAD or USD');
+select rlstest.err('csr: a past valid until is refused', format($q$select public.set_rate_quote(%L, 1500, 'CAD', null, '2000-01-01')$q$, '40000000-0000-0000-0000-000000000001'), 'valid until cannot be in the past');
+select rlstest.err('csr: notes over 1000 characters are refused', format($q$select public.set_rate_quote(%L, 1500, 'CAD', repeat('n', 1001), null)$q$, '40000000-0000-0000-0000-000000000001'), 'notes are too long');
+select rlstest.err('csr: an unknown request is refused', $q$select public.set_rate_quote('99999999-9999-9999-9999-999999999999', 1500, 'CAD', null, null)$q$, 'not found');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('after the refused amounts, currencies and dates request A is still open and unquoted', (select count(*) from public.rate_requests where id = '40000000-0000-0000-0000-000000000001' and status = 'open' and quoted_amount is null) = 1);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.chk('staff_csr quotes A: returns the previous status open',
+  public.set_rate_quote('40000000-0000-0000-0000-000000000001', 1850.5, 'CAD', '  fuel included ', current_date + 30) = 'open');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('request A is quoted: amount 1850.50 CAD, trimmed notes, valid until, quoted_by csr, quoted_at set, updated_at moved',
+    (select count(*) from public.rate_requests where id = '40000000-0000-0000-0000-000000000001' and status = 'quoted' and quoted_amount = 1850.50 and quoted_currency = 'CAD' and quote_notes = 'fuel included'
+       and quote_valid_until = current_date + 30 and quoted_by = '00000000-0000-0000-0000-0000000000a2' and quoted_at is not null and updated_at >= quoted_at) = 1);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.chk('staff_admin corrects the rate on A: returns the previous status quoted',
+  public.set_rate_quote('40000000-0000-0000-0000-000000000001', 1900, 'USD', null, null) = 'quoted');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('the correction replaced every quote field and restamped the actor (admin, USD, no notes, no valid until)',
+    (select count(*) from public.rate_requests where id = '40000000-0000-0000-0000-000000000001' and status = 'quoted' and quoted_amount = 1900 and quoted_currency = 'USD' and quote_notes is null
+       and quote_valid_until is null and quoted_by = '00000000-0000-0000-0000-0000000000a1') = 1);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.cnt('maria sees the quote on A (status quoted, amount 1900 USD)', format($q$select 1 from public.rate_requests where id = %L and status = 'quoted' and quoted_amount = 1900 and quoted_currency = 'USD'$q$, '40000000-0000-0000-0000-000000000001'), 1);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c2');
+select rlstest.cnt('the other customer does not see the quote on A (row exists: guard)', format($q$select 1 from public.rate_requests where id = %L$q$, '40000000-0000-0000-0000-000000000001'), 0, format($q$select 1 from public.rate_requests where id = %L$q$, '40000000-0000-0000-0000-000000000001'));
+select rlstest.back();
+
+-- 16f. cancel_rate_request: the customer of the request, open only ----------------------------------------------------------
+create function rlstest.rq_cancel_denied(p_who text, p_uid uuid, p_id uuid) returns void language plpgsql as $f$
+begin
+  perform rlstest.as_user(p_uid);
+  perform rlstest.err(p_who || ' cannot cancel request B', format($q$select public.cancel_rate_request(%L)$q$, p_id), 'not authorized');
+  perform rlstest.back();
+end $f$;
+grant execute on function rlstest.rq_cancel_denied(text, uuid, uuid) to authenticated, anon;
+select rlstest.rq_cancel_denied('staff_admin', '00000000-0000-0000-0000-0000000000a1', '40000000-0000-0000-0000-000000000002');
+select rlstest.rq_cancel_denied('staff_csr', '00000000-0000-0000-0000-0000000000a2', '40000000-0000-0000-0000-000000000002');
+select rlstest.rq_cancel_denied('carrier owner', '00000000-0000-0000-0000-0000000000b1', '40000000-0000-0000-0000-000000000002');
+select rlstest.rq_cancel_denied('carrier driver', '00000000-0000-0000-0000-0000000000b2', '40000000-0000-0000-0000-000000000002');
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.err('maria cannot cancel the OTHER customer''s open request (reads as not found)', format($q$select public.cancel_rate_request(%L)$q$, '40000000-0000-0000-0000-000000000002'), 'not found');
+select rlstest.err('maria cannot cancel an unknown id', $q$select public.cancel_rate_request('99999999-9999-9999-9999-999999999999')$q$, 'not found');
+select rlstest.err('maria cannot cancel a QUOTED request of her own (A)', format($q$select public.cancel_rate_request(%L)$q$, '40000000-0000-0000-0000-000000000001'), 'only an open request');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('after the refused cancels B is still open and A is still quoted (guard: both exist)',
+    (select count(*) from public.rate_requests where id = '40000000-0000-0000-0000-000000000002' and status = 'open') = 1 and (select count(*) from public.rate_requests where id = '40000000-0000-0000-0000-000000000001' and status = 'quoted') = 1);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.ok('control: maria cancels her own open request', $q$select public.cancel_rate_request((select id from public.rate_requests where notes = 'maria made'))$q$);
+select rlstest.err('maria cancelling it again is refused', $q$select public.cancel_rate_request((select id from public.rate_requests where notes = 'maria made'))$q$, 'only an open request');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c3');
+select rlstest.ok('control: a colleague of the same customer cancels a request made by maria2 (customer wide)', $q$select public.cancel_rate_request((select id from public.rate_requests where notes = 'maria2 made'))$q$);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('the two cancelled rows are cancelled with no quote fields; the other customer''s B and the untouched row stay open',
+    (select count(*) from public.rate_requests where notes in ('maria made', 'maria2 made') and status = 'cancelled' and quoted_amount is null and quoted_by is null) = 2
+    and (select count(*) from public.rate_requests where id = '40000000-0000-0000-0000-000000000002' and status = 'open') = 1
+    and (select count(*) from public.rate_requests where notes = 'maria2 again' and status = 'open') = 1);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.err('staff cannot quote a cancelled request', $q$select public.set_rate_quote((select id from public.rate_requests where notes = 'maria made'), 1500, 'CAD', null, null)$q$, 'was cancelled');
+select rlstest.ok('control: staff quotes the other customer''s open request B', format($q$select public.set_rate_quote(%L, 2200, 'CAD', 'ok', null)$q$, '40000000-0000-0000-0000-000000000002'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c2');
+select rlstest.err('the other customer cannot cancel its own request once it is quoted', format($q$select public.cancel_rate_request(%L)$q$, '40000000-0000-0000-0000-000000000002'), 'only an open request');
+select rlstest.back();
+
+-- 16g. constraints (as the table owner: RLS bypassed, so only the constraint can refuse) -------------------------------------
+create function rlstest.rq_row(p_cols text, p_vals text) returns text language sql as $f$
+  select format($q$insert into public.rate_requests (customer_id, requested_by, %s) values ((select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', %s)$q$, p_cols, p_vals) $f$;
+select rlstest.ok('control: a valid owner insert', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size', $v$'A', 'on', 'B', 'qc', 53$v$));
+select rlstest.err('state ZZ is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size', $v$'A', 'ZZ', 'B', 'NY', 53$v$), 'rate_requests_state_ck');
+select rlstest.err('state ONT (3 letters) is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size', $v$'A', 'ON', 'B', 'ONT', 53$v$), 'rate_requests_state_ck');
+select rlstest.err('state "O" (1 letter) is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size', $v$'A', 'O', 'B', 'NY', 53$v$), 'rate_requests_state_ck');
+select rlstest.err('a blank city is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size', $v$'   ', 'ON', 'B', 'NY', 53$v$), 'rate_requests_city_ck');
+select rlstest.err('an 81 character city is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size', $v$'A', 'ON', repeat('c', 81), 'NY', 53$v$), 'rate_requests_city_ck');
+select rlstest.ok('control: an 80 character city is accepted', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size', $v$'A', 'ON', repeat('c', 80), 'NY', 53$v$));
+select rlstest.err('size 48 is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size', $v$'A', 'ON', 'B', 'NY', 48$v$), 'rate_requests_size_ck');
+select rlstest.err('size null is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size', $v$'A', 'ON', 'B', 'NY', null$v$), 'null value');
+select rlstest.err('weight 0 is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, weight_lbs', $v$'A', 'ON', 'B', 'NY', 53, 0$v$), 'rate_requests_weight_ck');
+select rlstest.err('weight 100001 is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, weight_lbs', $v$'A', 'ON', 'B', 'NY', 53, 100001$v$), 'rate_requests_weight_ck');
+select rlstest.ok('control: weight 100000 is accepted', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, weight_lbs', $v$'A', 'ON', 'B', 'NY', 53, 100000$v$));
+select rlstest.err('notes of 1001 characters are refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes', $v$'A', 'ON', 'B', 'NY', 53, repeat('n', 1001)$v$), 'rate_requests_notes_ck');
+select rlstest.ok('control: notes of 1000 characters are accepted', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes', $v$'A', 'ON', 'B', 'NY', 53, repeat('n', 1000)$v$));
+select rlstest.err('dims of 201 characters are refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, dims', $v$'A', 'ON', 'B', 'NY', 53, repeat('d', 201)$v$), 'rate_requests_dims_ck');
+select rlstest.err('status "won" is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, status', $v$'A', 'ON', 'B', 'NY', 53, 'won'$v$), 'rate_requests_status_ck');
+select rlstest.err('quoted without an amount is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, status', $v$'A', 'ON', 'B', 'NY', 53, 'quoted'$v$), 'rate_requests_quote_set_ck');
+select rlstest.err('open WITH an amount is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, quoted_amount, quoted_currency, quoted_by, quoted_at', $v$'A', 'ON', 'B', 'NY', 53, 5, 'CAD', '00000000-0000-0000-0000-0000000000a1', now()$v$), 'rate_requests_quote_set_ck');
+select rlstest.err('open WITH quote notes is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, quote_notes', $v$'A', 'ON', 'B', 'NY', 53, 'n'$v$), 'rate_requests_quote_set_ck');
+select rlstest.err('quoted with a missing quoted_by is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, status, quoted_amount, quoted_currency, quoted_at', $v$'A', 'ON', 'B', 'NY', 53, 'quoted', 5, 'CAD', now()$v$), 'rate_requests_quote_set_ck');
+select rlstest.err('quoted with amount 0 is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, status, quoted_amount, quoted_currency, quoted_by, quoted_at', $v$'A', 'ON', 'B', 'NY', 53, 'quoted', 0, 'CAD', '00000000-0000-0000-0000-0000000000a1', now()$v$), 'rate_requests_amount_ck');
+select rlstest.err('quoted with currency EUR is refused', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, status, quoted_amount, quoted_currency, quoted_by, quoted_at', $v$'A', 'ON', 'B', 'NY', 53, 'quoted', 5, 'EUR', '00000000-0000-0000-0000-0000000000a1', now()$v$), 'rate_requests_currency_ck');
+select rlstest.ok('control: a fully quoted owner insert is accepted', rlstest.rq_row('pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, status, quoted_amount, quoted_currency, quoted_by, quoted_at', $v$'A', 'ON', 'B', 'NY', 53, 'quoted', 5, 'CAD', '00000000-0000-0000-0000-0000000000a1', now()$v$));
+select rlstest.err('an unknown customer is refused', $q$insert into public.rate_requests (customer_id, requested_by, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size)
+  values ('99999999-9999-9999-9999-999999999999', '00000000-0000-0000-0000-0000000000c1', 'A', 'ON', 'B', 'NY', 53)$q$, 'foreign key');
+select rlstest.err('an unknown requested_by is refused', $q$insert into public.rate_requests (customer_id, requested_by, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size)
+  values ((select id from public.customers where name = 'Mitrex'), '99999999-9999-9999-9999-999999999999', 'A', 'ON', 'B', 'NY', 53)$q$, 'foreign key');
+do $t$
+begin
+  perform rlstest.chk('refs are unique and all have the RQ-nnnn shape', (select count(distinct ref) = count(*) and bool_and(ref ~ '^RQ-[0-9]{4,}$') from public.rate_requests));
+  perform rlstest.chk('no refused insert left a row (guard: the control rows exist)',
+    (select count(*) from public.rate_requests where pickup_city = 'A' and delivery_state = 'QC') = 1 and (select count(*) from public.rate_requests where weight_lbs in (0, 100001)) = 0
+    and (select count(*) from public.rate_requests where pickup_state = 'ZZ' or delivery_state in ('ONT')) = 0);
+  perform rlstest.chk('a rate request created no load (no load carries a request note or an RQ po number)', (select count(*) from public.loads where notes like 'maria%' or po_number like 'RQ-%') = 0);
+end $t$;
+
+-- 16h. the migration is idempotent: apply the REAL file again, nothing changes -------------------------------------------------
+create table rlstest.rq_before as select id, ref, status, quoted_amount from public.rate_requests;
+\i supabase/migrations/0017_rate_requests.sql
+do $t$
+begin
+  perform rlstest.chk('0017 applied again: the same rows, refs, statuses and amounts (guard: rows exist)',
+    (select count(*) from rlstest.rq_before) > 5
+    and (select count(*) from (select id, ref, status, quoted_amount from public.rate_requests except select * from rlstest.rq_before) q) = 0
+    and (select count(*) from (select * from rlstest.rq_before except select id, ref, status, quoted_amount from public.rate_requests) q) = 0);
+  perform rlstest.chk('0017 applied again: still exactly two policies, no update or delete privilege, anon still has no EXECUTE',
+    (select count(*) from pg_policies where schemaname = 'public' and tablename = 'rate_requests') = 2
+    and not has_table_privilege('authenticated', 'public.rate_requests', 'update') and not has_table_privilege('authenticated', 'public.rate_requests', 'delete')
+    and not has_function_privilege('anon', 'public.set_rate_quote(uuid, numeric, text, text, date)', 'execute')
+    and not has_function_privilege('anon', 'public.cancel_rate_request(uuid)', 'execute'));
+end $t$;
+
+-- 16i. database level rate cap (review fix): 30 recent requests by one user, the 31st direct insert is refused ----------------
+insert into public.rate_requests (customer_id, requested_by, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes)
+  select (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c3', 'Cap', 'ON', 'Cap', 'NY', 26, 'cap seed' from generate_series(1, 30);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c3');
+select rlstest.err('a user with 30 recent requests cannot insert a 31st directly', $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes)
+  values ((select id from public.customers where name = 'Mitrex'), 'A', 'ON', 'B', 'NY', 26, 'cap over')$q$, 'too many rate requests');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.ok('control: another user (under the cap) still inserts', $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes)
+  values ((select id from public.customers where name = 'Mitrex'), 'A', 'ON', 'B', 'NY', 26, 'cap control')$q$);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('the cap refusal left no row (guard: the 30 seed rows and the control row exist)',
+    (select count(*) from public.rate_requests where notes = 'cap seed') = 30 and (select count(*) from public.rate_requests where notes = 'cap control') = 1
+    and (select count(*) from public.rate_requests where notes = 'cap over') = 0);
+end $t$;
+
 -- Summary ----------------------------------------------------------------
 select name, outcome, detail from rlstest.res where outcome <> 'OK' order by n;
 select 'RLS_OK ' || count(*) filter (where outcome = 'OK') || ' OK / '

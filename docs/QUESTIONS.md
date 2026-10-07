@@ -75,3 +75,13 @@ Open question: should the PO number be left empty on a repeat (a new shipment us
 5. The five lanes the owner left out on purpose (125G, D Express and MTD to Etobicoke, 481 to Brampton, Mitrex to Winnipeg) are not in the data. Staff add them from the "Add it" link the first time they are needed, or by CSV once the old ITS numbers are known.
 6. Should the staff email include the lane note? Default used: no (number and scenario only). The note shows on the Lanes page.
 7. Maria will see the Moffett toggle locked on for 1HAM, 152 Sh, 831 Queen, Glengarry, Kitney site, Military Trailsite and PrimeFab from the day 0016 is applied (it already does for SAMIH). Please tell her. If a site should stay optional, untick Requires Moffett on the Locations page (the lane keeps its Y or N derived from the location).
+
+## DLV-030 Rate requests (defaults used, owner may change)
+1. Should a quoted rate expire by itself (status "expired" after valid until)? Default used: NO. The date is shown, the status stays Rate ready.
+2. Should staff be able to cancel a request (a duplicate or a mistake)? Default used: NO, only the customer cancels. Staff can simply leave it open or quote it.
+3. Should a correction of an already entered rate email the customer? Default used: YES, one short message "Your rate was updated in the app", with no amount.
+4. Should csr staff get the new-request email too? Default used: NO, only active staff_admin, as specified. Adding csr is one query change in notifyAdminsOfRateRequest.
+5. Mexican lanes: the state field accepts US states, DC and Canadian provinces only. Default used: Mexico is refused ("must be a two letter US state or Canadian province code"). Tell us if Mitrex ships to Mexico.
+6. Should "Book this lane" prefill /book? Default used: no, a plain link. The booking form needs saved locations; the request holds free text cities.
+7. Should a won rate be remembered as a lane (a lane reference or a saved route) so the next request for the same lane is answered automatically? Default used: NO, rates stay separate from lanes and loads.
+8. Limit 30 requests per 10 minutes per user: same default as loads. Change it in src/lib/rates/validate.ts.

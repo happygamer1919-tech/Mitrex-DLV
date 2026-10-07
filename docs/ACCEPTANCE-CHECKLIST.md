@@ -86,5 +86,18 @@ Kaja owner on a phone (any mobile browser is fine).
 - [ ] Maria, **Book a load**: choose 1HAM as delivery. The Moffett box turns on and cannot be changed (like SAMIH). Choose 481 University Ave: it is free again.
 - [ ] iPhone: the Lanes page and the load box fit the screen, nothing scrolls sideways, buttons are easy to tap.
 
+## M11. Rate requests (a rate for a new lane, not a load)
+- [ ] Maria: the top menu has **Rates** (Loads, Book a load, Rates, Locations). Carriers have no Rates item and staff have **Rate requests** instead.
+- [ ] Maria: **Rates**, ask for a TEST rate: pickup Toronto ON, delivery Buffalo NY, 53 ft, notes "TEST-RATE". The page says "Rate request RQ-000n sent" and the request shows **Waiting for rate**. No load appears in **Loads**.
+- [ ] Try a wrong state (ZZ), an empty city and a huge weight (1000000): each shows a clear message under the field, keeps what you typed and creates nothing.
+- [ ] Admin (chris@): an email "Rate request RQ-000n: Toronto, ON to Buffalo, NY, 53 ft" arrived with the lane, notes, the customer name and a working link. Luca (CSR) did not get it. Maria did not get it.
+- [ ] Admin or Luca: **Rate requests** lists it under **Open**; the board shows "Open rate requests" with the count. Open it, enter 1850.50, CAD, a note and a valid until date, tap **Save rate**: "Rate saved. The customer was emailed ...".
+- [ ] Maria: the email "Your rate is ready in the app (RQ-000n)" arrived and does NOT show the price. **Rates** now shows **Rate ready**, 1,850.50 CAD, the note and the valid until date, and a **Book this lane** button that opens the booking page.
+- [ ] Admin: open the request again, change the amount and tap **Correct the rate**. Maria gets "Your rate was updated in the app" and sees the new amount.
+- [ ] Maria: ask for a second TEST rate and tap **Cancel request** before staff answer: it shows **Cancelled** and staff see it under **Cancelled** with no rate form. A request with **Rate ready** has no cancel button.
+- [ ] A carrier user cannot open /rates or /admin/rates (lands on My loads). Maria cannot open /admin/rates (lands on Loads).
+- [ ] iPhone: the Rates page and the staff pages fit the screen, nothing scrolls sideways, the truck size buttons and all other buttons are easy to tap.
+- [ ] Real Resend delivery of both emails (M1 covers the account): the staff email reaches the admin inbox and the customer email reaches Maria's.
+
 ## After testing
-- [ ] Tell engineering the results (M1 to M10: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
+- [ ] Tell engineering the results (M1 to M11: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).

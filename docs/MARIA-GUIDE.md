@@ -72,5 +72,15 @@ On the **Locations** page you can:
 
 Under "My location requests" each request shows pending, approved or rejected. DLV reviews them.
 
+## Rates: ask for a price on a new lane
+Use this when you need a price for a lane that DLV does not have yet. It does not book a load.
+1. Tap **Rates** in the top menu.
+2. Under **Request a rate** fill in the pickup city and state (for example Toronto, ON), the delivery city and state (for example Buffalo, NY) and tap the truck size (26, 36 or 53 ft). Weight, dimensions and notes are optional.
+3. Tap **Request a rate**. The page says "Rate request RQ-0001 sent". DLV is emailed.
+4. When DLV has entered the rate you get an email "Your rate is ready in the app". The email does not show the price: open **Rates** in the portal to see it.
+5. Under **Your rate requests** each request shows **Waiting for rate**, **Rate ready** or **Cancelled**. A request with **Rate ready** shows the amount and currency, DLV's notes and the date it is valid until. Tap **Book this lane** to go to the booking page and book the load as usual.
+6. Asked by mistake? Tap **Cancel request** on a request that is still **Waiting for rate**. Once the rate is ready it can no longer be cancelled.
+If a field is wrong the page tells you which one (for example the state must be a two letter code like ON or NY), and keeps what you typed.
+
 ## Who to contact
 DLV dispatch: (226) 703-3034, chris@dlvlogistics.com

@@ -60,13 +60,14 @@ export default async function AdminBoardPage({ searchParams }: { searchParams: P
   const supabase = await createClient();
   const since = new Date(Date.now() - 14 * 86400000).toISOString();
 
-  const [active, finished] = await Promise.all([
+  const [active, finished, openRates] = await Promise.all([
     supabase.from("loads").select(BOARD_SELECT)
       .not("status", "in", "(delivered,cancelled)")
       .order("pickup_date").order("pickup_time_start").limit(500),
     supabase.from("loads").select(BOARD_SELECT)
       .in("status", ["delivered", "cancelled"]).gte("updated_at", since)
       .order("updated_at", { ascending: false }).limit(200),
+    supabase.from("rate_requests").select("id", { count: "exact", head: true }).eq("status", "open"),
   ]);
 
   const error = active.error ?? finished.error;
@@ -90,6 +91,12 @@ export default async function AdminBoardPage({ searchParams }: { searchParams: P
     <Shell profile={profile}>
       <LiveRefresh />
       <PageTitle>Load board</PageTitle>
+      <p className="mb-3">
+        <Link href="/admin/rates" data-testid="board-rates-link" className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-line bg-white px-4 text-[14px] font-medium">
+          Open rate requests
+          <span data-testid="board-rates-count" className="rounded-full bg-mint px-2 py-0.5 text-[13px]">{openRates.count ?? 0}</span>
+        </Link>
+      </p>
       {banner ? <div className="mb-4" data-testid="deleted-banner"><Notice tone={banner.tone}>{banner.text}</Notice></div> : null}
       {error ? <div className="mb-4"><Notice tone="error">Could not load the board: {error.message}</Notice></div> : null}
       <p className="mb-3 text-[13px] text-muted">Delivered and cancelled loads show the last 14 days. Times are Eastern (ET).</p>
