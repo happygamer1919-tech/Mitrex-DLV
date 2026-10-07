@@ -34,3 +34,4 @@
 | Production migration 0017 applied (rate requests); pack 7 result | #31 | merged |
 | Required pickup and delivery photos, in-app camera, customer sees photos (migration 0018) | #32 | merged |
 | Production migration 0018 applied (load photos); pack 8 result | #33 | merged |
+| Branded sign-in email template (Supabase Magic Link), install steps in the runbook | #34 | merged |
