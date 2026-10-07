@@ -268,6 +268,7 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
             onUse={usePhoto}
             onCancel={close}
             onRetake={() => { photoBlob.current = null; photoPath.current = null; setError(null); }}
+            gallery
             busy={busy}
             error={error}
           />

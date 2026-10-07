@@ -40,7 +40,7 @@ When the load is in **Loading**, a white box **Loaded photo** appears with a big
 
 You can take more than one photo (up to 6): tap **Take another photo**. Took a bad one? Tap **Remove** under it. You cannot go on without at least one photo.
 
-The picture is taken in the app. You cannot pick one from your gallery. The time on it is set by DLV, not by your phone.
+Tap the big camera button to take the picture in the app. If you already have the picture on your phone, tap "Choose a photo from your phone" instead. Either way the time on it is the time you uploaded it, set by DLV, not by your phone.
 
 ## Photo at delivery
 When the load is **At delivery**, the box says **Delivery photo** with a button **Take delivery photo**. Do the same four steps. After that **Mark delivered** turns green. You cannot mark the load delivered without the delivery photo.
