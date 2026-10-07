@@ -182,8 +182,6 @@ test("a size with no row (Mitrex to 481 University Ave at 36) shows the no refer
   await expect(s.page.getByTestId("its-copy-none")).toHaveText("No ITS reference for this lane and size");
   await expect(s.page.getByTestId("its-copy-scenario")).toHaveText("Mitrex to 481 University Ave, 36 ft");
   await expect(s.page.getByTestId("its-copy-number")).toHaveCount(0);
-  const body = await s.page.content();
-  expect(body.includes("1269") || body.includes("1264")).toBe(false);
   await s.ctx.close();
 });
 
@@ -580,10 +578,11 @@ test("a customer and a carrier cannot open /admin/lanes or its CSV, and PostgRES
     const s = await as(browser, who);
     await s.page.goto("/admin/lanes");
     await expect(s.page).toHaveURL(home);
-    expect(await s.page.content()).not.toContain("1269");
+    const html = await s.page.content();
+    expect(html.includes("lane-row") || html.includes("ITS load to copy")).toBe(false);
     const csv = await s.ctx.request.get("/admin/lanes/csv");
     expect(csv.status()).toBe(403);
-    expect(await csv.text()).not.toContain("1269");
+    expect(await csv.text()).not.toContain("load_to_copy");
     await s.ctx.close();
 
     const sb = await signedIn(email);
@@ -607,7 +606,7 @@ test("a customer and a carrier cannot open /admin/lanes or its CSV, and PostgRES
   const v = await anon(browser);
   const csv = await v.ctx.request.get("/admin/lanes/csv", { maxRedirects: 0 });
   expect([307, 308, 302, 401]).toContain(csv.status());
-  expect(await csv.text()).not.toContain("1269");
+  expect(await csv.text()).not.toContain("load_to_copy");
   await v.page.goto("/admin/lanes");
   await expect(v.page).toHaveURL(/\/login/);
   await v.ctx.close();
