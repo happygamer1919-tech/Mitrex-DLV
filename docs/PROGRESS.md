@@ -26,3 +26,4 @@
 | Admin board layout: stacked status bands, jump bar, swipeable phone menu; no migration | #23 | merged |
 | ITS load number (migration 0013), booking confirmation email with BOL, Number pending for requests | #24 | merged |
 | Production migration 0013 applied (ITS load number); pack 4 result | #25 | merged |
+| Admin-only permanent delete of loads (migration 0014), audit log, Danger zone | #26 | merged |

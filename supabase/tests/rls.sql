@@ -1241,6 +1241,292 @@ select rlstest.err('CHECK refuses a bad number even for the owner', format($q$up
 select rlstest.err('UNIQUE refuses a duplicate even for the owner', format($q$update public.loads set its_load_number = '315' where id = %L$q$, :'L51'), 'duplicate key|loads_its_load_number_key');
 select rlstest.ok('control: the owner may set a free number directly (service role path)', format($q$update public.loads set its_load_number = '316' where id = %L$q$, :'L51'));
 
+-- 14. Admin delete of a load (0014): only an active staff_admin, typed confirmation, audit row, nothing else deletes --------
+\set L60 '30000000-0000-0000-0000-000000000060'
+\set L61 '30000000-0000-0000-0000-000000000061'
+\set L62 '30000000-0000-0000-0000-000000000062'
+\set L63 '30000000-0000-0000-0000-000000000063'
+\set L64 '30000000-0000-0000-0000-000000000064'
+\set L65 '30000000-0000-0000-0000-000000000065'
+\set L66 '30000000-0000-0000-0000-000000000066'
+\set L67 '30000000-0000-0000-0000-000000000067'
+-- L60 delivered with ITS 9060 (BOL + POD), L61 requested without ITS (BOL), L62 booked victim with ITS 9062 (BOL),
+-- L63 booked with ITS 9063 (confirmation tests), L64 L65 L66 three trucks of one booking, L67 for the direct DELETE tests
+select rlstest.mkload(:'L60', 'delivered', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L61', 'requested', null);
+select rlstest.mkload(:'L62', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L63', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L64', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L65', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L66', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkload(:'L67', 'booked', '20000000-0000-0000-0000-00000000000a');
+update public.loads set its_load_number = '9060' where id = :'L60';
+update public.loads set its_load_number = '9062' where id = :'L62';
+update public.loads set its_load_number = '9063' where id = :'L63';
+update public.loads set its_load_number = '9064' where id = :'L64';
+update public.loads set its_load_number = '9065' where id = :'L65';
+update public.loads set its_load_number = '9066' where id = :'L66';
+update public.loads set its_load_number = '9067' where id = :'L67';
+update public.loads set po_number = 'MULTI-14' where id in (:'L64', :'L65', :'L66');
+insert into public.load_documents (load_id, kind, storage_path, uploaded_by)
+select l, k, l::text || '/' || k || '/' || f || '.' || e, '00000000-0000-0000-0000-0000000000a1'
+from (values
+  (:'L60'::uuid, 'bol', 'd0000000-0000-0000-0000-000000000601', 'pdf'),
+  (:'L60'::uuid, 'pod', 'd0000000-0000-0000-0000-000000000602', 'jpg'),
+  (:'L61'::uuid, 'bol', 'd0000000-0000-0000-0000-000000000611', 'pdf'),
+  (:'L62'::uuid, 'bol', 'd0000000-0000-0000-0000-000000000621', 'pdf'),
+  (:'L64'::uuid, 'bol', 'd0000000-0000-0000-0000-000000000641', 'pdf'),
+  (:'L66'::uuid, 'bol', 'd0000000-0000-0000-0000-000000000661', 'pdf'),
+  (:'L65'::uuid, 'bol', 'd0000000-0000-0000-0000-000000000651', 'pdf'),
+  (:'L67'::uuid, 'bol', 'd0000000-0000-0000-0000-000000000671', 'pdf')) v(l, k, f, e);
+select rlstest.chk('guard: L60..L67 exist, each with events and a document row (the delete has something to remove)',
+  (select count(*) from public.loads where id in (:'L60',:'L61',:'L62',:'L63',:'L64',:'L65',:'L66',:'L67')) = 8
+  and (select count(distinct load_id) from public.load_events where load_id in (:'L60',:'L61',:'L62',:'L64',:'L65',:'L66',:'L67')) = 7
+  and (select count(*) from public.load_documents where load_id in (:'L60',:'L61',:'L62',:'L64',:'L65',:'L66',:'L67')) = 8);
+select rlstest.chk('guard: the active admin a1 and a3 exist and are active, no deletion record yet',
+  (select count(*) from public.profiles where id in ('00000000-0000-0000-0000-0000000000a1','00000000-0000-0000-0000-0000000000a3') and is_active and role = 'staff_admin') = 2
+  and (select count(*) from public.load_deletions) = 0);
+
+-- 14a. grants, definitions, no general DELETE ----------------------------------------------------------------------
+do $t$
+begin
+  perform rlstest.chk('anon has no EXECUTE on delete_load_forever', not has_function_privilege('anon', 'public.delete_load_forever(uuid, text)', 'execute'));
+  perform rlstest.chk('anon has no EXECUTE on record_load_deletion_orphans', not has_function_privilege('anon', 'public.record_load_deletion_orphans(uuid, text[])', 'execute'));
+  perform rlstest.chk('control: authenticated has EXECUTE on delete_load_forever', has_function_privilege('authenticated', 'public.delete_load_forever(uuid, text)', 'execute'));
+  perform rlstest.chk('control: authenticated has EXECUTE on record_load_deletion_orphans', has_function_privilege('authenticated', 'public.record_load_deletion_orphans(uuid, text[])', 'execute'));
+  perform rlstest.chk('PUBLIC has no EXECUTE on either function',
+    not exists (select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+      where p.oid in ('public.delete_load_forever(uuid, text)'::regprocedure, 'public.record_load_deletion_orphans(uuid, text[])'::regprocedure)
+        and a.grantee = 0 and a.privilege_type = 'EXECUTE'));
+  perform rlstest.chk('delete_load_forever is SECURITY DEFINER with a pinned search_path',
+    (select prosecdef and exists (select 1 from unnest(proconfig) c where c like 'search_path=%') from pg_proc where oid = 'public.delete_load_forever(uuid, text)'::regprocedure));
+  perform rlstest.chk('record_load_deletion_orphans is SECURITY DEFINER with a pinned search_path',
+    (select prosecdef and exists (select 1 from unnest(proconfig) c where c like 'search_path=%') from pg_proc where oid = 'public.record_load_deletion_orphans(uuid, text[])'::regprocedure));
+  perform rlstest.chk('no client role holds DELETE on loads (anon, authenticated)',
+    not has_table_privilege('anon', 'public.loads', 'delete') and not has_table_privilege('authenticated', 'public.loads', 'delete'));
+  perform rlstest.chk('control: authenticated still holds SELECT and UPDATE on loads (the check reads the real grant)',
+    has_table_privilege('authenticated', 'public.loads', 'select') and has_table_privilege('authenticated', 'public.loads', 'update'));
+  perform rlstest.chk('no DELETE or ALL policy exists on loads',
+    (select count(*) from pg_policy where polrelid = 'public.loads'::regclass and polcmd in ('d', '*')) = 0);
+  perform rlstest.chk('control: loads still has its select policy (the policy check counts something)',
+    (select count(*) from pg_policy where polrelid = 'public.loads'::regclass and polcmd = 'r') >= 1);
+  perform rlstest.chk('load_deletions: RLS enabled, no write grant for anon or authenticated, select only for authenticated',
+    (select relrowsecurity from pg_class where oid = 'public.load_deletions'::regclass)
+    and not has_table_privilege('anon', 'public.load_deletions', 'select')
+    and not has_table_privilege('anon', 'public.load_deletions', 'insert')
+    and has_table_privilege('authenticated', 'public.load_deletions', 'select')
+    and not has_table_privilege('authenticated', 'public.load_deletions', 'insert')
+    and not has_table_privilege('authenticated', 'public.load_deletions', 'update')
+    and not has_table_privilege('authenticated', 'public.load_deletions', 'delete'));
+  perform rlstest.chk('load_deletions has no foreign key (a removed user or load never blocks)',
+    (select count(*) from pg_constraint where conrelid = 'public.load_deletions'::regclass and contype = 'f') = 0);
+  perform rlstest.chk('only load_events and load_documents reference loads, both ON DELETE CASCADE (catalog)',
+    (select count(*) from pg_constraint where confrelid = 'public.loads'::regclass and contype = 'f') = 2
+    and (select count(*) from pg_constraint where confrelid = 'public.loads'::regclass and contype = 'f' and confdeltype = 'c') = 2);
+end $t$;
+
+-- 14b. everyone who is not an active staff_admin is refused (each with the right confirmation text, so the ROLE is what refuses)
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.err('csr cannot delete a load', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L62'), 'not authorized');
+select rlstest.err('csr cannot record orphans', format($q$select public.record_load_deletion_orphans(%L, array[%L])$q$, :'L62', :'L62' || '/bol/d0000000-0000-0000-0000-000000000621.pdf'), 'not authorized');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.err('customer (owner of the load) cannot delete it', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L62'), 'not authorized');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.err('carrier owner of the load cannot delete it', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L62'), 'not authorized');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b2');
+select rlstest.err('carrier driver of the load cannot delete it', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L62'), 'not authorized');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b3');
+select rlstest.err('another carrier owner cannot delete it', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L62'), 'not authorized');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c2');
+select rlstest.err('another customer cannot delete it', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L62'), 'not authorized');
+select rlstest.back();
+-- no JWT at all (the anon path reaches the function only through the grant, asserted above; here the null uid case)
+select rlstest.err('a call with no signed in user is refused (auth.uid() is null)', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L62'), 'not authorized');
+-- an INACTIVE staff_admin
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a3', false);
+select rlstest.chk('guard: a3 is now an inactive staff_admin and a1 is still active',
+  (select count(*) from public.profiles where id = '00000000-0000-0000-0000-0000000000a3' and role = 'staff_admin' and not is_active) = 1
+  and (select count(*) from public.profiles where id = '00000000-0000-0000-0000-0000000000a1' and role = 'staff_admin' and is_active) = 1);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a3');
+select rlstest.err('an inactive staff_admin cannot delete a load', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L62'), 'not authorized');
+select rlstest.back();
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a3', true);
+do $t$
+begin
+  perform rlstest.chk('nothing was deleted by any refused attempt: L62 with its events and document, no audit row',
+    (select count(*) from public.loads where id = '30000000-0000-0000-0000-000000000062') = 1
+    and (select count(*) from public.load_events where load_id = '30000000-0000-0000-0000-000000000062') > 0
+    and (select count(*) from public.load_documents where load_id = '30000000-0000-0000-0000-000000000062') = 1
+    and (select count(*) from public.load_deletions) = 0);
+end $t$;
+
+-- 14c. confirmation: wrong, empty, null, the OTHER number, an unknown load; nothing is deleted
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.err('wrong confirmation refused', format($q$select public.delete_load_forever(%L, '1234')$q$, :'L63'), 'confirmation does not match');
+select rlstest.err('empty confirmation refused', format($q$select public.delete_load_forever(%L, '')$q$, :'L63'), 'confirmation does not match');
+select rlstest.err('spaces only confirmation refused', format($q$select public.delete_load_forever(%L, '   ')$q$, :'L63'), 'confirmation does not match');
+select rlstest.err('null confirmation refused', format($q$select public.delete_load_forever(%L, null)$q$, :'L63'), 'confirmation does not match');
+select rlstest.err('a prefix of the number is refused', format($q$select public.delete_load_forever(%L, '906')$q$, :'L63'), 'confirmation does not match');
+select rlstest.err('the number of ANOTHER load is refused', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L63'), 'confirmation does not match');
+select rlstest.err('the request ref is refused while an ITS number is set', format($q$select public.delete_load_forever(%L, %L)$q$, :'L63', (select load_number from public.loads where id = :'L63')), 'confirmation does not match');
+select rlstest.err('a request without an ITS number refuses a made up number', format($q$select public.delete_load_forever(%L, '9061')$q$, :'L61'), 'confirmation does not match');
+select rlstest.err('an unknown load is refused', $q$select public.delete_load_forever('30000000-0000-0000-0000-0000000000ee', '1')$q$, 'load not found');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('nothing was deleted by a wrong confirmation: L63 and L61 with events and documents, no audit row',
+    (select count(*) from public.loads where id in ('30000000-0000-0000-0000-000000000063', '30000000-0000-0000-0000-000000000061')) = 2
+    and (select count(*) from public.load_events where load_id in ('30000000-0000-0000-0000-000000000063', '30000000-0000-0000-0000-000000000061')) >= 2
+    and (select count(*) from public.load_documents where load_id = '30000000-0000-0000-0000-000000000061') = 1
+    and (select count(*) from public.load_deletions) = 0);
+end $t$;
+
+-- 14d. direct DELETE on loads is refused for every client role (the function is the only path)
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.err('admin cannot DELETE loads directly', format($q$delete from public.loads where id = %L$q$, :'L67'), 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.err('csr cannot DELETE loads directly', format($q$delete from public.loads where id = %L$q$, :'L67'), 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.err('customer cannot DELETE loads directly', format($q$delete from public.loads where id = %L$q$, :'L67'), 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.err('carrier owner cannot DELETE loads directly', format($q$delete from public.loads where id = %L$q$, :'L67'), 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b2');
+select rlstest.err('carrier driver cannot DELETE loads directly', format($q$delete from public.loads where id = %L$q$, :'L67'), 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.err('admin cannot DELETE load_documents directly either', format($q$delete from public.load_documents where load_id = %L$q$, :'L67'), 'permission denied');
+select rlstest.err('admin cannot DELETE load_events directly', format($q$delete from public.load_events where load_id = %L$q$, :'L67'), 'permission denied');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('L67 is untouched after every direct DELETE attempt', (select count(*) from public.loads where id = '30000000-0000-0000-0000-000000000067') = 1
+    and (select count(*) from public.load_documents where load_id = '30000000-0000-0000-0000-000000000067') = 1);
+end $t$;
+-- positive control: the table owner can delete, and the cascade removes events and documents (the FK behaviour the function relies on)
+delete from public.loads where id = :'L67';
+select rlstest.chk('control: the owner delete of L67 cascades to its events and document rows',
+  (select count(*) from public.loads where id = :'L67') = 0
+  and (select count(*) from public.load_events where load_id = :'L67') = 0
+  and (select count(*) from public.load_documents where load_id = :'L67') = 0);
+
+-- 14e. positive: the active admin deletes by ITS number, by request ref, and trims the typed text
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+do $t$
+declare v text[];
+begin
+  v := public.delete_load_forever('30000000-0000-0000-0000-000000000060', '9060');
+  perform rlstest.chk('admin deletes L60 by its ITS number and the function returns exactly the two storage paths',
+    v is not null and cardinality(v) = 2
+    and v @> array['30000000-0000-0000-0000-000000000060/bol/d0000000-0000-0000-0000-000000000601.pdf', '30000000-0000-0000-0000-000000000060/pod/d0000000-0000-0000-0000-000000000602.jpg']);
+end $t$;
+do $t$
+declare v text[]; v_ref text;
+begin
+  select load_number into v_ref from public.loads where id = '30000000-0000-0000-0000-000000000061';
+  v := public.delete_load_forever('30000000-0000-0000-0000-000000000061', '  ' || v_ref || '  ');
+  perform rlstest.chk('admin deletes L61 (no ITS number) by its request ref, spaces around the text are trimmed, one path returned', cardinality(v) = 1);
+end $t$;
+select rlstest.ok('control: admin deletes L62 with the right text (so every earlier refusal was the ROLE)', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L62'));
+select rlstest.err('deleting the same load again is refused (not found), no second audit row', format($q$select public.delete_load_forever(%L, '9062')$q$, :'L62'), 'load not found');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('L60, L61, L62 are gone with their events and document rows',
+    (select count(*) from public.loads where id in ('30000000-0000-0000-0000-000000000060','30000000-0000-0000-0000-000000000061','30000000-0000-0000-0000-000000000062')) = 0
+    and (select count(*) from public.load_events where load_id in ('30000000-0000-0000-0000-000000000060','30000000-0000-0000-0000-000000000061','30000000-0000-0000-0000-000000000062')) = 0
+    and (select count(*) from public.load_documents where load_id in ('30000000-0000-0000-0000-000000000060','30000000-0000-0000-0000-000000000061','30000000-0000-0000-0000-000000000062')) = 0);
+  perform rlstest.chk('exactly three audit rows, one per delete',
+    (select count(*) from public.load_deletions) = 3);
+  perform rlstest.chk('audit row of L60: ITS 9060, last status delivered, deleted by a1, now, no orphans, request ref kept',
+    (select count(*) from public.load_deletions d where d.load_id = '30000000-0000-0000-0000-000000000060' and d.its_load_number = '9060'
+       and d.last_status = 'delivered' and d.deleted_by = '00000000-0000-0000-0000-0000000000a1'
+       and d.deleted_at > now() - interval '1 minute' and d.deleted_at <= now()
+       and d.orphan_paths = '{}' and d.request_ref ~ '^MTX-[0-9]{4,}$') = 1);
+  perform rlstest.chk('audit row of L61: no ITS number (null), last status requested',
+    (select count(*) from public.load_deletions d where d.load_id = '30000000-0000-0000-0000-000000000061' and d.its_load_number is null and d.last_status = 'requested'
+       and d.deleted_by = '00000000-0000-0000-0000-0000000000a1') = 1);
+end $t$;
+
+-- 14f. one truck of a multi-truck booking: the others stay, with their events and documents
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.ok('admin deletes truck L65 of the three truck booking', format($q$select public.delete_load_forever(%L, '9065')$q$, :'L65'));
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('L65 is gone',
+    (select count(*) from public.loads where id = '30000000-0000-0000-0000-000000000065') = 0);
+  perform rlstest.chk('the other two trucks (same PO) remain with their events and documents',
+    (select count(*) from public.loads where po_number = 'MULTI-14') = 2
+    and (select count(distinct load_id) from public.load_events where load_id in ('30000000-0000-0000-0000-000000000064', '30000000-0000-0000-0000-000000000066')) = 2
+    and (select count(*) from public.load_documents where load_id in ('30000000-0000-0000-0000-000000000064', '30000000-0000-0000-0000-000000000066')) = 2);
+end $t$;
+
+-- 14g. load_deletions: readable by an active admin only, never writable by a client
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.cnt('admin reads the audit rows', 'select 1 from public.load_deletions', 4);
+select rlstest.err('admin cannot INSERT into load_deletions', format($q$insert into public.load_deletions (load_id, request_ref) values (%L, 'MTX-9999')$q$, :'L63'), 'permission denied');
+select rlstest.err('admin cannot UPDATE load_deletions', $q$update public.load_deletions set request_ref = 'X'$q$, 'permission denied');
+select rlstest.err('admin cannot DELETE from load_deletions', $q$delete from public.load_deletions$q$, 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.cnt('csr reads no audit rows', 'select 1 from public.load_deletions', 0, 'select 1 from public.load_deletions');
+select rlstest.err('csr cannot INSERT into load_deletions', format($q$insert into public.load_deletions (load_id, request_ref) values (%L, 'MTX-9999')$q$, :'L63'), 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.cnt('customer reads no audit rows', 'select 1 from public.load_deletions', 0, 'select 1 from public.load_deletions');
+select rlstest.err('customer cannot INSERT into load_deletions', format($q$insert into public.load_deletions (load_id, request_ref) values (%L, 'MTX-9999')$q$, :'L63'), 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.cnt('carrier owner reads no audit rows', 'select 1 from public.load_deletions', 0, 'select 1 from public.load_deletions');
+select rlstest.err('carrier owner cannot INSERT into load_deletions', format($q$insert into public.load_deletions (load_id, request_ref) values (%L, 'MTX-9999')$q$, :'L63'), 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b2');
+select rlstest.cnt('carrier driver reads no audit rows', 'select 1 from public.load_deletions', 0, 'select 1 from public.load_deletions');
+select rlstest.back();
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a3', false);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a3');
+select rlstest.cnt('an inactive staff_admin reads no audit rows', 'select 1 from public.load_deletions', 0, 'select 1 from public.load_deletions');
+select rlstest.back();
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a3', true);
+
+-- 14h. record_load_deletion_orphans
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.err('orphans: a path of ANOTHER load is refused', format($q$select public.record_load_deletion_orphans(%L, array[%L])$q$, :'L60', :'L64' || '/bol/d0000000-0000-0000-0000-000000000641.pdf'), 'does not belong');
+select rlstest.err('orphans: a malformed path is refused', format($q$select public.record_load_deletion_orphans(%L, array[%L])$q$, :'L60', :'L60' || '/bol/../x.pdf'), 'does not belong');
+select rlstest.err('orphans: a load that still exists is refused', format($q$select public.record_load_deletion_orphans(%L, array[%L])$q$, :'L64', :'L64' || '/bol/d0000000-0000-0000-0000-000000000641.pdf'), 'still exists');
+select rlstest.err('orphans: an unknown load (no deletion record) is refused', format($q$select public.record_load_deletion_orphans(%L, array[%L])$q$, '30000000-0000-0000-0000-0000000000ee', '30000000-0000-0000-0000-0000000000ee/bol/d0000000-0000-0000-0000-000000000641.pdf'), 'no deletion record');
+select rlstest.ok('control: admin records the two orphan paths of L60',
+  format($q$select public.record_load_deletion_orphans(%L, array[%L, %L])$q$, :'L60', :'L60' || '/bol/d0000000-0000-0000-0000-000000000601.pdf', :'L60' || '/pod/d0000000-0000-0000-0000-000000000602.jpg'));
+do $t$
+declare n int;
+begin
+  n := public.record_load_deletion_orphans('30000000-0000-0000-0000-000000000060', array['30000000-0000-0000-0000-000000000060/bol/d0000000-0000-0000-0000-000000000601.pdf']);
+  perform rlstest.chk('orphans: recording a path twice appends nothing (returns 0)', n = 0);
+end $t$;
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('orphans: the L60 audit row holds exactly the two paths, the other audit rows none',
+    (select cardinality(orphan_paths) from public.load_deletions where load_id = '30000000-0000-0000-0000-000000000060') = 2
+    and (select count(*) from public.load_deletions where load_id <> '30000000-0000-0000-0000-000000000060' and cardinality(orphan_paths) > 0) = 0);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.err('orphans: csr is refused on a real deletion record', format($q$select public.record_load_deletion_orphans(%L, array[%L])$q$, :'L61', :'L61' || '/bol/d0000000-0000-0000-0000-000000000611.pdf'), 'not authorized');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.err('orphans: customer is refused', format($q$select public.record_load_deletion_orphans(%L, array[%L])$q$, :'L61', :'L61' || '/bol/d0000000-0000-0000-0000-000000000611.pdf'), 'not authorized');
+select rlstest.back();
+select rlstest.chk('orphans: the refused callers appended nothing to L61', (select cardinality(orphan_paths) from public.load_deletions where load_id = :'L61') = 0);
+
 -- Summary ----------------------------------------------------------------
 select name, outcome, detail from rlstest.res where outcome <> 'OK' order by n;
 select 'RLS_OK ' || count(*) filter (where outcome = 'OK') || ' OK / '
