@@ -36,3 +36,4 @@
 | Production migration 0018 applied (load photos); pack 8 result | #33 | merged |
 | Branded sign-in email template (Supabase Magic Link), install steps in the runbook | #34 | merged |
 | Handoff for the next Claude Code session (docs/HANDOFF.md) | #35 | merged |
+| Board filters and sorting on the staff board (DLV-036) | #36 | open |
