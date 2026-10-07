@@ -2134,6 +2134,24 @@ begin
     and not has_function_privilege('anon', 'public.cancel_rate_request(uuid)', 'execute'));
 end $t$;
 
+-- 16i. database level rate cap (review fix): 30 recent requests by one user, the 31st direct insert is refused ----------------
+insert into public.rate_requests (customer_id, requested_by, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes)
+  select (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c3', 'Cap', 'ON', 'Cap', 'NY', 26, 'cap seed' from generate_series(1, 30);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c3');
+select rlstest.err('a user with 30 recent requests cannot insert a 31st directly', $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes)
+  values ((select id from public.customers where name = 'Mitrex'), 'A', 'ON', 'B', 'NY', 26, 'cap over')$q$, 'too many rate requests');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.ok('control: another user (under the cap) still inserts', $q$insert into public.rate_requests (customer_id, pickup_city, pickup_state, delivery_city, delivery_state, equipment_size, notes)
+  values ((select id from public.customers where name = 'Mitrex'), 'A', 'ON', 'B', 'NY', 26, 'cap control')$q$);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('the cap refusal left no row (guard: the 30 seed rows and the control row exist)',
+    (select count(*) from public.rate_requests where notes = 'cap seed') = 30 and (select count(*) from public.rate_requests where notes = 'cap control') = 1
+    and (select count(*) from public.rate_requests where notes = 'cap over') = 0);
+end $t$;
+
 -- Summary ----------------------------------------------------------------
 select name, outcome, detail from rlstest.res where outcome <> 'OK' order by n;
 select 'RLS_OK ' || count(*) filter (where outcome = 'OK') || ' OK / '

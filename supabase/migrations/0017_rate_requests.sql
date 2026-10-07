@@ -86,6 +86,11 @@ begin
     new.quoted_at := null;
     new.created_at := now();
     new.updated_at := now();
+    -- Runaway guard at the database too (the server action checks the same cap first): a customer user cannot spam
+    -- rows by calling the API directly. 30 requests per 10 minutes, the same numbers as src/lib/rates/validate.ts.
+    if (select count(*) from public.rate_requests r where r.requested_by = new.requested_by and r.created_at >= now() - interval '10 minutes') >= 30 then
+      raise exception 'too many rate requests in a short time' using errcode = 'P0001';
+    end if;
   end if;
   return new;
 end
