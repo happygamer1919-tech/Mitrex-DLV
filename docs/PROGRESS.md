@@ -24,3 +24,4 @@
 | Production migrations 0011 and 0012 applied (POD optional, 26/36/53 ft); pack 3 result | #21 | merged |
 | Request again, Completed filter, last contact hints; no migration | #22 | merged |
 | Admin board layout: stacked status bands, jump bar, swipeable phone menu; no migration | #23 | merged |
+| ITS load number (migration 0013), booking confirmation email with BOL, Number pending for requests | #24 | merged |
