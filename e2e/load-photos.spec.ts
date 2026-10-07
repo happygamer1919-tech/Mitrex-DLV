@@ -509,8 +509,12 @@ test("camera happy path (fake device): live preview, Take photo, Use this photo 
   await expect(dialog.getByTestId("camera")).toHaveAttribute("data-phase", "live");
   await expect(dialog.getByTestId("camera-video")).toBeVisible();
   await expect(dialog.getByTestId("camera-status")).toContainText("Camera ready");
-  // No file picker and no gallery in the primary path.
-  await expect(dialog.locator('input[type="file"]')).toHaveCount(0);
+  // The camera is the primary button. The only file input is the gallery one (R41): no capture attribute, images only.
+  await expect(dialog.locator('input[type="file"]')).toHaveCount(1);
+  await expect(dialog.getByTestId("camera-fallback-input")).toHaveCount(0);
+  await expect(dialog.getByTestId("camera-gallery-input")).toHaveAttribute("accept", "image/jpeg,image/png,image/webp");
+  await expect(dialog.getByTestId("camera-gallery-input")).not.toHaveAttribute("capture", /.*/);
+  await expect(dialog.getByTestId("camera-gallery")).toHaveText("Choose a photo from your phone");
   const take = dialog.getByTestId("camera-take");
   await expect(take).toBeEnabled();
   expect((await take.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -636,6 +640,29 @@ test("camera permission denied: a plain explanation and the phone camera input a
   await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 20_000 });
   const rows = await photoRows(id, "pickup_photo");
   expect(rows).toHaveLength(1);
+  const obj = await db().storage.from("documents").download(rows[0].storage_path as string);
+  expect(jpegSize(Buffer.from(await obj.data!.arrayBuffer())), "re-encoded as JPEG").not.toBeNull();
+  await expect(page.getByTestId("next-step")).toBeEnabled();
+  await ctx.close();
+});
+
+test("gallery: Choose a photo from your phone stores one JPEG with the server time and unlocks the step (both engines)", async ({ browser }) => {
+  const { id } = await insertLoad({ po: uniq("GAL"), status: "loading", photo: false });
+  const { ctx, page } = await as(browser, "carrierA");
+  await denyCamera(ctx);
+  await openFresh(page, `/my-loads/${id}`);
+  await expect(page.getByTestId("next-step")).toBeDisabled();
+  await page.getByTestId("take-photo").click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByTestId("camera-gallery-input").setInputFiles({ name: "old.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await expect(dialog.getByTestId("camera")).toHaveAttribute("data-phase", "review");
+  const before = Date.now();
+  await dialog.getByTestId("camera-use").click();
+  await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 20_000 });
+  const rows = await photoRows(id, "pickup_photo");
+  expect(rows).toHaveLength(1);
+  // The official time is the server time of the upload, never the file's own date.
+  expect(Math.abs(new Date(rows[0].created_at as string).getTime() - before)).toBeLessThan(60_000);
   const obj = await db().storage.from("documents").download(rows[0].storage_path as string);
   expect(jpegSize(Buffer.from(await obj.data!.arrayBuffer())), "re-encoded as JPEG").not.toBeNull();
   await expect(page.getByTestId("next-step")).toBeEnabled();

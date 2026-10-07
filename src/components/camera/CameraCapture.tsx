@@ -2,8 +2,9 @@
 
 // In-app camera (DLV-032). The picture is taken INSIDE the app with the MediaDevices API: live preview, a big Take
 // photo button, then Use this photo or Retake. The frame is downscaled on a canvas to at most 1600 px on the long
-// side and encoded as JPEG (quality 0.8) before the parent uploads it. There is no file picker and no gallery in
-// this path. If the camera cannot be opened (no API, permission denied, no camera) the component says so in plain
+// side and encoded as JPEG (quality 0.8) before the parent uploads it. With gallery on (the pickup and delivery
+// photo steps) a secondary "Choose a photo from your phone" button opens the gallery or files; the picture goes
+// through the same downscale and review. The camera stays the primary button. If the camera cannot be opened (no API, permission denied, no camera) the component says so in plain
 // words and offers one fallback: an <input type=file accept=image/* capture=environment>, which opens the phone's
 // camera app. On some Android phones that input can still offer the gallery (docs/QUESTIONS.md). The camera stream
 // is stopped right after the capture and when the component unmounts.
@@ -31,6 +32,8 @@ type Props = {
   useLabel?: string;
   /** Tells the parent a new picture will be taken (so it can start a new storage path). */
   onRetake?: () => void;
+  /** Offer "Choose a photo from your phone" (gallery or files) besides the camera (R41). */
+  gallery?: boolean;
 };
 
 const BIG = "inline-flex min-h-[64px] w-full cursor-pointer items-center justify-center rounded-full px-6 text-[18px] font-bold disabled:opacity-50";
@@ -50,10 +53,11 @@ function reasonText(e: unknown): string {
   return "The camera could not be opened inside the app.";
 }
 
-export function CameraCapture({ subject, onUse, onCancel, busy = false, error = null, useLabel = "Use this photo", onRetake }: Props) {
+export function CameraCapture({ subject, onUse, onCancel, busy = false, error = null, useLabel = "Use this photo", onRetake, gallery = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const alive = useRef(true);
   const attempt = useRef(0); // a newer start makes an older, slower one stop its own stream
   const [phase, setPhase] = useState<Phase>("starting");
@@ -236,6 +240,30 @@ export function CameraCapture({ subject, onUse, onCancel, busy = false, error = 
             }}
           />
           <button type="button" data-testid="camera-again" onClick={() => void start()} disabled={busy || fileBusy} className={SMALL}>Try the camera again</button>
+        </div>
+      ) : null}
+
+      {gallery && phase !== "review" ? (
+        <div>
+          <button type="button" data-testid="camera-gallery" onClick={() => galleryRef.current?.click()} disabled={busy || fileBusy} className={SMALL}>
+            {fileBusy ? "Reading the photo..." : "Choose a photo from your phone"}
+          </button>
+          {/* image/jpeg, png and webp: iOS converts a HEIC photo to JPEG for this accept list. No capture attribute, so the gallery opens. */}
+          <input
+            ref={galleryRef}
+            type="file"
+            hidden
+            tabIndex={-1}
+            accept="image/jpeg,image/png,image/webp"
+            data-testid="camera-gallery-input"
+            aria-label={`${subject}, choose from the phone`}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              void onFallbackFile(f);
+            }}
+          />
         </div>
       ) : null}
 
