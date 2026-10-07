@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminClient, as, insertLoad, isoDate, staffBook, uniq, uniqIts, PNG_1X1 } from "./support/helpers";
+import { addLoadPhoto, adminClient, as, insertLoad, isoDate, staffBook, uniq, uniqIts, PNG_1X1, podChooseFile } from "./support/helpers";
 import { CARRIER_A } from "./support/users";
 
 test.describe.configure({ mode: "serial" });
@@ -100,7 +100,11 @@ test("carrier walks the status buttons; ETA is required, POD is optional", async
   await page.getByRole("button", { name: "Arrived at pickup" }).click();
   await expect(page.getByRole("button", { name: "Start loading" })).toBeVisible();
   await page.getByRole("button", { name: "Start loading" }).click();
-  await expect(page.getByRole("button", { name: "Leave for delivery" })).toBeVisible();
+  // DLV-032: the loaded photo gates the next step. Locked without it; unlocked once a photo is stored.
+  await expect(page.getByRole("button", { name: "Leave for delivery" })).toBeDisabled();
+  await addLoadPhoto(loadId, "pickup_photo");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Leave for delivery" })).toBeEnabled();
 
   // Enroute: the ETA modal is required.
   await page.getByRole("button", { name: "Leave for delivery" }).click();
@@ -116,7 +120,10 @@ test("carrier walks the status buttons; ETA is required, POD is optional", async
   await expect(page.getByRole("button", { name: "Arrived at delivery" })).toBeVisible();
 
   await page.getByRole("button", { name: "Arrived at delivery" }).click();
-  await expect(page.getByRole("button", { name: "Mark delivered" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mark delivered" })).toBeDisabled();
+  await addLoadPhoto(loadId, "delivery_photo");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Mark delivered" })).toBeEnabled();
 
   // Delivered: a POD photo is optional. The modal says so and Mark delivered works without one.
   await page.getByRole("button", { name: "Mark delivered" }).click();
@@ -164,7 +171,7 @@ test("the carrier adds the POD photo after delivery: exactly one POD row, and Ma
   await page.goto(`/my-loads/${loadId}`);
   const card = page.getByTestId("pod-card");
   await expect(card.getByTestId("pod-missing")).toHaveText("POD not uploaded yet");
-  await card.getByTestId("dropzone-input").setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await podChooseFile(card, { name: "pod.png", mimeType: "image/png", buffer: PNG_1X1 });
   await expect(card.getByTestId("dropzone-file")).toContainText("pod.png");
   await card.getByTestId("pod-add").click();
   await expect(card.getByRole("link", { name: "View POD" })).toBeVisible({ timeout: 30_000 });

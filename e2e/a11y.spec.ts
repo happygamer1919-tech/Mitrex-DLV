@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { adminClient, anon, as, insertLoad, isoDate, uniq, uniqIts } from "./support/helpers";
+import { addLoadPhoto, adminClient, anon, as, insertLoad, isoDate, PNG_1X1, uniq, uniqIts, podChooseFile } from "./support/helpers";
 import { makeLocation, retireLocations } from "./support/book";
 import { RATE_MARK, seedRate } from "./support/rates";
 import type { Who } from "./support/users";
@@ -598,8 +598,61 @@ test("drop area states: staff BOL and POD zones, carrier POD card, chosen file a
     await expect(page.getByTestId("pod-missing")).toBeVisible();
     await scan(page, "/my-loads/[id] (delivered, POD not uploaded yet)", carrierMarker);
     const card = page.getByTestId("pod-card");
-    await card.getByTestId("dropzone-input").setInputFiles({ name: "pod.png", mimeType: "image/png", buffer: Buffer.from("x") });
+    await podChooseFile(card, { name: "pod.png", mimeType: "image/png", buffer: Buffer.from("x") });
     await expect(card.getByTestId("dropzone-file")).toBeVisible();
     await scan(page, "/my-loads/[id] (POD drop area with a chosen file)", carrierMarker);
+  });
+});
+
+test("load photos: the carrier photo step and camera dialog (denied camera, review), the POD picker, Maria's Photos section, the staff documents list", async ({ browser }) => {
+  const loading = await insertLoad({ po: uniq("A11Y-PH1"), status: "loading", photo: false });
+  const atDel = await insertLoad({ po: uniq("A11Y-PH2"), status: "at_delivery" });
+  const delivered = await insertLoad({ po: uniq("A11Y-PH3"), status: "delivered" });
+  await addLoadPhoto(delivered.id, "pickup_photo");
+  await addLoadPhoto(delivered.id, "delivery_photo");
+
+  const { ctx, page } = await as(browser, "carrierA", VIEWPORT);
+  await ctx.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: () => Promise.reject(new DOMException("Permission denied", "NotAllowedError")) },
+    });
+  });
+  const marker = (l: { id: string; loadNumber: string }, text: string) => ({ path: new RegExp(`^/my-loads/${l.id}$`), h1: new RegExp(l.loadNumber), text, driver: true });
+  await page.goto(`/my-loads/${loading.id}`);
+  await expect(page.getByTestId("take-photo")).toBeVisible();
+  await scan(page, "/my-loads/[id] (loading, no photo: Take loaded photo, next step locked)", marker(loading, "Loading"));
+  await page.getByTestId("take-photo").click();
+  await expect(page.getByTestId("camera")).toHaveAttribute("data-phase", "unavailable");
+  await scan(page, "/my-loads/[id] (camera dialog, camera blocked, phone camera fallback)", { ...marker(loading, "Loaded photo"), dialog: true });
+  await page.getByTestId("camera-fallback-input").setInputFiles({ name: "cam.png", mimeType: "image/png", buffer: PNG_1X1 });
+  await expect(page.getByTestId("camera-preview")).toBeVisible();
+  await scan(page, "/my-loads/[id] (camera dialog, photo taken: Use this photo or Retake)", { ...marker(loading, "Loaded photo"), dialog: true });
+  await page.getByTestId("camera-use").click();
+  await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 20_000 });
+  await expect(page.getByTestId("photo-item")).toHaveCount(1);
+  await scan(page, "/my-loads/[id] (loading, one photo: thumbnail with time, Remove, Take another photo)", marker(loading, "Loading"));
+
+  await page.goto(`/my-loads/${atDel.id}`);
+  await scan(page, "/my-loads/[id] (at_delivery, delivery photo stored)", marker(atDel, "Delivery photo"));
+  await page.getByTestId("next-step").click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await scan(page, "/my-loads/[id] (POD dialog: Take POD photo and Choose a file instead)", { ...marker(atDel, "Proof of delivery"), dialog: true });
+  await page.getByRole("dialog").getByTestId("pod-choose-file").click();
+  await scan(page, "/my-loads/[id] (POD dialog, file area)", { ...marker(atDel, "Proof of delivery"), dialog: true });
+  await ctx.close();
+
+  await session(browser, "maria", async (p) => {
+    await p.goto(`/loads/${delivered.id}`);
+    await expect(p.getByTestId("photo-item")).toHaveCount(2);
+    await scan(p, "/loads/[id] (delivered, Photos section with both photos)", { path: new RegExp(`^/loads/${delivered.id}$`), h1: new RegExp(delivered.loadNumber), text: "Photos" });
+    await p.goto(`/loads/${loading.id}`);
+    await expect(p.getByTestId("photos-empty")).toBeVisible();
+    await scan(p, "/loads/[id] (loading, Photos section empty)", { path: new RegExp(`^/loads/${loading.id}$`), h1: new RegExp(loading.loadNumber), text: "Photos" });
+  });
+  await session(browser, "admin", async (p) => {
+    await p.goto(`/admin/loads/${delivered.id}`);
+    await expect(p.locator('[data-testid="doc-row"][data-kind="pickup_photo"]')).toHaveCount(1);
+    await scan(p, "/admin/loads/[id] (photos in the Documents list, upload areas for photos)", { path: new RegExp(`^/admin/loads/${delivered.id}$`), h1: new RegExp(delivered.loadNumber), text: "Delivery photo" });
   });
 });

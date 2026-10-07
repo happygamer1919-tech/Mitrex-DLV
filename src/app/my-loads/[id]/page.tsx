@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, isoToEasternLocal } from "@/lib/format";
 import { deliveryStartLocal, LOAD_SELECT, UUID_RE, type CarrierLoad } from "@/lib/carrier/loads";
 import type { LoadDocument } from "@/lib/types";
+import { photoKindForStatus, type PhotoItem } from "@/lib/carrier/photos";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,17 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
   const bolUrl = await signed(bol?.storage_path);
   const pods = await Promise.all(podDocs.map(async (d) => ({ id: d.id, url: await signed(d.storage_path) })));
 
+  // The photos of the step this status asks for (loaded photo while loading, delivery photo at delivery), oldest first.
+  // `created_at` is the server time of the insert and is the official time shown to everyone.
+  const stepKind = photoKindForStatus(load.status);
+  const stepPhotos: PhotoItem[] = stepKind
+    ? await Promise.all(
+        docs.filter((d) => d.kind === stepKind).sort((a, b) => a.created_at.localeCompare(b.created_at)).map(async (d) => ({
+          id: d.id, url: await signed(d.storage_path), when: fmtDateTime(d.created_at), mine: d.uploaded_by === profile.id,
+        })),
+      )
+    : [];
+
   const finished = load.status === "delivered" || load.status === "cancelled";
 
   return (
@@ -89,6 +101,7 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
             etaLocal={load.eta ? isoToEasternLocal(load.eta) : null}
             defaultEtaLocal={deliveryStartLocal(load)}
             hasPod={Boolean(pod)}
+            photos={stepPhotos}
           />
         ) : load.eta ? (
           <p className="text-[15px] text-white/80">Last ETA: {fmtDateTime(load.eta)}</p>

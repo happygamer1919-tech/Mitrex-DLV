@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
-  adminClient, as, insertLoad, jpegSize, loadRow, makeNoisePng, readDownload, uniq,
-} from "./support/helpers";
+  adminClient, as, insertLoad, jpegSize, loadRow, makeNoisePng, readDownload, uniq, podChooseFile } from "./support/helpers";
 
 test("staff uploads a BOL, Maria downloads the same bytes, BOL pending disappears", async ({ browser }) => {
   const po = uniq("BOL");
@@ -51,7 +50,7 @@ test("POD photo larger than 1600px is stored as a JPEG of at most 1600px and sma
   await page.goto(`/my-loads/${id}`);
   await page.getByRole("button", { name: "Mark delivered" }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.locator('input[type="file"]').setInputFiles({ name: "pod-big.png", mimeType: "image/png", buffer: png });
+  await podChooseFile(dialog, { name: "pod-big.png", mimeType: "image/png", buffer: png });
   await dialog.getByRole("button", { name: "Mark delivered" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 60_000 });
 

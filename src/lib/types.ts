@@ -49,9 +49,11 @@ export type LoadEvent = {
   actor_id: string | null; note: string | null; created_at: string;
 };
 
+export type DocKind = "bol" | "pod" | "pickup_photo" | "delivery_photo";
+
 export type LoadDocument = {
-  id: string; load_id: string; kind: "bol" | "pod"; storage_path: string;
-  uploaded_by: string; created_at: string;
+  id: string; load_id: string; kind: DocKind; storage_path: string;
+  uploaded_by: string; created_at: string; captured_at?: string | null;
 };
 
 export type LocationRequest = {

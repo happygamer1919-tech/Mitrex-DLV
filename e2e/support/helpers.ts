@@ -1,5 +1,6 @@
-import { devices, type Browser, type BrowserContext, type BrowserContextOptions, type Page } from "@playwright/test";
+import { devices, type Browser, type BrowserContext, type BrowserContextOptions, type Locator, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 import { deflateSync } from "node:zlib";
 import { BASE_URL, localEnv } from "./env";
 import { assertLocalUrl } from "./guard";
@@ -91,9 +92,12 @@ export type SeedStatus = "requested" | "booked" | "at_pickup" | "loading" | "enr
 // DLV-025: a seeded load that is past "requested" gets a unique ITS number (opts.its overrides it, null seeds a
 // legacy load WITHOUT one). A requested load has none ("Number pending"). `loadNumber` is the number people SEE
 // (the ITS number when set, else the request ref); `requestRef` is always the MTX-0005 style value.
+// DLV-032: a load seeded in `loading` gets one pickup photo and one seeded in `at_delivery` one delivery photo, so the
+// specs that move a load on (the photo gate refuses a carrier without it) keep testing what they test. Pass
+// `photo: false` for the load that must have NO photo (e2e/load-photos.spec.ts).
 export async function insertLoad(opts: {
   po: string; status?: SeedStatus; carrier?: boolean; pickupDate?: string; eta?: string | null; notes?: string;
-  pickupLocationId?: string; deliveryLocationId?: string; its?: string | null; size?: 26 | 36 | 53;
+  pickupLocationId?: string; deliveryLocationId?: string; its?: string | null; size?: 26 | 36 | 53; photo?: boolean;
 }): Promise<{ id: string; loadNumber: string; requestRef: string; itsNumber: string | null }> {
   const db = adminClient();
   const status = opts.status ?? "booked";
@@ -122,7 +126,45 @@ export async function insertLoad(opts: {
   if (error) throw error;
   const ref = data.load_number as string;
   const itsNumber = (data.its_load_number as string | null) ?? null;
+  if (opts.photo !== false && (status === "loading" || status === "at_delivery")) {
+    await addLoadPhoto(data.id as string, status === "loading" ? "pickup_photo" : "delivery_photo");
+  }
   return { id: data.id as string, loadNumber: itsNumber ?? ref, requestRef: ref, itsNumber };
+}
+
+// Stores one load photo as the service role (setup, never the thing under test): a real 1x1 PNG object in the private
+// bucket and its load_documents row, uploaded_by carrier A's owner unless `by` says otherwise.
+export async function addLoadPhoto(
+  loadId: string, kind: "pickup_photo" | "delivery_photo", opts: { by?: string; capturedAt?: string } = {},
+): Promise<{ id: string; path: string }> {
+  const db = adminClient();
+  const { data: who, error: we } = await db.from("profiles").select("id").eq("email", opts.by ?? "owner-a@e2e.test").single();
+  if (we) throw we;
+  const path = `${loadId}/${kind}/${randomUUID()}.png`;
+  const up = await db.storage.from("documents").upload(path, PNG_1X1, { contentType: "image/png" });
+  if (up.error) throw up.error;
+  const { data, error } = await db.from("load_documents")
+    .insert({ load_id: loadId, kind, storage_path: path, uploaded_by: who.id, captured_at: opts.capturedAt ?? null })
+    .select("id").single();
+  if (error) throw error;
+  return { id: data.id as string, path };
+}
+
+export async function photoRows(loadId: string, kind?: "pickup_photo" | "delivery_photo") {
+  const { data, error } = await adminClient().from("load_documents")
+    .select("id,kind,storage_path,created_at,captured_at,uploaded_by")
+    .eq("load_id", loadId).in("kind", kind ? [kind] : ["pickup_photo", "delivery_photo"]).order("created_at");
+  if (error) throw error;
+  return data ?? [];
+}
+
+// DLV-032: the POD picker offers the in-app camera first. Specs that give a POD as a file open the secondary
+// "Choose a file instead" area first (it holds the same dropzone-input as before, without the capture attribute).
+export async function podChooseFile(
+  scope: Locator, file: { name: string; mimeType: string; buffer: Buffer },
+): Promise<void> {
+  await scope.getByTestId("pod-choose-file").click();
+  await scope.getByTestId("dropzone-input").setInputFiles(file);
 }
 
 export async function insertBookedLoad(po: string): Promise<string> {

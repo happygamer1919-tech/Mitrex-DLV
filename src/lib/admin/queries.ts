@@ -1,5 +1,5 @@
 import { fmtTime } from "@/lib/format";
-import type { LoadStatus } from "@/lib/types";
+import type { DocKind, LoadStatus } from "@/lib/types";
 
 export type LocLite = { name: string; city: string; province: string };
 
@@ -20,7 +20,7 @@ export type BoardLoad = {
   pickup: LocLite | null;
   delivery: LocLite | null;
   carrier: { name: string } | null;
-  load_documents: { kind: "bol" | "pod" }[];
+  load_documents: { kind: DocKind }[];
 };
 
 export const BOARD_SELECT =

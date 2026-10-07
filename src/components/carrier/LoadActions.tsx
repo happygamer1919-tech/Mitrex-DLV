@@ -3,9 +3,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Field, Input, Notice } from "@/components/ui";
-import { DropZone } from "@/components/DropZone";
+import { PodPicker } from "@/components/camera/PodPicker";
+import { CameraCapture, type Captured } from "@/components/camera/CameraCapture";
+import { PhotoThumbs } from "@/components/carrier/PhotoThumbs";
 import { storePodPhoto } from "@/lib/carrier/pod-upload";
-import { POD_EXTS, POD_MAX_BYTES } from "@/components/carrier/PodCard";
+import { storeLoadPhoto } from "@/lib/carrier/photo-upload";
+import { MAX_PHOTOS, PHOTO_BUTTON, PHOTO_NEEDED_HINT, PHOTO_TITLE, photoKindForStatus, type PhotoItem } from "@/lib/carrier/photos";
 import { NEXT_LABEL, NEXT_STATUS } from "@/lib/carrier/loads";
 import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
 import { advanceLoad, updateEta } from "@/app/my-loads/[id]/actions";
@@ -24,9 +27,10 @@ type Props = {
   etaLocal: string | null; // Eastern wall clock for datetime-local
   defaultEtaLocal: string; // delivery appointment or window start
   hasPod: boolean;
+  photos: PhotoItem[]; // the photos of the step this status asks for (loaded photo while loading, delivery photo at delivery)
 };
 
-type ModalKind = "enroute" | "pod" | "eta" | null;
+type ModalKind = "enroute" | "pod" | "eta" | "photo" | null;
 
 function Modal({ title, onClose, busy, children }: { title: string; onClose: () => void; busy: boolean; children: React.ReactNode }) {
   const titleId = useId();
@@ -52,38 +56,32 @@ function Modal({ title, onClose, busy, children }: { title: string; onClose: () 
   );
 }
 
-export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaultEtaLocal, hasPod }: Props) {
+export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaultEtaLocal, hasPod, photos }: Props) {
   const router = useRouter();
   const [modal, setModal] = useState<ModalKind>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [etaValue, setEtaValue] = useState(etaLocal ?? defaultEtaLocal);
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
   const [podDone, setPodDone] = useState(hasPod);
   const [failed, setFailed] = useState(false);
   const [photoFailed, setPhotoFailed] = useState(false); // the chosen photo did not upload: offer "deliver without photo"
   const stage = useRef<"photo" | "status">("status");
   const podPath = useRef<string | null>(null); // one storage path per chosen photo, reused by every retry
+  const photoPath = useRef<string | null>(null); // one storage path per captured photo, reused by every retry
+  const photoBlob = useRef<Blob | null>(null);
   const inflight = useRef(false); // synchronous double tap lock; `busy` only disables after a render
 
   useEffect(() => {
     if (hasPod) setPodDone(true);
   }, [hasPod]);
 
-  useEffect(() => {
-    if (!file) {
-      setPreview(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
   const next = NEXT_STATUS[status];
   if (!next) return null;
   const canEditEta = status === "enroute" || status === "at_delivery";
+  const photoKind = photoKindForStatus(status);
+  const needPhoto = photoKind !== null && photos.length === 0; // the next step stays locked until one photo is stored
+  const photoFull = photos.length >= MAX_PHOTOS;
 
   function open(kind: Exclude<ModalKind, null>) {
     setError(null);
@@ -91,6 +89,8 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
     setPhotoFailed(false);
     setFile(null);
     podPath.current = null;
+    photoPath.current = null;
+    photoBlob.current = null;
     setEtaValue(kind === "eta" ? (etaLocal ?? defaultEtaLocal) : defaultEtaLocal);
     setModal(kind);
   }
@@ -145,6 +145,7 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
   function onBigButton() {
     const target = NEXT_STATUS[status];
     if (!target) return;
+    if (needPhoto) return; // the button is disabled; this guards a synthetic click
     if (target === "enroute") return open("enroute");
     if (target === "delivered") return open("pod");
     void run(() => advanceLoad(loadId, target, status), false);
@@ -166,6 +167,17 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
       return;
     }
     void run(() => updateEta(loadId, etaValue));
+  }
+
+  // Stores one captured photo (the picture was taken inside the app). The same storage path is reused by a retry of
+  // the same picture, so a late landing of an earlier attempt is found instead of leaving a second copy.
+  function usePhoto(c: Captured) {
+    if (!photoKind) return;
+    if (photoBlob.current !== c.blob) {
+      photoBlob.current = c.blob;
+      photoPath.current = null;
+    }
+    void run(async () => storeLoadPhoto({ loadId, userId, kind: photoKind, blob: c.blob, capturedAt: c.capturedAt, pathRef: photoPath }));
   }
 
   // A POD photo is optional. With a photo chosen it is stored first (never silently dropped: if it fails the
@@ -210,17 +222,57 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
         </div>
       ) : null}
 
+      {photoKind ? (
+        <section aria-label={PHOTO_TITLE[photoKind]} data-testid="photo-step" className="space-y-3 rounded-[16px] bg-white p-4 text-ink">
+          <h2 className="text-[18px] font-bold">{PHOTO_TITLE[photoKind]}</h2>
+          <PhotoThumbs loadId={loadId} photos={photos} canRemove={!busy} />
+          {needPhoto ? (
+            <p data-testid="photo-needed" className="text-[15px] font-medium">{PHOTO_NEEDED_HINT[photoKind]}</p>
+          ) : null}
+          {photoFull ? (
+            <p className="text-[15px] text-muted">This load has {MAX_PHOTOS} photos, the most it can have. Remove one to take another.</p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => open("photo")}
+              disabled={busy}
+              data-testid="take-photo"
+              className={`inline-flex w-full cursor-pointer items-center justify-center rounded-full px-6 font-bold disabled:opacity-50 ${
+                needPhoto ? "min-h-[64px] bg-neon text-[20px] text-ink" : "min-h-[48px] border border-line bg-white text-[16px] text-ink"
+              }`}
+            >
+              {needPhoto ? PHOTO_BUTTON[photoKind] : "Take another photo"}
+            </button>
+          )}
+        </section>
+      ) : null}
+
       <button
         type="button"
         onClick={onBigButton}
-        disabled={busy}
+        disabled={busy || needPhoto}
         data-testid="next-step"
+        aria-describedby={needPhoto ? "photo-needed-hint" : undefined}
         className="inline-flex min-h-[64px] w-full cursor-pointer items-center justify-center rounded-full bg-neon px-6 text-[20px] font-bold text-ink disabled:opacity-50"
       >
         {busy && modal === null ? "Saving..." : NEXT_LABEL[next]}
       </button>
+      {needPhoto && photoKind ? <p id="photo-needed-hint" className="sr-only">{PHOTO_NEEDED_HINT[photoKind]}</p> : null}
       <p className="text-center text-[13px] text-white/80">Next status: {STATUS_LABEL[next]}</p>
       {error && modal === null ? <Notice tone="error">{error}</Notice> : null}
+
+      {modal === "photo" && photoKind ? (
+        <Modal title={PHOTO_TITLE[photoKind]} onClose={close} busy={busy}>
+          <CameraCapture
+            subject={PHOTO_TITLE[photoKind]}
+            onUse={usePhoto}
+            onCancel={close}
+            onRetake={() => { photoBlob.current = null; photoPath.current = null; setError(null); }}
+            busy={busy}
+            error={error}
+          />
+        </Modal>
+      ) : null}
 
       {modal === "enroute" ? (
         <Modal title="Confirm delivery ETA" onClose={close} busy={busy}>
@@ -262,7 +314,7 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
                 ? "A POD photo is already saved for this load. You can mark it delivered now, or add a clearer photo first."
                 : "Add the signed POD photo now if you have it. You can add it later from this load."}
             </p>
-            <DropZone
+            <PodPicker
               file={file}
               onFile={(f) => {
                 setError(null);
@@ -271,19 +323,9 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
                 podPath.current = null;
                 setFile(f);
               }}
-              exts={POD_EXTS}
-              maxBytes={POD_MAX_BYTES}
-              typeError="Use a photo (jpg, png, webp or heic)."
-              sizeError="The photo is larger than 15 MB."
-              label={podDone ? "New POD photo (optional)" : "POD photo (optional)"}
-              camera
-              driver
+              label={podDone ? "Take a new POD photo (optional)" : "Take POD photo (optional)"}
               disabled={busy}
             />
-            {preview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={preview} alt="Selected POD photo" className="max-h-56 w-full rounded-[12px] object-contain" />
-            ) : null}
             {error ? <Notice tone="error">{error}</Notice> : null}
             <div className="flex flex-col gap-2">
               <button type="submit" disabled={busy} data-testid={failed ? "pod-retry" : "pod-submit"} className="inline-flex min-h-[56px] w-full cursor-pointer items-center justify-center rounded-full bg-neon px-6 text-[18px] font-bold text-ink disabled:opacity-50">

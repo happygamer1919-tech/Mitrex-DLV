@@ -20,6 +20,14 @@ Portal: https://portal.dlvlogistics.com . All times are Eastern (ET). This page 
 4. Tap **Mark booked**. The button stays grey until the carrier is saved and the ITS number is typed, and it says which one is missing. Maria and the carrier are emailed.
 5. Typed the wrong ITS number? **Edit ITS number** on the load fixes it any time.
 
+## Photos of a load (pickup and delivery)
+Carriers must take a photo of the loaded freight before they can tap Leave for delivery, and a delivery photo before Mark delivered. Maria sees them on her load page after the status changes.
+- Open the load: the **Documents** card lists every photo as **Pickup photo** or **Delivery photo** with the time (Eastern time) and an **Open** link.
+- **Stuck load** (a driver with a broken camera, a forgotten photo): use **Override status** to move the load to **Enroute** or **Delivered**. It works without a photo. The timeline records it: "Staff skipped the pickup photo (none on file)." or "Staff skipped the delivery photo (none on file)." after your note.
+- **Upload on behalf of the carrier**: in **Documents** use **Pickup photo** or **Delivery photo** (drop or choose a png, jpg or webp, then **Upload Pickup photo** or **Upload Delivery photo**). This also unlocks the driver's button.
+- **Remove a photo** taken by mistake: **Remove** next to it. Maximum 6 photos per kind per load.
+- A load's photos are deleted with the load when an admin uses Delete forever.
+
 ## On the board
 Requested loads show a small line "Copy ITS 1269" so you can see the number without opening the load. Loads with no reference show "No ITS reference".
 

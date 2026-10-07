@@ -66,6 +66,11 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
   );
   const bols = signed.filter((s) => s.doc.kind === "bol");
   const pods = signed.filter((s) => s.doc.kind === "pod");
+  // Photos: the database only returns a pickup photo once the load is enroute or later and a delivery photo once it is
+  // delivered (RLS on load_documents and on the storage object). This list shows what came back, never more.
+  const photos = signed
+    .filter((s) => s.doc.kind === "pickup_photo" || s.doc.kind === "delivery_photo")
+    .sort((a, b) => a.doc.created_at.localeCompare(b.doc.created_at));
 
   const editable = l.status === "requested";
   // The "contact DLV" message applies only while dispatch owns the load (booked through at delivery).
@@ -157,6 +162,33 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
             {l.status === "delivered" && pods.length === 0 ? (
               <p data-testid="pod-missing" className="mt-3 text-[15px] font-medium">POD not uploaded yet.</p>
             ) : null}
+          </Card>
+          <Card data-testid="photos-card">
+            <h2 className="mb-2 text-[20px] font-bold">Photos</h2>
+            {photos.length === 0 ? (
+              <p className="text-[15px] text-muted" data-testid="photos-empty">
+                {l.status === "delivered"
+                  ? "No photos were added for this load."
+                  : "The photo of the loaded freight appears here once the load leaves for delivery. The delivery photo appears once it is delivered."}
+              </p>
+            ) : (
+              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="photo-list">
+                {photos.map((s) => (
+                  <li key={s.doc.id} data-testid="photo-item" data-kind={s.doc.kind} className="space-y-1">
+                    {s.url ? (
+                      <a href={s.url} target="_blank" rel="noopener noreferrer" aria-label={`Open the ${s.doc.kind === "pickup_photo" ? "loaded" : "delivery"} photo full size`}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={s.url} alt={s.doc.kind === "pickup_photo" ? "Loaded freight at pickup" : "Freight at delivery"} className="aspect-[4/3] w-full rounded-[12px] bg-black object-cover" />
+                      </a>
+                    ) : (
+                      <p className="flex aspect-[4/3] items-center justify-center rounded-[12px] bg-mint text-[13px] text-muted">Unavailable right now</p>
+                    )}
+                    <p className="text-[14px] font-bold">{s.doc.kind === "pickup_photo" ? "Loaded at pickup" : "Delivered"}</p>
+                    <p className="text-[13px] text-muted" data-testid="photo-time">{fmtDateTime(s.doc.created_at)}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
         </div>
 

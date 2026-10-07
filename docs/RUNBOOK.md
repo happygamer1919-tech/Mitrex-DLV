@@ -33,9 +33,9 @@ Open **Rate requests** in the top menu (admin and CSR alike). Maria asks for a r
 ## Delete a load forever (admin only)
 Only the staff admin account (chris@dlvlogistics.com) can do this. The CSR (Luca), customers and carriers never see the button and the database refuses them. **This cannot be undone.** The only way back is the weekly backup, which brings back everything else from that day too, so use **Cancel load** instead unless the load must disappear (a test load, a duplicate, a load entered by mistake).
 1. Open the load (Board, then the load). Scroll to the bottom: the **Danger zone** card.
-2. Tap **Delete this load forever**. A window lists what will go: the load number, route, status and how many BOL and POD files.
+2. Tap **Delete this load forever**. A window lists what will go: the load number, route, status and how many BOL, POD and photo files.
 3. Type the load number exactly as shown (the ITS number, or "MTX-0005" style while it has none). **Delete forever** stays grey until it matches. **Cancel** or Escape closes the window and changes nothing.
-4. Tap **Delete forever**. You land on the board with "Load 313 deleted forever". The load, its timeline and its BOL and POD files are gone for good, and it disappears from Maria's list, the carrier's list, the board, the calendar and new CSV exports.
+4. Tap **Delete forever**. You land on the board with "Load 313 deleted forever". The load, its timeline and its BOL, POD and photo files are gone for good, and it disappears from Maria's list, the carrier's list, the board, the calendar and new CSV exports.
 5. If the banner says "The load was deleted. N files could not be removed and were logged for cleanup.", the load is gone but N files are still in storage. Tell the developer; the file names are in the audit table (load_deletions.orphan_paths).
 6. A small record stays after a delete (request ref, ITS number, last status, who deleted it and when) so there is a trace. It holds no load details. If you would rather keep no trace at all, tell the developer.
 Deleting one truck of a multi-truck booking only deletes that truck; the others stay.

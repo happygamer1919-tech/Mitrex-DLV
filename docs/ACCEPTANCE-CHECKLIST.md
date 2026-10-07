@@ -99,5 +99,23 @@ Kaja owner on a phone (any mobile browser is fine).
 - [ ] iPhone: the Rates page and the staff pages fit the screen, nothing scrolls sideways, the truck size buttons and all other buttons are easy to tap.
 - [ ] Real Resend delivery of both emails (M1 covers the account): the staff email reaches the admin inbox and the customer email reaches Maria's.
 
+## M12. Load photos with the real camera (a real iPhone AND a real Android phone)
+Automation cannot verify a real camera, the permission prompt or the installed app, so this is a manual test. Use a TEST load, assigned to a TEST driver login, with the app installed on the phone's home screen. Do it once on an iPhone (Safari install) and once on an Android phone (Chrome install).
+- [ ] Driver: tap **Arrived at pickup**, then **Start loading**. A white **Loaded photo** box shows **Take loaded photo**. **Leave for delivery** is grey and does nothing.
+- [ ] Tap **Take loaded photo**. The phone asks to allow the camera (first time only): tap Allow. The live camera appears inside the app, the rear camera, filling the dialog. Nothing offers the photo library or "Choose file".
+- [ ] Tap **Take photo**, then **Retake**, take it again, then **Use this photo**. The dialog closes, the photo shows in the box with a time in Eastern time that matches the clock now (not the phone clock if you set it wrong on purpose).
+- [ ] **Leave for delivery** is now green. Tap it, confirm the ETA.
+- [ ] Maria (laptop): before the driver left, her load page showed the Photos card with "appears here once the load leaves for delivery". After the driver left, the loaded photo is there, with its time. Tap it: it opens full size.
+- [ ] Driver: **Arrived at delivery**. **Mark delivered** is grey until **Take delivery photo** is done. Take it. Tap **Mark delivered**.
+- [ ] POD: in the dialog tap **Take POD photo**, take it, **Use this POD photo**, **Mark delivered**. The POD is stored. Also try a delivery with no POD: it works.
+- [ ] Maria: after Delivered, the delivery photo appears too.
+- [ ] Block the camera: phone settings, turn the camera off for the app. Open the photo step: it explains the camera is blocked and shows **Open the phone camera**. Tap it, take a picture in the phone's camera, confirm, then **Use this photo**: it works. Turn the camera on again and tap **Try the camera again**. Note whether this phone offers the gallery in that fallback (it is allowed there, see docs/QUESTIONS.md).
+- [ ] The photo is sharp enough to read a label and the page is not slow on a normal mobile connection (each photo is about 100 to 400 kB).
+- [ ] Take 7 photos in a row: the 7th is refused and the box says the load has 6.
+- [ ] **Remove** a photo you took: it disappears. With none left the button is grey again.
+- [ ] Staff: on another TEST load, **Override status** to **Enroute** without a photo works; the timeline says "Staff skipped the pickup photo (none on file)."
+- [ ] iPhone and Android: the screens fit, nothing scrolls sideways, buttons are easy to tap with a work glove.
+- [ ] Leave the dialog open and lock the phone, then unlock: the camera shows again or the dialog can be closed and reopened. After closing the dialog the camera light is off.
+
 ## After testing
-- [ ] Tell engineering the results (M1 to M11: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
+- [ ] Tell engineering the results (M1 to M12: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
