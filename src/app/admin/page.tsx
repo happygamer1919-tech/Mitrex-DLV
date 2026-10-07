@@ -9,6 +9,8 @@ import { fmtDate, fmtDateTime } from "@/lib/format";
 import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
 import { deletedBanner } from "@/lib/admin/delete-load";
 import { resolveMany, scenarioKey, type LaneReference } from "@/lib/admin/lane-reference";
+import { BoardFilters, SORT_LABEL } from "@/components/admin/BoardFilters";
+import { applyFilters, easternToday, isFiltered, parseFilters, toQuery, type BoardFilters as F, type SortKey } from "@/lib/admin/board-filters";
 import { BOARD_SELECT, bolPending, pickupTimeLabel, podPending, routeOf, type BoardLoad } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +18,28 @@ export const dynamic = "force-dynamic";
 const COLUMNS: LoadStatus[] = [
   "requested", "booked", "at_pickup", "loading", "enroute", "at_delivery", "delivered", "cancelled",
 ];
+
+function one(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v;
+}
+
+function distinct(pairs: { id: string; name: string | undefined }[]): { id: string; name: string }[] {
+  const m = new Map<string, string>();
+  pairs.forEach((p) => { if (p.name) m.set(p.id, p.name); });
+  return [...m].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function SortHeader({ f, k }: { f: F; k: SortKey }) {
+  const active = f.sort === k;
+  const next = active && f.dir === "asc" ? "desc" : "asc";
+  return (
+    <th scope="col" aria-sort={active ? (f.dir === "asc" ? "ascending" : "descending") : "none"} className="px-3 py-2 text-left text-[13px] font-medium text-muted">
+      <Link href={`/admin${toQuery({ ...f, sort: k, dir: next })}`} className="inline-flex min-h-[44px] items-center gap-1">
+        {SORT_LABEL[k]}{active ? <span aria-hidden="true">{f.dir === "asc" ? " ^" : " v"}</span> : null}
+      </Link>
+    </th>
+  );
+}
 
 function LoadCard({ l, copy }: { l: BoardLoad; copy: LaneReference | null | undefined }) {
   return (
@@ -54,9 +78,57 @@ function LoadCard({ l, copy }: { l: BoardLoad; copy: LaneReference | null | unde
   );
 }
 
-export default async function AdminBoardPage({ searchParams }: { searchParams: Promise<{ deleted?: string; orphans?: string; logged?: string }> }) {
+function OneList({ f, shown, total, copyOf }: { f: F; shown: BoardLoad[]; total: number; copyOf: (l: BoardLoad) => LaneReference | null | undefined }) {
+  return (
+    <section aria-label="All loads" data-testid="board-list" className="mb-6">
+      <p data-testid="list-count" className="mb-2 text-[14px] text-muted">{shown.length} of {total} loads</p>
+      {shown.length === 0 ? (
+        <p className="rounded-[16px] border border-dashed border-line px-3 py-3 text-[13px] text-muted">No loads match these filters</p>
+      ) : (
+        <>
+          <div className="grid gap-3 md:hidden">
+            {shown.map((l) => <LoadCard key={l.id} l={l} copy={copyOf(l)} />)}
+          </div>
+          <div className="hidden overflow-x-auto rounded-[16px] border border-line bg-card md:block">
+            <table className="w-full text-[14px]">
+              <thead>
+                <tr>
+                  <SortHeader f={f} k="its_number" />
+                  <SortHeader f={f} k="pickup_time" />
+                  <SortHeader f={f} k="shipper" />
+                  <SortHeader f={f} k="receiver" />
+                  <SortHeader f={f} k="carrier" />
+                  <SortHeader f={f} k="size" />
+                  <th scope="col" className="px-3 py-2 text-left text-[13px] font-medium text-muted">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((l) => (
+                  <tr key={l.id} className="border-t border-line">
+                    <td className="px-3 py-2 font-bold"><Link href={`/admin/loads/${l.id}`} className="inline-flex min-h-[44px] items-center underline"><LoadNumber l={l} audience="staff" /></Link></td>
+                    <td className="px-3 py-2">{fmtDate(l.pickup_date)}, {pickupTimeLabel(l)}</td>
+                    <td className="px-3 py-2">{l.pickup?.name ?? "Unknown"}</td>
+                    <td className="px-3 py-2">{l.delivery?.name ?? "Unknown"}</td>
+                    <td className="px-3 py-2">{l.carrier?.name ?? "Not assigned"}</td>
+                    <td className="px-3 py-2">{l.equipment_size} ft</td>
+                    <td className="px-3 py-2">{STATUS_LABEL[l.status]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+export default async function AdminBoardPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const profile = await requireStaff();
-  const banner = deletedBanner(await searchParams);
+  const sp = await searchParams;
+  const banner = deletedBanner({ deleted: one(sp.deleted), orphans: one(sp.orphans), logged: one(sp.logged) });
+  const f = parseFilters(sp);
+  const filtered = isFiltered(f);
   const supabase = await createClient();
   const since = new Date(Date.now() - 14 * 86400000).toISOString();
 
@@ -84,8 +156,18 @@ export default async function AdminBoardPage({ searchParams }: { searchParams: P
   const copyOf = (l: BoardLoad): LaneReference | null | undefined =>
     !copiesOk || l.status !== "requested" ? undefined
       : copies.get(scenarioKey({ pickupId: l.pickup_location_id, deliveryId: l.delivery_location_id, size: l.equipment_size })) ?? null;
+  const today = easternToday();
+  const shown = applyFilters(loads, f, today);
   const byStatus = new Map<LoadStatus, BoardLoad[]>(COLUMNS.map((s) => [s, []]));
-  loads.forEach((l) => byStatus.get(l.status)?.push(l));
+  shown.forEach((l) => byStatus.get(l.status)?.push(l));
+  const totalBy = new Map<LoadStatus, number>(COLUMNS.map((s) => [s, loads.filter((l) => l.status === s).length]));
+  const carrierOpts = distinct(loads.flatMap((l) => (l.carrier_id && l.carrier ? [{ id: l.carrier_id, name: l.carrier.name }] : [])));
+  const shipperOpts = distinct(loads.map((l) => ({ id: l.pickup_location_id, name: l.pickup?.name })));
+  const receiverOpts = distinct(loads.map((l) => ({ id: l.delivery_location_id, name: l.delivery?.name })));
+  const count = (s: LoadStatus) => {
+    const n = (byStatus.get(s) ?? []).length;
+    return filtered ? `${n} of ${totalBy.get(s) ?? 0}` : String(n);
+  };
 
   return (
     <Shell profile={profile}>
@@ -100,7 +182,11 @@ export default async function AdminBoardPage({ searchParams }: { searchParams: P
       {banner ? <div className="mb-4" data-testid="deleted-banner"><Notice tone={banner.tone}>{banner.text}</Notice></div> : null}
       {error ? <div className="mb-4"><Notice tone="error">Could not load the board: {error.message}</Notice></div> : null}
       <p className="mb-3 text-[13px] text-muted">Delivered and cancelled loads show the last 14 days. Times are Eastern (ET).</p>
-      <nav aria-label="Jump to status" className="mb-4 flex flex-wrap gap-2">
+      <BoardFilters f={f} carriers={carrierOpts} shippers={shipperOpts} receivers={receiverOpts} />
+      {f.view === "list" ? (
+        <OneList f={f} shown={shown} total={loads.length} copyOf={copyOf} />
+      ) : null}
+      {f.view === "status" ? <nav aria-label="Jump to status" className="mb-4 flex flex-wrap gap-2">
         {COLUMNS.map((s) => {
           const n = (byStatus.get(s) ?? []).length;
           return (
@@ -112,19 +198,19 @@ export default async function AdminBoardPage({ searchParams }: { searchParams: P
               }`}
             >
               {STATUS_LABEL[s]}
-              <span className="rounded-full bg-mint px-2 py-0.5 text-[13px]">{n}</span>
+              <span className="rounded-full bg-mint px-2 py-0.5 text-[13px]">{count(s)}</span>
             </a>
           );
         })}
-      </nav>
-      <div className="space-y-6">
+      </nav> : null}
+      {f.view === "status" ? <div className="space-y-6">
         {COLUMNS.map((s) => {
           const list = byStatus.get(s) ?? [];
           return (
             <section key={s} id={`status-${s}`} aria-label={STATUS_LABEL[s]} className="scroll-mt-4">
               <h2 className="mb-2 flex items-center gap-2 text-[18px] font-bold">
                 <span>{STATUS_LABEL[s]}</span>
-                <span className="rounded-full bg-white px-2.5 py-0.5 text-[14px] text-muted">{list.length}</span>
+                <span className="rounded-full bg-white px-2.5 py-0.5 text-[14px] text-muted">{count(s)}</span>
               </h2>
               {list.length === 0 ? (
                 <p className="rounded-[16px] border border-dashed border-line px-3 py-3 text-[13px] text-muted">No loads</p>
@@ -136,7 +222,7 @@ export default async function AdminBoardPage({ searchParams }: { searchParams: P
             </section>
           );
         })}
-      </div>
+      </div> : null}
     </Shell>
   );
 }

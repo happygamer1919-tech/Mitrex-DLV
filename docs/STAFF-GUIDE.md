@@ -31,6 +31,12 @@ Carriers must take a photo of the loaded freight before they can tap Leave for d
 ## On the board
 Requested loads show a small line "Copy ITS 1269" so you can see the number without opening the load. Loads with no reference show "No ITS reference".
 
+## Find loads on the board (filters and sorting)
+- Tap a quick pill: Today, Tomorrow, Next 7 days, Not assigned, Needs BOL, Needs ITS number. Tap it again to switch it off.
+- Tap Filters for search (ITS number, request number, PO, place or carrier), status, carrier, shipper (pickup), receiver (delivery), size and custom dates, then Sort by and Order.
+- View "One list" shows every match in one list (a table on a computer, cards on a phone). "By status" keeps the status bands.
+- Each active filter shows as a chip. Tap a chip to remove it, or Clear all. While a filter is on, the counts read like "3 of 9".
+
 ## When there is no reference for a lane
 The load page shows an amber box "No ITS reference for this lane and size". Use the old way for this one (look the lane up in ITS yourself), then tap **Add it** in the box. The Lanes page opens with the pickup, delivery and size filled in. Type the ITS load you used and tap **Add lane**. The next request for the same lane and size shows it. The same row serves every load of that lane and size, so one entry is enough.
 
