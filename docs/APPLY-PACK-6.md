@@ -874,3 +874,9 @@ Method: `supabase_migrations.schema_migrations` was read first (16 rows, max ver
 ### Lead rehearsal of the real blocks (2026-10-07)
 
 The blocks were extracted verbatim and run under `zsh -f` against the local stack only, from `supabase db reset --last 2` (state 0014) plus production-like rows (one staff admin, one customer user, two loads) with the seven Moffett sites set to false. Block A: PRECHECK_OK. Block B: APPLY_OK. Block C: 76 PASS, POSTCHECK_OK. Block B again: APPLY_OK (idempotent). Block C again: POSTCHECK_OK. Rollback-0016, then block C: POSTCHECK_FAIL on exactly the lane checks. Block B again restored it and block C gave POSTCHECK_OK.
+
+## Production result (2026-10-07)
+
+- Block A: PRECHECK_OK. Block B: APPLY_OK at 2026-10-07T12:39:09Z, 0015 and 0016 both applied with no errors.
+- Block C: 72 PASS and 4 FAIL. The 4 FAILs were the row-count comparisons (loads, load_events, load_documents, load_deletions). Cause: the owner deleted two cancelled test loads (MTX-0001 and MTX-0002) with the new admin delete at 12:37:58Z and 12:38:07Z, while the pre-check was still reading its counts. Both appear in `load_deletions`, which holds exactly those two rows. Every schema and lane check passed (25 lanes, the number set equals the owner table, the 7 Moffett sites on, staff-only security).
+- App PR #28 merged as 0cb5c03 after the checks passed. Production deploy of that commit succeeded; /api/health returned ok and /login returned 200.
