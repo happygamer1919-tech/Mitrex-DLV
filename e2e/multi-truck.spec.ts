@@ -343,8 +343,9 @@ test("server cap: loads past the recent window cap are refused with a clear mess
   const ship = (live.data ?? []).filter((l) => l.can_ship).map((l) => l.id as string);
   const recv = (live.data ?? []).filter((l) => l.can_receive).map((l) => l.id as string);
   const base = (await d.from("loads").select("*").eq("created_by", maria).eq("customer_id", custId).in("pickup_location_id", ship).in("delivery_location_id", recv).limit(1).single()).data as Record<string, unknown>;
-  const { id: _i, load_number: _n, created_at: _c, updated_at: _u, ...tpl } = base;
-  void _i; void _n; void _c; void _u;
+  // its_load_number is unique where set: a template that is a booked load would make every seeded copy collide
+  const { id: _i, load_number: _n, created_at: _c, updated_at: _u, its_load_number: _its, ...tpl } = base;
+  void _i; void _n; void _c; void _u; void _its;
   const seeded: string[] = [];
   const po = uniq("MTC");
   try {

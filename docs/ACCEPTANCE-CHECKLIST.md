@@ -73,5 +73,18 @@ Kaja owner on a phone (any mobile browser is fine).
 - [ ] Maria's **Loads** list no longer shows it, and opening its old link shows "not found".
 - [ ] On the iPhone (portrait) the window fits the screen, nothing scrolls sideways, and the buttons are easy to tap.
 
+## M10. ITS load to copy (lane references, staff only)
+- [ ] Staff: open **Lanes**. About 25 rows are listed, grouped by pickup. Mitrex to 481 University Ave shows 1269 at 26 ft and 1264 at 53 ft. Mitrex to 1HAM shows "Moffett", Mitrex to 481 University Ave shows "No Moffett".
+- [ ] Maria: book a TEST load (PO "TEST-LANE") from Mitrex to 481 University Ave, 26 ft. Staff: the email "New load requested" has the line "ITS load to copy: 1269 (Mitrex to 481 University Ave, 26 ft)". Maria's confirmation page and any email to Maria do not show 1269 anywhere.
+- [ ] Staff: open that load. The **ITS load to copy** box is above **Carrier and booking**, with 1269 in large type. Tap **Copy**: it says "Copied 1269", and pasting somewhere gives 1269. On the **Board**, the Requested card shows "Copy ITS 1269".
+- [ ] Maria: book another TEST load, same route, 53 ft. Staff see 1264 (a different number for a different size).
+- [ ] Maria: book a TEST load Mitrex to 125G, 53 ft (no row). Staff: the email says "No ITS reference for this lane and size yet. Add it: <link>"; the load box is amber with **Add it**. Tap **Add it**: Lanes opens with Mitrex, 125G and 53 ft filled in. Type 9999 and tap **Add lane**. Back on the load, the box now says 9999. Then **Delete** that lane row again (it is a test value).
+- [ ] Luca (CSR): can open Lanes, add, edit, delete, export and import exactly like the admin.
+- [ ] Maria and a carrier user: the address /admin/lanes does not open for them (they land on their own home page). The carrier's load page and Maria's load page show no ITS load to copy.
+- [ ] **Export CSV** on Lanes downloads a file that opens in Excel with the columns shipper, receiver, truck_size, load_to_copy, note.
+- [ ] **Import CSV**: paste a row with a wrong location name and a row with size 48. The table marks both rows and **Apply import** stays grey. Fix them (use a TEST row) and apply; it says how many were added or updated. Delete the test rows.
+- [ ] Maria, **Book a load**: choose 1HAM as delivery. The Moffett box turns on and cannot be changed (like SAMIH). Choose 481 University Ave: it is free again.
+- [ ] iPhone: the Lanes page and the load box fit the screen, nothing scrolls sideways, buttons are easy to tap.
+
 ## After testing
-- [ ] Tell engineering the results (M1 to M9: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
+- [ ] Tell engineering the results (M1 to M10: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).

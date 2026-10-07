@@ -12,6 +12,21 @@ DLV dispatches in ITS. Maria's request has only an internal request reference (M
 6. Typed the wrong number? **Edit ITS number** on the load (any time after booking). The change is logged in the timeline. Two loads can never share an ITS number.
 A status override out of Requested also asks for the ITS number. A load booked before this feature has no ITS number: it keeps working, and **Edit ITS number** adds one.
 
+## Lanes: which old ITS load to copy (staff only)
+Open **Lanes** in the top menu (admin and CSR alike). Each row says: for this pickup, this delivery and this truck size, copy that old ITS load. Customers and carriers never see the page or the numbers.
+**Add a lane.**
+1. Tap **Add lane**, choose the pickup, the delivery and the truck size (26, 36 or 53), type the ITS load to copy (digits, a split such as 313-2 is fine) and an optional note, tap **Add lane**.
+2. The quick way: open a Requested load that shows "No ITS reference for this lane and size" and tap **Add it**. The form opens with the pickup, delivery and size already filled in; type the number.
+3. A scenario can have only one row. Adding it again says so; edit the existing row instead.
+**Edit or delete.** **Edit** on the row changes the number and note (it saves at once and shows who changed it and when). **Delete** asks first. Loads read the lane live, so an edit shows on every load straight away (reload the load page).
+**Moffett column.** It is read from the two locations (a lane needs a Moffett when the pickup or the delivery location requires one). To change it, edit the location on the Locations page, not the lane.
+**Find a lane.** Search, or filter by pickup, delivery and truck size. Rows are grouped by pickup.
+**Export and import (CSV).**
+1. **Export CSV** downloads every lane (columns shipper, receiver, truck_size, load_to_copy, note). Open it in Excel or Sheets.
+2. To change many lanes at once, edit the file and use **Import CSV**: drop the file or paste the rows. Names in shipper and receiver must be exactly as on the Locations page. A table shows every row with OK or what is wrong (unknown location, size not 26, 36 or 53, number not digits with an optional dash, the same lane twice in the file, shipper equal to receiver).
+3. **Apply import** stays grey until every row is OK, and imports nothing otherwise (at most 500 rows). Rows that already exist are updated, new rows are added; nothing is ever deleted by an import.
+**The request email.** Each "New load requested" email to staff has a line "ITS load to copy: 1269 (Mitrex to 481 University Ave, 26 ft)" or "No ITS reference for this lane and size yet. Add it: <link>" (the link opens Lanes with the lane filled in). Maria does not get that line, nor the carrier.
+
 ## Delete a load forever (admin only)
 Only the staff admin account (chris@dlvlogistics.com) can do this. The CSR (Luca), customers and carriers never see the button and the database refuses them. **This cannot be undone.** The only way back is the weekly backup, which brings back everything else from that day too, so use **Cancel load** instead unless the load must disappear (a test load, a duplicate, a load entered by mistake).
 1. Open the load (Board, then the load). Scroll to the bottom: the **Danger zone** card.

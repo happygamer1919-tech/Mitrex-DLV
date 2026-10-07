@@ -93,7 +93,7 @@ export type SeedStatus = "requested" | "booked" | "at_pickup" | "loading" | "enr
 // (the ITS number when set, else the request ref); `requestRef` is always the MTX-0005 style value.
 export async function insertLoad(opts: {
   po: string; status?: SeedStatus; carrier?: boolean; pickupDate?: string; eta?: string | null; notes?: string;
-  pickupLocationId?: string; deliveryLocationId?: string; its?: string | null;
+  pickupLocationId?: string; deliveryLocationId?: string; its?: string | null; size?: 26 | 36 | 53;
 }): Promise<{ id: string; loadNumber: string; requestRef: string; itsNumber: string | null }> {
   const db = adminClient();
   const status = opts.status ?? "booked";
@@ -110,7 +110,7 @@ export async function insertLoad(opts: {
   const eta = opts.eta !== undefined ? opts.eta : status === "enroute" || status === "at_delivery" ? new Date(Date.now() + 6 * 3_600_000).toISOString() : null;
   const { data, error } = await db.from("loads").insert({
     customer_id: cust!.id, created_by: maria!.id, pickup_location_id: opts.pickupLocationId ?? pu!.id, delivery_location_id: opts.deliveryLocationId ?? de!.id,
-    equipment_size: 53, pickup_timing: "appointment", pickup_date: pickup, pickup_time_start: "08:00",
+    equipment_size: opts.size ?? 53, pickup_timing: "appointment", pickup_date: pickup, pickup_time_start: "08:00",
     delivery_timing: "appointment", delivery_date: pickup, delivery_time_start: "14:00",
     pickup_contact_name: "Pat", pickup_contact_phone: "416-555-0101",
     delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102",

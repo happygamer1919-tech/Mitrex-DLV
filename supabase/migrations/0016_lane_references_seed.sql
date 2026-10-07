@@ -1,42 +1,15 @@
--- DLV Mitrex portal seed. Idempotent. Carriers and users come from scripts/seed-users.mjs.
+-- 0016: lane references data (DLV-028, R39). The owner's table of 25 lanes (shipper, receiver, truck size, ITS load
+-- to copy) plus the Moffett flag on the seven sites the owner marked Y (SAMIH already requires it).
+--   * All or nothing: every shipper and receiver name is resolved against public.locations BEFORE anything is
+--     written; a missing or ambiguous name raises one clear exception and the whole statement rolls back.
+--   * Idempotent: an upsert on the scenario key (a second apply changes nothing; a row whose number was edited
+--     afterwards is set back to the owner's number), and the Moffett update only touches rows that are still false.
+--   * Lanes the owner left out on purpose (125G to Etobicoke, D Express to Etobicoke, MTD to Etobicoke, 481 to
+--     Brampton, Mitrex to Winnipeg) are NOT invented.
+--   * The Moffett column of the owner's table is derived (pickup or delivery requires Moffett), never stored.
+--   * Fresh database: the migrations run before supabase/seed.sql, so the locations are not there yet. With no
+--     location at all this block does nothing and seed.sql applies the same block. Production always has them.
 
-insert into public.customers (name) values ('Mitrex')
-on conflict (name) do nothing;
-
-insert into public.locations
-  (name, address_line, city, province, postal_code, can_ship, can_receive, requires_moffett, needs_review)
-values
-  ('Mitrex', '41 Racine Rd', 'Toronto', 'ON', 'M9W 2Z4', true, true, false, false),
-  ('481 University Ave', '481 University Ave', 'Toronto', 'ON', 'M5G 1W2', true, true, false, false),
-  ('125G', '125 George St', 'Toronto', 'ON', 'M5A 2N4', true, true, false, false),
-  ('Sherbourne', '591 Sherbourne St', 'Toronto', 'ON', 'M4X 1W7', true, true, false, false),
-  ('SAMIH', '840 Military Trail', 'Scarborough', 'ON', 'M1C 0C7', true, true, true, false),
-  ('Howden', '38 Howden Rd', 'Scarborough', 'ON', 'M1R 3E9', true, true, false, false),
-  ('D Express Transport', '30 Bethridge Rd', 'Etobicoke', 'ON', 'M9W 1N1', true, true, false, false),
-  ('Scion Powder Coatings Inc', '120 Woodbine Downs Blvd', 'Toronto', 'ON', null, true, false, false, true),
-  ('MTD MetroTool & Die Limited', '1065 Pantera Dr', 'Mississauga', 'ON', 'L4W 2X4', true, false, false, false),
-  ('Valley Metal Finishing Ltd', '211 Snidercroft Rd', 'Concord', 'ON', 'L4K 2J9', true, false, false, false),
-  ('QuickScrap Metal', '407 Rexdale Blvd', 'Etobicoke', 'ON', 'M9W 6P8', false, true, false, false),
-  ('Spadina', '315 Spadina Ave', 'Toronto', 'ON', 'M5T 2E9', false, true, false, false),
-  ('Military Trailsite', '1050 Military Trail', 'Scarborough', 'ON', 'M1C 1G9', false, true, true, false),
-  ('1HAM', '1 Hamilton St S', 'Hamilton', 'ON', 'L8B 1A6', false, true, true, false),
-  ('831 Queen', '831 Queenston Rd', 'Hamilton', 'ON', 'L8G 1B2', false, true, true, false),
-  ('152 Sh', '152 Shanley St', 'Kitchener', 'ON', 'N2H 5P5', false, true, true, false),
-  ('Kitney site', '25 Kitney Dr', 'Ajax', 'ON', 'L1S 0G6', false, true, true, false),
-  ('PrimeFab', '111 Pilsbury Drive', 'Midland', 'ON', 'L4R 0A3', false, true, true, false),
-  ('Glengarry', '94 Wright Crescent', 'Kingston', 'ON', 'K7L 5M3', false, true, true, false)
-on conflict (name) do update set
-  address_line = excluded.address_line,
-  city = excluded.city,
-  province = excluded.province,
-  postal_code = excluded.postal_code,
-  can_ship = excluded.can_ship,
-  can_receive = excluded.can_receive,
-  requires_moffett = excluded.requires_moffett,
-  needs_review = excluded.needs_review;
-
--- Lane references (0016): the same block as supabase/migrations/0016_lane_references_seed.sql, applied here because
--- on a fresh database the migrations run before the locations above exist. Requires 0015.
 do $lane_seed$
 declare
   v_seed jsonb := '[

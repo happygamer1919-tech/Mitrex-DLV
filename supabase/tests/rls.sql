@@ -1527,6 +1527,285 @@ select rlstest.err('orphans: customer is refused', format($q$select public.recor
 select rlstest.back();
 select rlstest.chk('orphans: the refused callers appended nothing to L61', (select cardinality(orphan_paths) from public.load_deletions where load_id = :'L61') = 0);
 
+-- 15. Lane references (0015, 0016): staff only ---------------------------------------------------------------------
+-- The owner's table, embedded here independently of the migration (shipper, receiver, size, ITS load, Moffett Y or N).
+create table rlstest.lane_exp (shipper text, receiver text, size int, its text, moffett boolean);
+insert into rlstest.lane_exp values
+  ('D Express Transport', '481 University Ave', 53, '653', false),
+  ('Mitrex', '481 University Ave', 26, '1269', false),
+  ('Mitrex', '481 University Ave', 53, '1264', false),
+  ('481 University Ave', 'QuickScrap Metal', 26, '1275', false),
+  ('481 University Ave', 'QuickScrap Metal', 53, '1265', false),
+  ('481 University Ave', 'Mitrex', 53, '829', false),
+  ('481 University Ave', 'Mitrex', 26, '752', false),
+  ('Mitrex', '125G', 26, '1488', false),
+  ('Mitrex', 'QuickScrap Metal', 26, '1278', false),
+  ('Valley Metal Finishing Ltd', 'Mitrex', 26, '1292', false),
+  ('Mitrex', 'Spadina', 26, '810', false),
+  ('Mitrex', 'Sherbourne', 26, '1484', false),
+  ('Howden', 'Sherbourne', 26, '1475', false),
+  ('Sherbourne', 'Howden', 26, '1486', false),
+  ('Sherbourne', 'QuickScrap Metal', 26, '1439', false),
+  ('Mitrex', '1HAM', 26, '158', true),
+  ('Mitrex', '152 Sh', 26, '292', true),
+  ('Mitrex', '831 Queen', 26, '1468', true),
+  ('Mitrex', 'SAMIH', 26, '1469', true),
+  ('SAMIH', 'Mitrex', 26, '1241', true),
+  ('SAMIH', 'QuickScrap Metal', 26, '1471', true),
+  ('Mitrex', 'Glengarry', 26, '1470', true),
+  ('Mitrex', 'Kitney site', 26, '1084', true),
+  ('Mitrex', 'Military Trailsite', 26, '776', true),
+  ('Mitrex', 'PrimeFab', 26, '1293', true);
+
+create function rlstest.lane_actual() returns table (shipper text, receiver text, size int, its text)
+language sql security definer as $f$
+  select p.name, d.name, l.equipment_size, l.its_reference_load
+    from public.lane_references l
+    join public.locations p on p.id = l.pickup_location_id
+    join public.locations d on d.id = l.delivery_location_id $f$;
+grant execute on all functions in schema rlstest to authenticated, anon;
+
+-- 15a. the seed: exactly the owner's 25 rows, the seven sites, the derived Moffett column ------------------------------
+do $t$
+declare n_join int; n_bad int;
+begin
+  perform rlstest.chk('lane seed: exactly 25 lane_references rows', (select count(*) from public.lane_references) = 25);
+  perform rlstest.chk('lane seed: the expectation here has 25 distinct scenarios',
+    (select count(*) from rlstest.lane_exp) = 25 and (select count(distinct (shipper, receiver, size)) from rlstest.lane_exp) = 25);
+  perform rlstest.chk('lane seed: the full set (shipper, receiver, size, number) equals the owner table, nothing missing',
+    (select count(*) from (select shipper, receiver, size, its from rlstest.lane_exp except select * from rlstest.lane_actual()) q) = 0);
+  perform rlstest.chk('lane seed: the full set equals the owner table, nothing extra',
+    (select count(*) from (select * from rlstest.lane_actual() except select shipper, receiver, size, its from rlstest.lane_exp) q) = 0);
+  perform rlstest.chk('lane seed: Mitrex to 481 University Ave is 1269 at 26 and 1264 at 53',
+    (select its from rlstest.lane_actual() where shipper = 'Mitrex' and receiver = '481 University Ave' and size = 26) = '1269'
+    and (select its from rlstest.lane_actual() where shipper = 'Mitrex' and receiver = '481 University Ave' and size = 53) = '1264');
+  perform rlstest.chk('lane seed: no 36 ft row yet (upcoming projects)', (select count(*) from public.lane_references where equipment_size = 36) = 0);
+  perform rlstest.chk('lane seed: the left out lanes were not invented (no 125G or MTD pickup, one D Express lane)',
+    (select count(*) from rlstest.lane_actual() where shipper in ('125G', 'MTD MetroTool & Die Limited')) = 0
+    and (select count(*) from rlstest.lane_actual() where shipper = 'D Express Transport') = 1);
+  perform rlstest.chk('Moffett: the 7 sites now require Moffett',
+    (select count(*) from public.locations where name in ('1HAM', '152 Sh', '831 Queen', 'Glengarry', 'Kitney site', 'Military Trailsite', 'PrimeFab') and requires_moffett) = 7);
+  perform rlstest.chk('Moffett: SAMIH still requires it', (select requires_moffett from public.locations where name = 'SAMIH'));
+  perform rlstest.chk('Moffett: Mitrex, 481 University Ave and Howden do not require it',
+    (select count(*) from public.locations where name in ('Mitrex', '481 University Ave', 'Howden') and requires_moffett) = 0);
+  -- derived Moffett (pickup or delivery) equals the owner's Y or N for ALL 25 rows
+  select count(*), count(*) filter (where (p.requires_moffett or d.requires_moffett) is distinct from e.moffett)
+    into n_join, n_bad
+    from rlstest.lane_exp e
+    join public.locations p on p.name = e.shipper
+    join public.locations d on d.name = e.receiver;
+  perform rlstest.chk('Moffett derivation: all 25 rows resolve to a pickup and a delivery location (guard)', n_join = 25);
+  perform rlstest.chk('Moffett derivation: (pickup or delivery requires_moffett) equals the owner Y or N for all 25 rows', n_bad = 0, 'mismatches=' || n_bad);
+  perform rlstest.chk('Moffett derivation: the owner table has 10 Y and 15 N (guard against an all-N expectation)',
+    (select count(*) from rlstest.lane_exp where moffett) = 10 and (select count(*) from rlstest.lane_exp where not moffett) = 15);
+end $t$;
+
+-- 15b. grants, RLS flag and policies: staff only ----------------------------------------------------------------------
+do $t$
+begin
+  perform rlstest.chk('lane_references: RLS is enabled', (select relrowsecurity from pg_class where oid = 'public.lane_references'::regclass));
+  perform rlstest.chk('lane_references: anon holds no table privilege (grants only, never called as anon)',
+    not has_table_privilege('anon', 'public.lane_references', 'select')
+    and not has_table_privilege('anon', 'public.lane_references', 'insert')
+    and not has_table_privilege('anon', 'public.lane_references', 'update')
+    and not has_table_privilege('anon', 'public.lane_references', 'delete'));
+  perform rlstest.chk('lane_references: PUBLIC holds no privilege',
+    not exists (select 1 from pg_class c, aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a where c.oid = 'public.lane_references'::regclass and a.grantee = 0));
+  perform rlstest.chk('control: authenticated holds select, insert, update and delete on lane_references',
+    has_table_privilege('authenticated', 'public.lane_references', 'select') and has_table_privilege('authenticated', 'public.lane_references', 'insert')
+    and has_table_privilege('authenticated', 'public.lane_references', 'update') and has_table_privilege('authenticated', 'public.lane_references', 'delete'));
+  perform rlstest.chk('lane_references: no TRUNCATE, REFERENCES or TRIGGER for authenticated',
+    not has_table_privilege('authenticated', 'public.lane_references', 'truncate')
+    and not has_table_privilege('authenticated', 'public.lane_references', 'references')
+    and not has_table_privilege('authenticated', 'public.lane_references', 'trigger'));
+  perform rlstest.chk('lane_references: exactly four policies, one per command, all for authenticated only',
+    (select count(*) from pg_policies where schemaname = 'public' and tablename = 'lane_references') = 4
+    and (select count(distinct cmd) from pg_policies where schemaname = 'public' and tablename = 'lane_references') = 4
+    and (select count(*) from pg_policies where schemaname = 'public' and tablename = 'lane_references' and roles = '{authenticated}') = 4);
+  perform rlstest.chk('lane_references: every policy is gated by dlv_is_staff() and names no customer or carrier role',
+    (select count(*) from pg_policies where schemaname = 'public' and tablename = 'lane_references'
+       and coalesce(qual, with_check) like '%dlv_is_staff()%'
+       and coalesce(qual, '') !~ 'customer|carrier|dlv_role|true' and coalesce(with_check, '') !~ 'customer|carrier|dlv_role|true') = 4);
+  perform rlstest.chk('lane_references: the actor trigger function is not executable by anon or authenticated',
+    not has_function_privilege('anon', 'public.dlv_lane_references_before_write()', 'execute')
+    and not has_function_privilege('authenticated', 'public.dlv_lane_references_before_write()', 'execute'));
+end $t$;
+
+-- 15c. staff admin and staff csr: read, insert, update, delete (positive controls) ----------------------------------
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.cnt('control: staff_admin reads all 25 lane references', 'select 1 from public.lane_references', 25);
+select rlstest.ok('staff_admin inserts a lane reference (Howden to Mitrex, 36 ft)',
+  $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load, note)
+     values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Mitrex'), 36, '9001', 'admin made')$q$);
+select rlstest.rows('staff_admin updates the number and note of that row',
+  $q$update public.lane_references set its_reference_load = '9002-1', note = 'edited' where note = 'admin made'$q$, 1);
+select rlstest.cnt('staff_admin reads the edited row back', $q$select 1 from public.lane_references where its_reference_load = '9002-1' and note = 'edited'$q$, 1);
+select rlstest.rows('staff_admin deletes that row', $q$delete from public.lane_references where its_reference_load = '9002-1'$q$, 1);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.cnt('control: staff_csr reads all 25 lane references', 'select 1 from public.lane_references', 25);
+select rlstest.ok('staff_csr inserts a lane reference (Howden to Mitrex, 36 ft)',
+  $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load, note)
+     values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Mitrex'), 36, '9003', 'csr made')$q$);
+select rlstest.rows('staff_csr updates the number of that row', $q$update public.lane_references set its_reference_load = '9004' where note = 'csr made'$q$, 1);
+select rlstest.rows('staff_csr updates a SEEDED row too (Mitrex to Spadina 810 becomes 811)',
+  $q$update public.lane_references set its_reference_load = '811' where its_reference_load = '810'$q$, 1);
+select rlstest.rows('staff_csr deletes the row it made', $q$delete from public.lane_references where note = 'csr made'$q$, 1);
+select rlstest.rows('staff_csr deletes a seeded row (Mitrex to Spadina) and can put it back',
+  $q$delete from public.lane_references where its_reference_load = '811'$q$, 1);
+select rlstest.ok('staff_csr re-inserts Mitrex to Spadina 26 ft = 810',
+  $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+     values ((select id from public.locations where name = 'Mitrex'), (select id from public.locations where name = 'Spadina'), 26, '810')$q$);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('after the staff writes the table holds the owner set again (25 rows, same set)',
+    (select count(*) from public.lane_references) = 25
+    and (select count(*) from (select shipper, receiver, size, its from rlstest.lane_exp except select * from rlstest.lane_actual()) q) = 0);
+end $t$;
+
+-- 15d. updated_by comes from the session, updated_at moves ------------------------------------------------------------
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.ok('staff_admin inserts a row that claims another updated_by',
+  $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load, note, updated_by)
+     values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Mitrex'), 36, '9010', 'actor', '00000000-0000-0000-0000-0000000000c1')$q$);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('updated_by is the inserting admin, not the value the client sent',
+    (select updated_by from public.lane_references where note = 'actor') = '00000000-0000-0000-0000-0000000000a1');
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.rows('staff_csr edits that row', $q$update public.lane_references set its_reference_load = '9011' where note = 'actor'$q$, 1);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('updated_by follows the last editor (csr)', (select updated_by from public.lane_references where note = 'actor') = '00000000-0000-0000-0000-0000000000a2');
+  perform rlstest.chk('updated_at is now() after the edit and a seeded row keeps an earlier updated_at',
+    (select updated_at = now() from public.lane_references where note = 'actor')
+    and (select updated_at < now() from public.lane_references where its_reference_load = '1269'));
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.rows('cleanup: admin deletes the actor row', $q$delete from public.lane_references where note = 'actor'$q$, 1);
+select rlstest.back();
+
+-- 15e. nobody else: customer, carrier owner, carrier driver, inactive staff ----------------------------------------------
+create function rlstest.lane_denied(p_who text, p_uid uuid) returns void language plpgsql as $f$
+begin
+  perform rlstest.as_user(p_uid);
+  perform rlstest.cnt(p_who || ' reads no lane references (rows exist: guard)', 'select 1 from public.lane_references', 0, 'select 1 from public.lane_references');
+  perform rlstest.err(p_who || ' cannot INSERT a lane reference',
+    $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+       values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Mitrex'), 36, '9020')$q$, 'row-level security');
+  perform rlstest.rows(p_who || ' cannot UPDATE a lane reference (0 rows)', $q$update public.lane_references set its_reference_load = '9021'$q$, 0, 'select 1 from public.lane_references');
+  perform rlstest.rows(p_who || ' cannot DELETE a lane reference (0 rows)', $q$delete from public.lane_references$q$, 0, 'select 1 from public.lane_references');
+  perform rlstest.back();
+end $f$;
+grant execute on function rlstest.lane_denied(text, uuid) to authenticated, anon;
+select rlstest.lane_denied('customer', '00000000-0000-0000-0000-0000000000c1');
+select rlstest.lane_denied('other customer', '00000000-0000-0000-0000-0000000000c2');
+select rlstest.lane_denied('carrier owner', '00000000-0000-0000-0000-0000000000b1');
+select rlstest.lane_denied('carrier driver', '00000000-0000-0000-0000-0000000000b2');
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a3', false);
+select rlstest.lane_denied('inactive staff_admin', '00000000-0000-0000-0000-0000000000a3');
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a3', true);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a3');
+select rlstest.cnt('control: the same user reads all 25 once active again', 'select 1 from public.lane_references', 25);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('after every refused write the table still holds the owner set (25 rows, same set)',
+    (select count(*) from public.lane_references) = 25
+    and (select count(*) from (select shipper, receiver, size, its from rlstest.lane_exp except select * from rlstest.lane_actual()) q) = 0);
+end $t$;
+
+-- 15f. constraints (as the table owner: RLS bypassed, so only the constraint can refuse) ----------------------------------
+select rlstest.ok('control: a valid row (size 36, number 313-2) is accepted',
+  $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+     values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Mitrex'), 36, '313-2')$q$);
+select rlstest.err('uniqueness: the same pickup, delivery and size twice is refused',
+  $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+     values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Mitrex'), 36, '9030')$q$, 'lane_references_scenario_uq');
+select rlstest.ok('control: the same pair at another size (53) is a different scenario',
+  $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+     values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Mitrex'), 53, '9031')$q$);
+select rlstest.ok('control: the reverse direction is a different scenario',
+  $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+     values ((select id from public.locations where name = 'Mitrex'), (select id from public.locations where name = 'Howden'), 36, '9032')$q$);
+select rlstest.err('size 48 is refused', $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+  values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Mitrex'), 48, '9033')$q$, 'lane_references_size_ck');
+select rlstest.err('size 0 is refused', $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+  values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Mitrex'), 0, '9034')$q$, 'lane_references_size_ck');
+select rlstest.err('size null is refused', $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+  values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Mitrex'), null, '9035')$q$, 'null value');
+select rlstest.err('pickup equal to delivery is refused', $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+  values ((select id from public.locations where name = 'Howden'), (select id from public.locations where name = 'Howden'), 26, '9036')$q$, 'lane_references_distinct_ck');
+select rlstest.err('an unknown location is refused', $q$insert into public.lane_references (pickup_location_id, delivery_location_id, equipment_size, its_reference_load)
+  values ('99999999-9999-9999-9999-999999999999', (select id from public.locations where name = 'Mitrex'), 26, '9037')$q$, 'foreign key');
+select rlstest.err('number "abc" is refused', $q$update public.lane_references set its_reference_load = 'abc' where its_reference_load = '9031'$q$, 'lane_references_number_ck');
+select rlstest.err('number "12 3" (inner space) is refused', $q$update public.lane_references set its_reference_load = '12 3' where its_reference_load = '9031'$q$, 'lane_references_number_ck');
+select rlstest.err('number "" (empty) is refused', $q$update public.lane_references set its_reference_load = '' where its_reference_load = '9031'$q$, 'lane_references_number_ck');
+select rlstest.err('number "-5" is refused', $q$update public.lane_references set its_reference_load = '-5' where its_reference_load = '9031'$q$, 'lane_references_number_ck');
+select rlstest.err('number "5-" is refused', $q$update public.lane_references set its_reference_load = '5-' where its_reference_load = '9031'$q$, 'lane_references_number_ck');
+select rlstest.err('number "1-2-3" is refused', $q$update public.lane_references set its_reference_load = '1-2-3' where its_reference_load = '9031'$q$, 'lane_references_number_ck');
+select rlstest.err('number "12a" is refused', $q$update public.lane_references set its_reference_load = '12a' where its_reference_load = '9031'$q$, 'lane_references_number_ck');
+select rlstest.err('a 31 character number is refused', $q$update public.lane_references set its_reference_load = repeat('7', 31) where its_reference_load = '9031'$q$, 'lane_references_number_ck');
+select rlstest.ok('control: a 30 character number is accepted', $q$update public.lane_references set its_reference_load = repeat('7', 30) where its_reference_load = '9031'$q$);
+select rlstest.err('a null number is refused', $q$update public.lane_references set its_reference_load = null where its_reference_load = repeat('7', 30)$q$, 'null value');
+select rlstest.rows('cleanup: the three test rows are removed', $q$delete from public.lane_references where its_reference_load in ('313-2', repeat('7', 30), '9032')$q$, 3);
+do $t$
+begin
+  perform rlstest.chk('after the constraint tests the table holds the owner set again',
+    (select count(*) from public.lane_references) = 25
+    and (select count(*) from (select shipper, receiver, size, its from rlstest.lane_exp except select * from rlstest.lane_actual()) q) = 0);
+end $t$;
+
+-- 15g. the seed is idempotent: apply the REAL migration file again (twice), still the same 25 rows ------------------------
+-- (a hand edited number is put back to the owner's number, a second apply adds nothing)
+select rlstest.rows('idempotency setup: one seeded row is edited by hand first (1269 becomes 1)', $q$update public.lane_references set its_reference_load = '1' where its_reference_load = '1269'$q$, 1);
+\i supabase/migrations/0016_lane_references_seed.sql
+do $t$
+begin
+  perform rlstest.chk('0016 applied again: 25 rows, the same set, the edited number is back to 1269',
+    (select count(*) from public.lane_references) = 25
+    and (select count(*) from (select shipper, receiver, size, its from rlstest.lane_exp except select * from rlstest.lane_actual()) q) = 0);
+end $t$;
+\i supabase/migrations/0016_lane_references_seed.sql
+do $t$
+begin
+  perform rlstest.chk('0016 applied a third time: still 25 rows, still the same set',
+    (select count(*) from public.lane_references) = 25
+    and (select count(*) from (select * from rlstest.lane_actual() except select shipper, receiver, size, its from rlstest.lane_exp) q) = 0);
+  perform rlstest.chk('0016 applied again: the 7 sites and SAMIH require Moffett and no other location was turned on',
+    (select count(*) from public.locations where requires_moffett and name not in ('SAMIH', '1HAM', '152 Sh', '831 Queen', 'Glengarry', 'Kitney site', 'Military Trailsite', 'PrimeFab')) = 0
+    and (select count(*) from public.locations where requires_moffett and name in ('SAMIH', '1HAM', '152 Sh', '831 Queen', 'Glengarry', 'Kitney site', 'Military Trailsite', 'PrimeFab')) = 8);
+end $t$;
+
+-- 15h. all or nothing: a missing location name raises and writes nothing -----------------------------------------------
+savepoint lane_a;
+delete from public.lane_references;
+update public.locations set name = 'Howden RENAMED' where name = 'Howden';
+update public.locations set requires_moffett = false where name = '1HAM';
+savepoint lane_b;
+\set ON_ERROR_STOP off
+\i supabase/migrations/0016_lane_references_seed.sql
+\set ON_ERROR_STOP on
+rollback to savepoint lane_b;
+-- the results are carried out of the savepoint with \gset (rlstest.res rows written inside it would be rolled back too)
+select (select count(*) from public.locations where name = 'Howden RENAMED') = 1
+         and (select not requires_moffett from public.locations where name = '1HAM') as g_setup,
+       (select count(*) from public.lane_references) = 0 as g_nolanes,
+       (select not requires_moffett from public.locations where name = '1HAM') as g_nomoffett \gset
+rollback to savepoint lane_a;
+select rlstest.chk('guard: the setup was in place (lane table emptied, Howden renamed, 1HAM Moffett off)', :'g_setup'::boolean);
+select rlstest.chk('a missing location name: the migration wrote NO lane row at all (the resolvable lanes were not inserted)', :'g_nolanes'::boolean);
+select rlstest.chk('a missing location name: the Moffett update did not run either (1HAM still off)', :'g_nomoffett'::boolean);
+do $t$
+begin
+  perform rlstest.chk('after the rollback of the failed apply the owner set is back (25 rows) and Howden has its name',
+    (select count(*) from public.lane_references) = 25 and (select count(*) from public.locations where name = 'Howden') = 1);
+end $t$;
+
 -- Summary ----------------------------------------------------------------
 select name, outcome, detail from rlstest.res where outcome <> 'OK' order by n;
 select 'RLS_OK ' || count(*) filter (where outcome = 'OK') || ' OK / '

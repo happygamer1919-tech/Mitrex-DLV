@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { anon, as, insertLoad, isoDate, uniq, uniqIts } from "./support/helpers";
+import { adminClient, anon, as, insertLoad, isoDate, uniq, uniqIts } from "./support/helpers";
 import { makeLocation, retireLocations } from "./support/book";
 import type { Who } from "./support/users";
 
@@ -366,6 +366,52 @@ test("staff Danger zone card and the Delete forever modal (admin only): closed, 
       expectVisibleRing("delete modal Cancel button", await focusRing(page, page.getByTestId("delete-cancel")));
     }
   });
+});
+
+test("lane references: /admin/lanes states (list, prefilled add form, refused add, edit row, delete ask, import preview) and the ITS load to copy card", async ({ browser }) => {
+  const a = await makeLocation({ prefix: "E2E-A11Y-LA" });
+  const b = await makeLocation({ prefix: "E2E-A11Y-LB" });
+  const db = adminClient();
+  const { data: seeded } = await db.from("locations").select("id,name").in("name", ["Mitrex", "481 University Ave", "125G"]);
+  const id = (n: string) => seeded!.find((x) => x.name === n)!.id as string;
+  const lane = await db.from("lane_references").insert({ pickup_location_id: a.id, delivery_location_id: b.id, equipment_size: 36, its_reference_load: "6601", note: "a11y lane" }).select("id").single();
+  expect(lane.error).toBeNull();
+  const withNumber = await insertLoad({ po: uniq("A11Y-LC1"), status: "requested", pickupLocationId: id("Mitrex"), deliveryLocationId: id("481 University Ave"), size: 26 });
+  const noNumber = await insertLoad({ po: uniq("A11Y-LC2"), status: "requested", pickupLocationId: id("Mitrex"), deliveryLocationId: id("125G"), size: 53 });
+  try {
+    await session(browser, "admin", async (page) => {
+      const lanes = { path: /^\/admin\/lanes$/, h1: /Lanes/ };
+      await page.goto("/admin/lanes");
+      await scan(page, "/admin/lanes (list)", { ...lanes, text: /Last updated by/ });
+      await page.goto(`/admin/lanes?pickup=${a.id}&delivery=${b.id}&size=36`);
+      await scan(page, "/admin/lanes (add form, prefilled from a load)", { ...lanes, text: "Prefilled from the load. Enter the ITS load to copy." });
+      await page.locator('input[name="number"]').fill("6602");
+      await page.getByRole("button", { name: "Add lane", exact: true }).click();
+      await expect(page.getByText("A lane reference for this pickup, delivery and truck size already exists. Edit that row instead.")).toBeVisible();
+      await scan(page, "/admin/lanes (add refused: duplicate)", { ...lanes, text: /already exists/ });
+      await page.getByRole("button", { name: "Close add form" }).click();
+      await page.getByLabel("Search").fill(a.name);
+      const row = page.locator('[data-testid="lane-row"]').first();
+      await row.getByRole("button", { name: "Edit" }).click();
+      await scan(page, "/admin/lanes (row edit open)", { ...lanes, text: /Save/ });
+      await row.getByRole("button", { name: "Close" }).click();
+      await row.getByRole("button", { name: "Delete" }).click();
+      await scan(page, "/admin/lanes (delete asks to confirm)", { ...lanes, text: /This cannot be undone/ });
+      await row.getByRole("button", { name: "Keep" }).click();
+      await page.getByRole("button", { name: "Import CSV" }).click();
+      await page.getByLabel("Or paste the CSV here").fill(`shipper,receiver,truck_size,load_to_copy,note\n${a.name},${b.name},26,6603,\nNowhere,${b.name},48,x,`);
+      await scan(page, "/admin/lanes (import preview with row errors)", { ...lanes, text: "1 of 2 rows have errors. Fix them to import." });
+      await page.getByLabel("Or paste the CSV here").fill(`shipper,receiver,truck_size,load_to_copy,note\n${a.name},${b.name},26,6603,`);
+      await scan(page, "/admin/lanes (import preview, all valid)", { ...lanes, text: "1 row, all valid." });
+      await page.goto(`/admin/loads/${withNumber.id}`);
+      await scan(page, "/admin/loads/[id] (ITS load to copy card with the number)", { path: new RegExp(`^/admin/loads/${withNumber.id}$`), h1: new RegExp(`Request ${withNumber.requestRef}`), text: "Mitrex to 481 University Ave, 26 ft" });
+      await page.goto(`/admin/loads/${noNumber.id}`);
+      await scan(page, "/admin/loads/[id] (ITS load to copy card, no reference, Add it)", { path: new RegExp(`^/admin/loads/${noNumber.id}$`), h1: new RegExp(`Request ${noNumber.requestRef}`), text: "No ITS reference for this lane and size" });
+    });
+  } finally {
+    await db.from("lane_references").delete().eq("id", lane.data!.id);
+    await retireLocations([a.id, b.id]);
+  }
 });
 
 test("carrier driver pages and modals", async ({ browser }) => {

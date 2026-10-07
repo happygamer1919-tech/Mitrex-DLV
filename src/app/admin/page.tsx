@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
 import { deletedBanner } from "@/lib/admin/delete-load";
+import { resolveMany, scenarioKey, type LaneReference } from "@/lib/admin/lane-reference";
 import { BOARD_SELECT, bolPending, pickupTimeLabel, podPending, routeOf, type BoardLoad } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ const COLUMNS: LoadStatus[] = [
   "requested", "booked", "at_pickup", "loading", "enroute", "at_delivery", "delivered", "cancelled",
 ];
 
-function LoadCard({ l }: { l: BoardLoad }) {
+function LoadCard({ l, copy }: { l: BoardLoad; copy: LaneReference | null | undefined }) {
   return (
     <Link
       href={`/admin/loads/${l.id}`}
@@ -34,6 +35,11 @@ function LoadCard({ l }: { l: BoardLoad }) {
         <span className="text-muted">Carrier: </span>{l.carrier?.name ?? "Not assigned"}
       </p>
       {l.eta ? <p className="mt-1 text-[13px]"><span className="text-muted">ETA: </span>{fmtDateTime(l.eta)}</p> : null}
+      {copy !== undefined && l.status === "requested" ? (
+        <p data-testid="board-copy-its" className="mt-1 text-[13px] font-medium">
+          {copy ? `Copy ITS ${copy.number}` : <span className="text-muted">No ITS reference</span>}
+        </p>
+      ) : null}
       {bolPending(l) ? (
         <span className="mt-2 inline-flex rounded-full bg-amber px-3 py-1 text-[13px] font-medium text-[#2B1500]">
           BOL pending
@@ -65,6 +71,18 @@ export default async function AdminBoardPage({ searchParams }: { searchParams: P
 
   const error = active.error ?? finished.error;
   const loads = [...((active.data ?? []) as unknown as BoardLoad[]), ...((finished.data ?? []) as unknown as BoardLoad[])];
+  // Staff only: the lane reference of every Requested load, one query (RLS: the session is staff).
+  let copies = new Map<string, LaneReference>();
+  let copiesOk = true;
+  try {
+    copies = await resolveMany(supabase, loads.filter((l) => l.status === "requested")
+      .map((l) => ({ pickupId: l.pickup_location_id, deliveryId: l.delivery_location_id, size: l.equipment_size })));
+  } catch {
+    copiesOk = false;
+  }
+  const copyOf = (l: BoardLoad): LaneReference | null | undefined =>
+    !copiesOk || l.status !== "requested" ? undefined
+      : copies.get(scenarioKey({ pickupId: l.pickup_location_id, deliveryId: l.delivery_location_id, size: l.equipment_size })) ?? null;
   const byStatus = new Map<LoadStatus, BoardLoad[]>(COLUMNS.map((s) => [s, []]));
   loads.forEach((l) => byStatus.get(l.status)?.push(l));
 
@@ -105,7 +123,7 @@ export default async function AdminBoardPage({ searchParams }: { searchParams: P
                 <p className="rounded-[16px] border border-dashed border-line px-3 py-3 text-[13px] text-muted">No loads</p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-                  {list.map((l) => <LoadCard key={l.id} l={l} />)}
+                  {list.map((l) => <LoadCard key={l.id} l={l} copy={copyOf(l)} />)}
                 </div>
               )}
             </section>

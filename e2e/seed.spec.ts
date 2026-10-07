@@ -33,13 +33,13 @@ const EXPECTED: Row[] = [
   L("Valley Metal Finishing Ltd", "211 Snidercroft Rd", "Concord", "L4K 2J9", true, false),
   L("QuickScrap Metal", "407 Rexdale Blvd", "Etobicoke", "M9W 6P8", false, true),
   L("Spadina", "315 Spadina Ave", "Toronto", "M5T 2E9", false, true),
-  L("Military Trailsite", "1050 Military Trail", "Scarborough", "M1C 1G9", false, true),
-  L("1HAM", "1 Hamilton St S", "Hamilton", "L8B 1A6", false, true),
-  L("831 Queen", "831 Queenston Rd", "Hamilton", "L8G 1B2", false, true),
-  L("152 Sh", "152 Shanley St", "Kitchener", "N2H 5P5", false, true),
-  L("Kitney site", "25 Kitney Dr", "Ajax", "L1S 0G6", false, true),
-  L("PrimeFab", "111 Pilsbury Drive", "Midland", "L4R 0A3", false, true),
-  L("Glengarry", "94 Wright Crescent", "Kingston", "K7L 5M3", false, true),
+  L("Military Trailsite", "1050 Military Trail", "Scarborough", "M1C 1G9", false, true, true),
+  L("1HAM", "1 Hamilton St S", "Hamilton", "L8B 1A6", false, true, true),
+  L("831 Queen", "831 Queenston Rd", "Hamilton", "L8G 1B2", false, true, true),
+  L("152 Sh", "152 Shanley St", "Kitchener", "N2H 5P5", false, true, true),
+  L("Kitney site", "25 Kitney Dr", "Ajax", "L1S 0G6", false, true, true),
+  L("PrimeFab", "111 Pilsbury Drive", "Midland", "L4R 0A3", false, true, true),
+  L("Glengarry", "94 Wright Crescent", "Kingston", "K7L 5M3", false, true, true),
 ];
 
 const COLS = "id,name,address_line,city,province,postal_code,can_ship,can_receive,requires_moffett,needs_review,is_active";
@@ -71,7 +71,10 @@ test("public.locations holds exactly the 19 seeded rows with the right flags", a
   expect(byName.get("SAMIH")).toMatchObject({ requires_moffett: true, can_ship: true, can_receive: true });
   expect(byName.get("Scion Powder Coatings Inc")).toMatchObject({ needs_review: true, postal_code: null, can_ship: true, can_receive: false });
   expect(byName.get("QuickScrap Metal")).toMatchObject({ can_ship: false, can_receive: true });
-  expect(rows.filter((r) => r.requires_moffett).map((r) => r.name)).toEqual(["SAMIH"]);
+  // DLV-028: SAMIH plus the seven sites the owner marked Y in the lane table (1HAM, 152 Sh, 831 Queen, Glengarry,
+  // Kitney site, Military Trailsite, PrimeFab) require a Moffett.
+  expect(rows.filter((r) => r.requires_moffett).map((r) => r.name).sort()).toEqual(
+    ["1HAM", "152 Sh", "831 Queen", "Glengarry", "Kitney site", "Military Trailsite", "PrimeFab", "SAMIH"].sort());
   expect(rows.filter((r) => r.needs_review).map((r) => r.name)).toEqual(["Scion Powder Coatings Inc"]);
   expect(rows.filter((r) => r.can_ship && !r.can_receive)).toHaveLength(3);
   expect(rows.filter((r) => !r.can_ship && r.can_receive)).toHaveLength(9);
