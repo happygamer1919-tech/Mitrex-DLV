@@ -107,12 +107,15 @@ create policy load_documents_insert on public.load_documents for insert to authe
                        and coalesce(o.metadata ->> 'mimetype', '') in ('image/jpeg', 'image/png', 'image/webp')))
   );
 
--- Max 6 photos of each kind per load.
+-- Max 6 photos of each kind per load, and created_at forced to the server time for a signed-in user.
 create or replace function public.load_documents_photo_cap() returns trigger
 language plpgsql security definer set search_path = ''
 as $fn$
 begin
   if new.kind in ('pickup_photo','delivery_photo') then
+    -- The official time is the server time of the insert. A signed-in user (the browser inserts this row itself
+    -- with the table grant) cannot back-date or forward-date a photo by sending created_at; service paths keep theirs.
+    if auth.uid() is not null then new.created_at := now(); end if;
     perform pg_advisory_xact_lock(hashtextextended(new.load_id::text || '/' || new.kind, 0));
     if (select count(*) from public.load_documents d where d.load_id = new.load_id and d.kind = new.kind) >= 6 then
       raise exception 'A load can have at most 6 photos of this kind. Remove one first.' using errcode = 'P0001';

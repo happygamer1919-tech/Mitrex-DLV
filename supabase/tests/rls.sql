@@ -2485,6 +2485,21 @@ begin
 end $t$;
 select rlstest.back();
 
+-- 18j. review fix (DLV-032 review): a signed-in carrier cannot back-date a photo by sending created_at; the server time wins
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.ok('control: carrier A inserts a pickup photo row that claims created_at 2001 (the insert itself is allowed)', $q$do $x$ begin
+  insert into storage.objects (bucket_id, name, owner, metadata) values ('documents', '30000000-0000-0000-0000-0000000000e2/pickup_photo/ea000000-0000-0000-0000-000000000001.jpg', auth.uid(), '{"mimetype":"image/jpeg"}'::jsonb);
+  insert into public.load_documents (load_id, kind, storage_path, uploaded_by, created_at) values ('30000000-0000-0000-0000-0000000000e2', 'pickup_photo', '30000000-0000-0000-0000-0000000000e2/pickup_photo/ea000000-0000-0000-0000-000000000001.jpg', auth.uid(), '2001-01-01 00:00:00+00');
+end $x$$q$);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('a carrier cannot back-date a photo: created_at is the server time (guard: the row exists)',
+    (select count(*) from public.load_documents where storage_path like '%/ea000000-0000-0000-0000-000000000001.jpg') = 1
+    and (select created_at > now() - interval '1 minute' and created_at <= now() + interval '1 minute'
+           from public.load_documents where storage_path like '%/ea000000-0000-0000-0000-000000000001.jpg'));
+end $t$;
+
 -- 18i. the migration is idempotent: apply the REAL file again, nothing changes -------------------------------------------------
 create table rlstest.ph_before as select id, load_id, kind, storage_path, created_at from public.load_documents;
 \i supabase/migrations/0018_load_photos.sql
