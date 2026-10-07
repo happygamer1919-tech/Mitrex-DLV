@@ -707,3 +707,7 @@ Method: `supabase db reset --last 1` took the local database from 0018 back to 0
 
 To be filled in by the lead: run the four blocks verbatim under `zsh -f` against the local stack (from `supabase db reset --last 1` plus production-like rows) and record the verdicts here. Set `DATABASE_URL_DIRECT` to the LOCAL URL for that rehearsal; never leave a production value in the terminal.
 
+
+### Lead rehearsal of the real blocks (2026-10-07)
+
+The blocks were extracted verbatim and run under `zsh -f` against the local stack only, from `supabase db reset --last 1` (state 0017) plus production-like rows. Block A: PRECHECK_OK. Block B: APPLY_OK. Block C: 54 PASS, POSTCHECK_OK. Block B again: APPLY_OK (idempotent). Block C again: POSTCHECK_OK. Rollback-0018, then block C: POSTCHECK_FAIL on the column, constraint and policy checks. Block B again restored it and block C gave POSTCHECK_OK.
