@@ -64,5 +64,14 @@ Kaja owner on a phone (any mobile browser is fine).
 - [ ] Choose new dates and times, change one contact name, tap **Request load**. The new load shows the same details and the changed contact (use a TEST- PO number, and cancel it afterwards).
 - [ ] On **Book a load**, choose a pickup location you used before. Under the contact a line shows "Last contact at ...". Tap **Use last contact** and the line changes to "Same as last time".
 
+## M9. Delete a load forever (admin only)
+- [ ] Maria: book a TEST load (PO "TEST-DELETE"). Staff: assign a carrier, enter an ITS number, mark booked, upload a BOL. This is the throwaway load. Never use a real load for this check.
+- [ ] Sign in as chris@dlvlogistics.com, open that load, scroll down: a **Danger zone** card with **Delete this load forever**.
+- [ ] Sign in as the CSR (Luca) and open the same load: there is no Danger zone card anywhere on the page.
+- [ ] As admin tap the button: the window warns "This permanently deletes the load, its timeline, and its BOL and POD files. This cannot be undone." and shows the load number, route, status and "1 file". **Delete forever** is grey. Type a wrong number: still grey. **Cancel** closes it and the load is unchanged.
+- [ ] Open it again, type the ITS number exactly, tap **Delete forever**. You land on the board with "Load <number> deleted forever" and the load is no longer on the board or the calendar.
+- [ ] Maria's **Loads** list no longer shows it, and opening its old link shows "not found".
+- [ ] On the iPhone (portrait) the window fits the screen, nothing scrolls sideways, and the buttons are easy to tap.
+
 ## After testing
-- [ ] Tell engineering the results (M1 to M7: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
+- [ ] Tell engineering the results (M1 to M9: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).

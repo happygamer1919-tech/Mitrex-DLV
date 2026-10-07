@@ -5,8 +5,9 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 import { Card, StatusChip } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { AssignCarrierForm, BookLoadForm, EditItsForm, EtaForm, StaffUpload, StatusOverrideForm } from "@/components/admin/LoadControls";
+import { DeleteLoadCard } from "@/components/admin/DeleteLoadCard";
 import { LoadNumber } from "@/components/LoadNumber";
-import { staffLabel } from "@/lib/load-number";
+import { itsOrRef, staffLabel } from "@/lib/load-number";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, fmtSlot, isoToEasternLocal, telHref } from "@/lib/format";
@@ -14,6 +15,7 @@ import { STATUS_LABEL, type LoadDocument, type LoadEvent } from "@/lib/types";
 import { UUID } from "@/lib/admin/errors";
 import { nameIsStreet } from "@/lib/address";
 import { cancelLoad } from "@/lib/admin/load-actions";
+import { routeOf } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -242,6 +244,19 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
           ) : null}
         </div>
       </div>
+
+      {/* staff_admin only: not rendered at all for a csr (the action and the database function refuse them too) */}
+      {profile.role === "staff_admin" ? (
+        <div className="mt-6">
+          <DeleteLoadCard
+            loadId={load.id}
+            confirmText={itsOrRef(load)}
+            route={routeOf(load)}
+            statusLabel={STATUS_LABEL[status]}
+            documents={docs.length}
+          />
+        </div>
+      ) : null}
     </Shell>
   );
 }

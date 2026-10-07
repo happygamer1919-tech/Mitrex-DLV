@@ -346,6 +346,28 @@ test("staff booking card states: needs carrier and ITS number, refusal message, 
   });
 });
 
+test("staff Danger zone card and the Delete forever modal (admin only): closed, open, text typed", async ({ browser }) => {
+  const l = await insertLoad({ po: uniq("A11Y-DEL"), status: "delivered" });
+  const marker = { path: new RegExp(`^/admin/loads/${l.id}$`), h1: new RegExp(l.loadNumber) };
+  await session(browser, "admin", async (page) => {
+    await page.goto(`/admin/loads/${l.id}`);
+    await scan(page, "/admin/loads/[id] (Danger zone card)", { ...marker, text: "Deleting a load removes it from the system for good. Only an admin can do this." });
+    await page.getByTestId("delete-open").click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await scan(page, "/admin/loads/[id] (Delete forever modal, open)", { ...marker, dialog: true, text: "This permanently deletes the load, its timeline, and its BOL and POD files. This cannot be undone." });
+    await page.getByTestId("delete-confirm-input").fill(l.loadNumber);
+    await expect(page.getByTestId("delete-confirm")).toBeEnabled();
+    await scan(page, "/admin/loads/[id] (Delete forever modal, number typed, button enabled)", { ...marker, dialog: true, text: "Type it exactly as shown." });
+    expectVisibleRing("delete modal input", await focusRing(page, page.getByTestId("delete-confirm-input")));
+    // WebKit gives a scripted focus() on a button no :focus-visible after a mouse interaction (a harness quirk: the same
+    // global rule is measured on WebKit buttons elsewhere in this file), so the two buttons are measured on chromium.
+    if (page.context().browser()?.browserType().name() === "chromium") {
+      expectVisibleRing("delete modal Delete forever button", await focusRing(page, page.getByTestId("delete-confirm")));
+      expectVisibleRing("delete modal Cancel button", await focusRing(page, page.getByTestId("delete-cancel")));
+    }
+  });
+});
+
 test("carrier driver pages and modals", async ({ browser }) => {
   const booked = await insertLoad({ po: uniq("A11Y-DB"), status: "booked" });
   const loading = await insertLoad({ po: uniq("A11Y-DL"), status: "loading" });

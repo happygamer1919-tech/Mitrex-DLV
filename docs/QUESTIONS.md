@@ -57,3 +57,11 @@ Open question: should the PO number be left empty on a repeat (a new shipment us
 1. Is a BOL required before a load can be booked? Default used: NO. Staff can book without a BOL; the "BOL pending" badge stays and the booking email tells Maria "The BOL will follow once uploaded". The BOL is emailed on its own when uploaded later. Making it mandatory is one extra condition in BookLoadForm (src/components/admin/LoadControls.tsx) and in bookLoad (src/lib/admin/load-actions.ts).
 2. Legacy loads that were booked before this change have no ITS number. Default: they keep working, Maria sees "Number pending" with the request ref, carriers see the request ref, and staff can add the number with "Edit ITS number". Should staff back-fill them? (needs the ITS numbers, only the owner has them)
 3. Should the booking email also go to Maria when staff correct the ITS number afterwards? Default: no (the correction is logged in the timeline only).
+
+
+## DLV-027 Admin delete of loads (defaults used, owner may change)
+1. Should a record of the delete stay? Default used: YES, a minimal audit row (request ref, ITS number, last status, who, when). It holds no load details. If you want no trace, it is one change: stop writing the row in delete_load_forever (and drop load_deletions); the files step then has nowhere to log a failure, so it would only show the message.
+2. Should the CSR (Luca) ever delete? Default used: NO, admin only, as asked. Giving the CSR the button is a role check change in the function and the page.
+3. Can a delivered load with a POD be deleted? Default used: yes, any status, because the owner asked for "delete forever" and typing the number is the safeguard. A rule such as "only cancelled loads" would be one condition in the function.
+4. Should deleting a load email anyone (the carrier, Maria)? Default used: no email.
+

@@ -7,6 +7,7 @@ import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
+import { deletedBanner } from "@/lib/admin/delete-load";
 import { BOARD_SELECT, bolPending, pickupTimeLabel, podPending, routeOf, type BoardLoad } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
@@ -47,8 +48,9 @@ function LoadCard({ l }: { l: BoardLoad }) {
   );
 }
 
-export default async function AdminBoardPage() {
+export default async function AdminBoardPage({ searchParams }: { searchParams: Promise<{ deleted?: string; orphans?: string; logged?: string }> }) {
   const profile = await requireStaff();
+  const banner = deletedBanner(await searchParams);
   const supabase = await createClient();
   const since = new Date(Date.now() - 14 * 86400000).toISOString();
 
@@ -70,6 +72,7 @@ export default async function AdminBoardPage() {
     <Shell profile={profile}>
       <LiveRefresh />
       <PageTitle>Load board</PageTitle>
+      {banner ? <div className="mb-4" data-testid="deleted-banner"><Notice tone={banner.tone}>{banner.text}</Notice></div> : null}
       {error ? <div className="mb-4"><Notice tone="error">Could not load the board: {error.message}</Notice></div> : null}
       <p className="mb-3 text-[13px] text-muted">Delivered and cancelled loads show the last 14 days. Times are Eastern (ET).</p>
       <nav aria-label="Jump to status" className="mb-4 flex flex-wrap gap-2">
