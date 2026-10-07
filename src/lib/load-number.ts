@@ -40,6 +40,8 @@ export function customerHeadline(l: LoadNumbers): Headline {
 export const ITS_FORMAT = /^[0-9]+(-[0-9]+)?$/;
 export const ITS_FORMAT_MESSAGE = "The ITS load number must be digits, optionally with a dash and digits (for example 313 or 313-2).";
 
+export const ITS_MAX_LENGTH = 30;
+
 export function normaliseIts(raw: string): string {
   return raw.trim();
 }
@@ -48,5 +50,6 @@ export function validateIts(raw: string): string | null {
   const v = normaliseIts(raw);
   if (!v) return "Enter the ITS load number.";
   if (!ITS_FORMAT.test(v)) return ITS_FORMAT_MESSAGE;
+  if (v.length > ITS_MAX_LENGTH) return `The ITS load number is too long (at most ${ITS_MAX_LENGTH} characters).`;
   return null;
 }

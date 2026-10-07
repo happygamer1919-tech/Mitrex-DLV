@@ -1157,6 +1157,13 @@ select rlstest.err('format refused: abc', format($q$select public.set_its_load_n
 select rlstest.err('format refused: 12 3', format($q$select public.set_its_load_number(%L, '12 3')$q$, :'L50'), 'must be digits');
 select rlstest.err('format refused: 1-', format($q$select public.set_its_load_number(%L, '1-')$q$, :'L50'), 'must be digits');
 select rlstest.err('format refused: a1', format($q$select public.set_its_load_number(%L, 'a1')$q$, :'L50'), 'must be digits');
+select rlstest.err('format refused: unicode lookalike digits (Arabic-Indic)', format($q$select public.set_its_load_number(%L, U&'\0663\0661\0663')$q$, :'L50'), 'must be digits');
+select rlstest.err('format refused: fullwidth digits', format($q$select public.set_its_load_number(%L, U&'\FF13\FF11\FF13')$q$, :'L50'), 'must be digits');
+select rlstest.err('format refused: trailing newline', format($q$select public.set_its_load_number(%L, E'313\n')$q$, :'L50'), 'must be digits');
+select rlstest.err('format refused: SQL-looking text', format($q$select public.set_its_load_number(%L, '1; drop table loads--')$q$, :'L50'), 'must be digits');
+select rlstest.err('length refused: 31 digits', format($q$select public.set_its_load_number(%L, repeat('9', 31))$q$, :'L50'), 'too long');
+select rlstest.err('length refused: 3000 digits', format($q$select public.set_its_load_number(%L, repeat('7', 3000))$q$, :'L50'), 'too long');
+select rlstest.ok('control: exactly 30 digits is accepted', format($q$select public.set_its_load_number(%L, repeat('8', 30))$q$, :'L53'));
 select rlstest.err('format refused: 1-2-3', format($q$select public.set_its_load_number(%L, '1-2-3')$q$, :'L50'), 'must be digits');
 select rlstest.err('format refused: empty', format($q$select public.set_its_load_number(%L, '')$q$, :'L50'), 'enter the ITS load number');
 select rlstest.err('format refused: spaces only', format($q$select public.set_its_load_number(%L, '   ')$q$, :'L50'), 'enter the ITS load number');

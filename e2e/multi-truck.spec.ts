@@ -271,13 +271,13 @@ test("staff assign a different carrier to each of the 4 loads and each keeps its
 
   const { ctx, page } = await as(browser, "admin");
   for (const [row, carrier] of [[rows[0], CARRIER_A], [rows[1], CARRIER_B]] as const) {
-    await page.goto(`/admin/loads/${row.id}`);
+    await gotoSteady(page, `/admin/loads/${row.id}`);
     await page.getByLabel("Carrier").first().selectOption({ label: carrier });
     await page.getByRole("button", { name: "Save carrier" }).click();
     await expect(page.getByText("Carrier assigned.", { exact: true })).toBeVisible();
   }
   // Only the first load is booked.
-  await page.goto(`/admin/loads/${rows[0].id}`);
+  await gotoSteady(page, `/admin/loads/${rows[0].id}`);
   await staffBook(page, uniqIts());
   await expect.poll(async () => (await loadsByPo(po)).find((r) => r.id === rows[0].id)?.status).toBe("booked");
 

@@ -18,7 +18,7 @@ do $do$
 begin
   if not exists (select 1 from pg_constraint where conrelid = 'public.loads'::regclass and conname = 'loads_its_load_number_format') then
     alter table public.loads add constraint loads_its_load_number_format
-      check (its_load_number is null or its_load_number ~ '^[0-9]+(-[0-9]+)?$');
+      check (its_load_number is null or (its_load_number ~ '^[0-9]+(-[0-9]+)?$' and char_length(its_load_number) <= 30));
   end if;
 end
 $do$;
@@ -105,6 +105,9 @@ begin
   end if;
   if v_num !~ '^[0-9]+(-[0-9]+)?$' then
     raise exception 'ITS load number must be digits, optionally with a dash and digits (for example 313 or 313-2)' using errcode = 'P0001';
+  end if;
+  if char_length(v_num) > 30 then
+    raise exception 'ITS load number is too long (at most 30 characters)' using errcode = 'P0001';
   end if;
   select * into l from public.loads where id = p_load for update;
   if not found then raise exception 'load not found' using errcode = 'P0002'; end if;
