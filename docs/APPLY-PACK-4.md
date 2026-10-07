@@ -17,7 +17,7 @@ Rules for the session
 
 | File | What it does | Risk |
 | --- | --- | --- |
-| 0013_its_load_number.sql | ITS load number. Adds the nullable column `loads.its_load_number` with the CHECK `loads_its_load_number_format` (digits, optionally a dash and digits, for example 313 or 313-2) and the partial UNIQUE index `loads_its_load_number_key` (where not null). Adds `set_its_load_number(uuid, text)` (SECURITY DEFINER, staff only, trims, validates, refuses duplicates naming the other load's request ref, writes a load_events row, EXECUTE for authenticated only). Replaces `dlv_loads_before_insert` (a customer insert stores NULL) and `dlv_loads_before_update` (no direct change of its_load_number, only through the function) with the 0002 bodies plus one rule each. Replaces `set_load_status` with the 0011 body plus ONE rule: a load leaves `requested` (to anything but cancelled) only when its ITS number is set ("enter the ITS load number before booking"). | Low. Adding a nullable column is metadata only (no rewrite, no data change). Every existing load keeps its request ref in `load_number` and stays valid with a NULL ITS number; legacy booked loads still move forward (the rule applies only when the old status is requested). Idempotent (IF NOT EXISTS, CREATE OR REPLACE, grants restated). Rolling back means section 5 (and it deletes any ITS numbers entered after the apply). |
+| 0013_its_load_number.sql | ITS load number. Adds the nullable column `loads.its_load_number` with the CHECK `loads_its_load_number_format` (digits, optionally a dash and digits, for example 313 or 313-2, at most 30 characters) and the partial UNIQUE index `loads_its_load_number_key` (where not null). Adds `set_its_load_number(uuid, text)` (SECURITY DEFINER, staff only, trims, validates, refuses duplicates naming the other load's request ref, writes a load_events row, EXECUTE for authenticated only). Replaces `dlv_loads_before_insert` (a customer insert stores NULL) and `dlv_loads_before_update` (no direct change of its_load_number, only through the function) with the 0002 bodies plus one rule each. Replaces `set_load_status` with the 0011 body plus ONE rule: a load leaves `requested` (to anything but cancelled) only when its ITS number is set ("enter the ITS load number before booking"). | Low. Adding a nullable column is metadata only (no rewrite, no data change). Every existing load keeps its request ref in `load_number` and stays valid with a NULL ITS number; legacy booked loads still move forward (the rule applies only when the old status is requested). Idempotent (IF NOT EXISTS, CREATE OR REPLACE, grants restated). Rolling back means section 5 (and it deletes any ITS numbers entered after the apply). |
 
 ## 2. Order of operations: migration first, then the app
 
@@ -315,9 +315,10 @@ SQL
   ) || exit 1; need "loads.its_load_number exists, text, nullable" "$v" "1"
   v=$(q <<'SQL'
 select count(*) from pg_constraint where conname = 'loads_its_load_number_format' and conrelid = 'public.loads'::regclass
-   and convalidated and position('[0-9]+' in pg_get_constraintdef(oid)) > 0 and position('-' in pg_get_constraintdef(oid)) > 0;
+   and convalidated and position('[0-9]+' in pg_get_constraintdef(oid)) > 0 and position('-' in pg_get_constraintdef(oid)) > 0
+   and position('30' in pg_get_constraintdef(oid)) > 0;
 SQL
-  ) || exit 1; need "format CHECK exists, is validated, digits with an optional dash and digits" "$v" "1"
+  ) || exit 1; need "format CHECK exists, is validated, digits with an optional dash and digits, at most 30 characters" "$v" "1"
   v=$(q <<'SQL'
 select count(*) from pg_indexes where schemaname = 'public' and tablename = 'loads' and indexname = 'loads_its_load_number_key'
    and indexdef ilike '%unique%' and indexdef like '%(its_load_number)%' and indexdef ilike '%where%';
@@ -332,7 +333,8 @@ select (to_regprocedure('public.set_its_load_number(uuid, text)') is not null
     and (select p.prosecdef from pg_proc p where p.oid = $ITS)
     and position('dlv_is_staff' in pg_get_functiondef($ITS)) > 0
     and position('dlv.its_fn' in pg_get_functiondef($ITS)) > 0
-    and position('already used by another load' in pg_get_functiondef($ITS)) > 0)::int;
+    and position('already used by another load' in pg_get_functiondef($ITS)) > 0
+    and position('too long' in pg_get_functiondef($ITS)) > 0)::int;
 SQL
   ) || exit 1; need "set_its_load_number exists, is SECURITY DEFINER, staff only, logs, refuses duplicates" "$v" "1"
   v=$(q <<SQL
@@ -494,4 +496,5 @@ Rehearsed on the LOCAL stack only (127.0.0.1:54322), never production. Method: `
 | Re-run of B then C | APPLY_OK and POSTCHECK_OK (idempotent). |
 | Negative arm: block A after the apply | PRECHECK_FAIL (do not apply) on exactly the four "must be absent" checks (column, function, CHECK or index, rule text), as designed. |
 | Negative arm: rollback block for 0013, then C | ROLLBACK_0013_OK, then POSTCHECK_FAIL on exactly the 8 checks of the 0013 group (all other groups, including the restored 0011 set_load_status and the restored 0002 loads guards, stayed PASS). A, B, C again: PRECHECK_OK, APPLY_OK, POSTCHECK_OK. The first version of block C crashed silently on the missing function (a bare regprocedure cast) and on the missing column; both checks now print a FAIL line instead (found by this rehearsal, fixed in this file). |
-| Functional rules of 0013 | Not part of the blocks. supabase/tests/rls.sql section 13 (staff sets the number through the function, customer and carrier cannot, direct UPDATE refused, no booking without a number, duplicate and format refused, 313-2 accepted, legacy booked load still advances, events written, customer reads the number) runs on a fresh `supabase db reset` and printed `RLS_OK 489 OK / 0 VACUOUS / 0 FAIL`.
+| Functional rules of 0013 | Not part of the blocks. supabase/tests/rls.sql section 13 (staff sets the number through the function, customer and carrier cannot, direct UPDATE refused, no booking without a number, duplicate and format refused, 313-2 accepted, legacy booked load still advances, events written, customer reads the number) runs on a fresh `supabase db reset` and printed `RLS_OK 496 OK / 0 VACUOUS / 0 FAIL`.
+| Review amendment (DLV-025 review) | The ITS number is capped at 30 characters (CHECK, function, form). Block C gained two predicates for it (CHECK mentions 30, function mentions "too long"). Only those two predicates were re-verified after the change: 0013 applied to a local 0001 to 0012 state with psql, both returned true. The full A, B, C rehearsal was NOT re-run by the reviewer (the review harness refused to execute the zsh block files), so rerun blocks A, B, C on the local stack before the production session.
