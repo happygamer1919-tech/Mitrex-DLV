@@ -29,3 +29,4 @@
 | Admin-only permanent delete of loads (migration 0014), audit log, Danger zone | #26 | merged |
 | Production migration 0014 applied (admin delete loads); pack 5 result | #27 | merged |
 | Lane references: staff-only ITS load to copy, Lanes page, Moffett lock on seven sites (migrations 0015, 0016) | #28 | merged |
+| Production migrations 0015 and 0016 applied (lane references); pack 6 result | #29 | merged |
