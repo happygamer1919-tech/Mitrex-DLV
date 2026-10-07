@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { spawnSync } from "node:child_process";
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { adminClient, anon, as, insertLoad, isoDate, parseCsv, readDownload, staffBook, uniq, uniqIts } from "./support/helpers";
+import { adminClient, anon, as, gotoSteady, insertLoad, isoDate, parseCsv, readDownload, staffBook, uniq, uniqIts } from "./support/helpers";
 import { fillBooking, makeLocation, retireLocations, type TestLocation } from "./support/book";
 import { BASE_URL, DB_URL, localEnv } from "./support/env";
 import { assertLocalUrl } from "./support/guard";
@@ -694,7 +694,7 @@ test("LEAK: the lane reference number appears ONLY in the staff views and the st
   await expect(staff.page.getByText("Carrier assigned.").first()).toBeVisible();
   await staffBook(staff.page, its);
   await expect.poll(async () => (await db().from("loads").select("status").eq("id", load.id).single()).data?.status, { timeout: 20_000 }).toBe("booked");
-  await staff.page.goto("/admin");
+  await gotoSteady(staff.page, "/admin"); // webkit: the booking redirect can still be settling
   await staff.page.waitForLoadState("networkidle");
   expect(await staff.page.locator(`a[href="/admin/loads/${load.id}"]`).count()).toBe(1); // booked: on the board, no Copy ITS line
   await expect(staff.page.locator(`a[href="/admin/loads/${load.id}"]`).getByTestId("board-copy-its")).toHaveCount(0);
