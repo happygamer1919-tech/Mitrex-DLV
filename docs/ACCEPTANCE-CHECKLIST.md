@@ -117,5 +117,12 @@ Automation cannot verify a real camera, the permission prompt or the installed a
 - [ ] iPhone and Android: the screens fit, nothing scrolls sideways, buttons are easy to tap with a work glove.
 - [ ] Leave the dialog open and lock the phone, then unlock: the camera shows again or the dialog can be closed and reopened. After closing the dialog the camera light is off.
 
+## M13. Board filters and sorting (staff, a computer AND a phone)
+- [ ] Open /admin, tap Tomorrow: only loads picking up tomorrow remain and the counts read "n of m".
+- [ ] Open Filters, choose a carrier and a shipper, tap Apply: chips appear, tap one chip to remove it.
+- [ ] Switch View to One list and sort by Pickup time, then by Shipper (descending): the order changes as expected.
+- [ ] On a phone (375 px wide) nothing scrolls sideways and every button is easy to tap.
+- [ ] Clear all returns the full board.
+
 ## After testing
-- [ ] Tell engineering the results (M1 to M12: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
+- [ ] Tell engineering the results (M1 to M13: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
