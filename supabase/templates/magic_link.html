@@ -1,6 +1,98 @@
-<h2>Your DLV sign-in code</h2>
-<p>Enter this sign-in code in the DLV portal:</p>
-<p style="font-size:32px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
-<p>The code expires soon. Or tap the link to sign in on this device:</p>
-<p><a href="{{ .ConfirmationURL }}">Sign in to DLV</a></p>
-<p>If you did not ask for this, ignore this email.</p>
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light only">
+  <meta name="supported-color-schemes" content="light only">
+  <title>Your DLV sign-in code</title>
+</head>
+<body style="margin:0;padding:0;background-color:#e8fbf0;-webkit-text-size-adjust:100%;">
+  <!-- Preview text shown next to the subject in the inbox -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#e8fbf0;font-size:1px;line-height:1px;">
+    Your sign-in code for the DLV Logistics portal. It expires in 15 minutes.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#e8fbf0;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+
+          <!-- Brand bar -->
+          <tr>
+            <td align="center" style="background-color:#020814;border-radius:20px 20px 0 0;padding:28px 24px 24px 24px;">
+              <img src="https://portal.dlvlogistics.com/logo.png" width="56" height="56" alt="DLV Logistics" style="display:block;border:0;outline:none;text-decoration:none;width:56px;height:56px;margin:0 auto 12px auto;">
+              <div style="font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:18px;letter-spacing:2px;text-transform:uppercase;color:#2bff88;font-weight:700;">
+                DLV Logistics
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#2bff88;height:4px;line-height:4px;font-size:4px;">&nbsp;</td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background-color:#ffffff;border-left:1px solid #cfe6d9;border-right:1px solid #cfe6d9;padding:36px 28px 8px 28px;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#020814;">
+              <h1 style="margin:0 0 8px 0;font-size:24px;line-height:30px;font-weight:800;color:#020814;">Your sign-in code</h1>
+              <p style="margin:0 0 24px 0;font-size:15px;line-height:23px;color:#4e5f57;">
+                Type this code on the sign-in page of the DLV portal.
+              </p>
+
+              <!-- The code -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="background-color:#e8fbf0;border:2px solid #2bff88;border-radius:16px;padding:22px 12px;">
+                    <div style="font-family:'SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:36px;line-height:40px;font-weight:700;letter-spacing:8px;color:#020814;">{{ .Token }}</div>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:14px 0 28px 0;font-size:13px;line-height:19px;color:#4e5f57;text-align:center;">
+                This code works once and expires in 15 minutes.
+              </p>
+
+              <!-- Link fallback -->
+              <p style="margin:0 0 14px 0;font-size:14px;line-height:21px;color:#020814;text-align:center;">
+                Or sign in on this device with one tap:
+              </p>
+              <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 12px auto;">
+                <tr>
+                  <td align="center" style="background-color:#020814;border-radius:999px;">
+                    <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:14px 32px;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:20px;font-weight:700;color:#2bff88;text-decoration:none;border-radius:999px;">Sign in to DLV</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Safety note -->
+          <tr>
+            <td style="background-color:#ffffff;border-left:1px solid #cfe6d9;border-right:1px solid #cfe6d9;padding:8px 28px 32px 28px;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="border-top:1px solid #cfe6d9;padding-top:18px;font-size:13px;line-height:20px;color:#4e5f57;">
+                    <strong style="color:#020814;">Did not ask for this?</strong> You can ignore this email, nothing happens until the code is used. Never share this code with anyone. DLV will never ask you for it.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="background-color:#020814;border-radius:0 0 20px 20px;padding:20px 24px;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#cfe6d9;">
+              DLV Logistics &middot; Mitrex shipping portal<br>
+              Questions? Call dispatch at (226) 703-3034 or write to
+              <a href="mailto:chris@dlvlogistics.com" style="color:#2bff88;text-decoration:underline;">chris@dlvlogistics.com</a>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
