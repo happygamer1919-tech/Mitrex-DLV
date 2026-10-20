@@ -482,6 +482,30 @@ test("return loads: the return form (notice, existing return, validation errors)
   });
 });
 
+test("staff edit: the edit form (carrier email box, validation errors, nothing changed), the saved notice and resend button, the staff return form", async ({ browser }) => {
+  const booked = await insertLoad({ po: uniq("A11Y-SE"), status: "booked" });
+  const delivered = await insertLoad({ po: uniq("A11Y-SER"), status: "delivered" });
+  await session(browser, "admin", async (page) => {
+    await page.goto(`/admin/loads/${booked.id}`);
+    await scan(page, "/admin/loads/[id] (Edit details button, resend to carrier)", { path: new RegExp(`^/admin/loads/${booked.id}$`), h1: new RegExp(booked.loadNumber), text: "Edit details" });
+    await page.goto(`/admin/loads/${booked.id}/edit`);
+    await scan(page, "/admin/loads/[id]/edit (booked, carrier email box)", { path: new RegExp(`^/admin/loads/${booked.id}/edit$`), h1: new RegExp(`Edit ${booked.loadNumber}`), text: "Email the updated details to the carrier" });
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText(/Nothing was changed/)).toBeVisible();
+    await scan(page, "/admin/loads/[id]/edit (nothing changed)", { path: new RegExp(`^/admin/loads/${booked.id}/edit$`), h1: new RegExp(`Edit ${booked.loadNumber}`) });
+    await page.getByLabel("Contact name").nth(0).fill("");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.locator('[role="alert"]').first()).toBeVisible();
+    await scan(page, "/admin/loads/[id]/edit (validation errors)", { path: new RegExp(`^/admin/loads/${booked.id}/edit$`), h1: new RegExp(`Edit ${booked.loadNumber}`) });
+    await page.getByLabel("Contact name").nth(0).fill("A11y Pat");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await page.waitForURL(/\?saved=1$/);
+    await scan(page, "/admin/loads/[id] (Saved notice)", { path: new RegExp(`^/admin/loads/${booked.id}$`), h1: new RegExp(booked.loadNumber), text: "Saved." });
+    await page.goto(`/admin/loads/${delivered.id}/return`);
+    await scan(page, "/admin/loads/[id]/return (staff return form)", { path: new RegExp(`^/admin/loads/${delivered.id}/return$`), h1: /Create a return/, text: new RegExp(`^Return of ${delivered.loadNumber}\\. The truck reloads at `) });
+  });
+});
+
 test("carrier driver pages and modals", async ({ browser }) => {
   const booked = await insertLoad({ po: uniq("A11Y-DB"), status: "booked" });
   const loading = await insertLoad({ po: uniq("A11Y-DL"), status: "loading" });
