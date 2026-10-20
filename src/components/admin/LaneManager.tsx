@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { Button, Card, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { DropZone } from "@/components/DropZone";
@@ -63,15 +63,45 @@ function AddLane({ locations, prefill, onDone }: { locations: LocOption[]; prefi
   );
 }
 
-function EditLane({ lane, onDone }: { lane: LaneRow; onDone: () => void }) {
+function EditLane({ lane, locations, onDone }: { lane: LaneRow; locations: LocOption[]; onDone: () => void }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(updateLane, {});
   useEffect(() => { if (state.ok) onDone(); }, [state.ok, onDone]);
+  // Controlled fields, submitted through onSubmit (not the form action prop): React resets a form after an action prop
+  // ran, and a reset select shows its first option while the state still holds the choice. A refused save (a
+  // duplicate scenario) must keep showing, and sending, what was chosen.
+  const [, startSave] = useTransition();
+  const [pickup, setPickup] = useState(lane.pickupId);
+  const [delivery, setDelivery] = useState(lane.deliveryId);
+  const [size, setSize] = useState(String(lane.size));
+  const [number, setNumber] = useState(lane.number);
+  const [note, setNote] = useState(lane.note ?? "");
+  // Active locations, plus the lane's own two even when they were deactivated since.
+  const options = locations.filter((l) => l.is_active || l.id === lane.pickupId || l.id === lane.deliveryId);
   return (
-    <form action={action} className="mt-3 space-y-3 border-t border-line pt-3" aria-label={`Edit ${lane.pickup} to ${lane.delivery}, ${lane.size} ft`}>
+    <form
+      onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startSave(() => action(fd)); }}
+      className="mt-3 space-y-3 border-t border-line pt-3" aria-label={`Edit ${lane.pickup} to ${lane.delivery}, ${lane.size} ft`}>
       <input type="hidden" name="id" value={lane.id} />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Pickup location">
+          <Select name="pickup" required value={pickup} onChange={(e) => setPickup(e.target.value)}>
+            {options.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Delivery location">
+          <Select name="delivery" required value={delivery} onChange={(e) => setDelivery(e.target.value)}>
+            {options.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Truck size">
+          <Select name="size" required value={size} onChange={(e) => setSize(e.target.value)}>
+            {SIZES.map((s) => <option key={s} value={s}>{s} ft</option>)}
+          </Select>
+        </Field>
+      </div>
       <div className="grid gap-3 sm:grid-cols-[200px_1fr]">
-        <Field label="ITS load to copy"><Input name="number" required maxLength={30} inputMode="numeric" autoComplete="off" defaultValue={lane.number} /></Field>
-        <Field label="Note"><Input name="note" maxLength={500} defaultValue={lane.note ?? ""} /></Field>
+        <Field label="ITS load to copy"><Input name="number" required maxLength={30} inputMode="numeric" autoComplete="off" value={number} onChange={(e) => setNumber(e.target.value)} /></Field>
+        <Field label="Note"><Input name="note" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" variant="dark" disabled={pending}>{pending ? "Saving..." : "Save"}</Button>
@@ -82,7 +112,7 @@ function EditLane({ lane, onDone }: { lane: LaneRow; onDone: () => void }) {
   );
 }
 
-function Row({ lane }: { lane: LaneRow }) {
+function Row({ lane, locations }: { lane: LaneRow; locations: LocOption[] }) {
   const [editing, setEditing] = useState(false);
   const close = () => setEditing(false);
   return (
@@ -117,7 +147,7 @@ function Row({ lane }: { lane: LaneRow }) {
           showOk={false}
         />
       </div>
-      {editing ? <EditLane lane={lane} onDone={close} /> : null}
+      {editing ? <EditLane lane={lane} locations={locations} onDone={close} /> : null}
     </li>
   );
 }
@@ -287,7 +317,7 @@ export function LaneManager({ lanes, locations, prefill }: { lanes: LaneRow[]; l
                 <span>{name}</span>
                 <span className="rounded-full bg-white px-2.5 py-0.5 text-[14px] text-muted">{list.length}</span>
               </h2>
-              <ul className="space-y-3">{list.map((l) => <Row key={l.id} lane={l} />)}</ul>
+              <ul className="space-y-3">{list.map((l) => <Row key={l.id} lane={l} locations={locations} />)}</ul>
             </section>
           ))}
         </div>
