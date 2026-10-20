@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { adminClient, as, isoDate, uniq, uniqIts } from "./support/helpers";
+import { adminClient, as, gotoSteady, isoDate, uniq, uniqIts } from "./support/helpers";
 import { makeLocation, retireLocations, type TestLocation } from "./support/book";
 import { sentEmails } from "./support/mail-mock";
 import { CARRIER_A } from "./support/users";
@@ -11,6 +11,7 @@ import {
 import type { Load, Location } from "../src/lib/types";
 
 // R43 Return loads (DLV-038). Maria's whole flow at 375px on both engines, the staff badge and "Use the same carrier".
+// Every goto is gotoSteady: these pages live refresh, and WebKit can report a goto as interrupted by that refresh.
 // Everything is asserted against the database (service role) as well as the page.
 
 test.describe.configure({ mode: "serial", timeout: 180_000 });
@@ -182,7 +183,7 @@ test("the Return button shows only on at delivery and delivered loads, on the li
     s[st] = await seed({ po: uniq(`RT-VIS-${st.toUpperCase()}`), status: st });
   }
   const { ctx, page } = await as(browser, "maria", VIEWPORT);
-  await page.goto("/loads");
+  await gotoSteady(page, "/loads");
   await expect(page.locator("h1")).toHaveText(/My loads/);
   for (const [st, l] of Object.entries(s) as [Status, Seeded][]) {
     const row = page.getByRole("listitem").filter({ hasText: l.its ?? l.requestRef });
@@ -195,7 +196,7 @@ test("the Return button shows only on at delivery and delivered loads, on the li
   await expectTall(page.getByRole("listitem").filter({ hasText: s.delivered.its! }).getByTestId("return-button"), "Return (list)");
   await expectNoOverflow(page, "/loads");
   for (const [st, l] of Object.entries(s) as [Status, Seeded][]) {
-    await page.goto(`/loads/${l.id}`);
+    await gotoSteady(page, `/loads/${l.id}`);
     await expect(page.locator("h1")).toHaveText(new RegExp(l.its ?? "Number pending"));
     const want = st === "at_delivery" || st === "delivered" ? 1 : 0;
     await expect(page.getByTestId("return-button"), `${st}: Return on the load page`).toHaveCount(want);
@@ -217,7 +218,7 @@ test("Maria books a return: swapped and prefilled, contacts follow the delivery 
     pTiming: "window", dTiming: "appointment", pContact: ["Orig Pat", "416-555-0111"], dContact: ["Orig Dee", "416-555-0112"],
   });
   const { ctx, page } = await as(browser, "maria", VIEWPORT);
-  await page.goto(`/loads/${orig.id}`);
+  await gotoSteady(page, `/loads/${orig.id}`);
   await page.getByTestId("return-button").click();
   await expect(page).toHaveURL(new RegExp(`/book\\?return=${orig.id}$`));
   await expect(page.locator("h1")).toHaveText("Book a return");
@@ -294,7 +295,7 @@ test("Maria books a return: swapped and prefilled, contacts follow the delivery 
   await expect(page.getByTestId("return-of")).toHaveText(`Return of ${orig.its}`);
   await expect(page.getByTestId("return-of").getByRole("link")).toHaveAttribute("href", `/loads/${orig.id}`);
   await expectNoOverflow(page, "/loads/[return]");
-  await page.goto(`/loads/${orig.id}`);
+  await gotoSteady(page, `/loads/${orig.id}`);
   const list = page.getByTestId("return-loads");
   await expect(list).toContainText("Return loads:");
   await expect(list.getByRole("link", { name: `Request ${ref}` })).toHaveAttribute("href", `/loads/${n.id}`);
@@ -315,7 +316,7 @@ test("Maria books a return: swapped and prefilled, contacts follow the delivery 
   expect(mail.to).not.toContain("maria@e2e.test");
 
   // A second visit says a return was already requested (information, not blocking).
-  await page.goto(`/book?return=${orig.id}`);
+  await gotoSteady(page, `/book?return=${orig.id}`);
   await expect(page.getByTestId("return-existing")).toHaveText(`A return was already requested for this load: Request ${ref}.`);
   await expect(page.getByRole("button", { name: "Request return" })).toBeEnabled();
   await ctx.close();
@@ -325,7 +326,7 @@ test("a return of an at delivery load to a scrapyard, from the list row, and the
   const po = uniq("RT-SCRAP");
   const orig = await seed({ po, status: "at_delivery" });
   const { ctx, page } = await as(browser, "maria", VIEWPORT);
-  await page.goto("/loads?status=at_delivery");
+  await gotoSteady(page, "/loads?status=at_delivery");
   await page.getByRole("listitem").filter({ hasText: orig.its! }).getByRole("link", { name: "Return", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/book\\?return=${orig.id}$`));
   await page.getByLabel("Delivery location").selectOption({ label: scrap.label });
@@ -336,7 +337,7 @@ test("a return of an at delivery load to a scrapyard, from the list row, and the
   expect([n.return_of_load_id, n.pickup_location_id, n.delivery_location_id]).toEqual([orig.id, site.id, scrap.id]);
   expect([n.delivery_contact_name, n.delivery_contact_phone]).toEqual(SCRAP_DEFAULT);
   // Edit while requested: the pickup stays fixed and the original shipper can still be chosen.
-  await page.goto(`/loads/${n.id}/edit`);
+  await gotoSteady(page, `/loads/${n.id}/edit`);
   await expect(page.getByTestId("return-pickup")).toContainText(site.name);
   await expect(page.getByTestId("return-notice")).toHaveCount(0);
   await page.getByLabel("Delivery location").selectOption({ label: `${shipper.name} (original shipper)` });
@@ -378,7 +379,7 @@ test("a malformed, unknown, foreign, requested or not yet delivered ?return= ope
     ["a bad return wins over a good from", `return=${foreign.id}&from=${copyable.id}`],
   ];
   for (const [label, qs] of bads) {
-    await page.goto(`/book?${qs}`);
+    await gotoSteady(page, `/book?${qs}`);
     await emptyForm(page);
     const html = await page.content();
     for (const secret of [foreignPo, foreignName, foreign.its!, foreign.requestRef, "905-555-0997"]) {
@@ -386,10 +387,10 @@ test("a malformed, unknown, foreign, requested or not yet delivered ?return= ope
     }
   }
   // Controls: a good return opens the return form, also when a from is given; a good from alone still copies.
-  await page.goto(`/book?return=${good.id}&from=${copyable.id}`);
+  await gotoSteady(page, `/book?return=${good.id}&from=${copyable.id}`);
   await expect(page.getByTestId("return-notice")).toContainText(`Return of ${good.its}.`);
   await expect(page.getByTestId("copied-notice")).toHaveCount(0);
-  await page.goto(`/book?from=${copyable.id}`);
+  await gotoSteady(page, `/book?from=${copyable.id}`);
   await expect(page.getByTestId("copied-notice")).toContainText(copyable.its!);
   await expect(page.getByTestId("return-notice")).toHaveCount(0);
   await ctx.close();
@@ -408,7 +409,7 @@ test("staff: the Return badge on the board (both views) and the calendar, the li
   const { ctx, page } = await as(browser, "admin", VIEWPORT);
   const badgeIn = (id: string) => page.locator(`a[href="/admin/loads/${id}"] [data-testid="board-return-badge"]:visible`);
 
-  await page.goto(`/admin?q=${encodeURIComponent(po)}`);
+  await gotoSteady(page, `/admin?q=${encodeURIComponent(po)}`);
   await expect(page.locator("h1")).toHaveText(/Load board/);
   await expect(badgeIn(ret.id)).toHaveCount(1);
   await expect(badgeIn(ret.id)).toHaveText("Return");
@@ -416,7 +417,7 @@ test("staff: the Return badge on the board (both views) and the calendar, the li
   await expect(page.locator(`a[href="/admin/loads/${plain.id}"]:visible`)).toHaveCount(1);
   await expectNoOverflow(page, "/admin (by status)");
   // One list view: cards at phone width, the table at desktop width; the badge is next to the number in both.
-  await page.goto(`/admin?view=list&q=${encodeURIComponent(po)}`);
+  await gotoSteady(page, `/admin?view=list&q=${encodeURIComponent(po)}`);
   await expect(page.getByTestId("board-list").locator('[data-testid="board-return-badge"]:visible')).toHaveCount(1);
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(page.getByTestId("board-list").locator("table")).toBeVisible();
@@ -425,12 +426,12 @@ test("staff: the Return badge on the board (both views) and the calendar, the li
   await expect(page.getByTestId("board-list").locator("tr").filter({ has: page.locator(`a[href="/admin/loads/${plain.id}"]`) }).getByTestId("board-return-badge")).toHaveCount(0);
   await page.setViewportSize(VIEWPORT);
   // Calendar (cards are shown there).
-  await page.goto(`/admin/calendar?view=week&date=${day}`);
+  await gotoSteady(page, `/admin/calendar?view=week&date=${day}`);
   await expect(badgeIn(ret.id).first()).toBeVisible();
   await expect(badgeIn(plain.id)).toHaveCount(0);
 
   // The return load page: badge, the link to the original, Original carrier and Use the same carrier.
-  await page.goto(`/admin/loads/${ret.id}`);
+  await gotoSteady(page, `/admin/loads/${ret.id}`);
   await expect(page.getByTestId("return-badge")).toHaveText("Return");
   await expect(page.getByTestId("return-of")).toHaveText(`Return of ${orig.its}`);
   await expect(page.getByTestId("return-of").getByRole("link")).toHaveAttribute("href", `/admin/loads/${orig.id}`);
@@ -446,11 +447,11 @@ test("staff: the Return badge on the board (both views) and the calendar, the li
   // Same carrier email rules: a requested load tells no carrier yet.
   expect((await sentEmails()).slice(mailsBefore).filter((m) => m.subject.includes("assigned to you"))).toHaveLength(0);
   // The original's page lists the return.
-  await page.goto(`/admin/loads/${orig.id}`);
+  await gotoSteady(page, `/admin/loads/${orig.id}`);
   await expect(page.getByTestId("return-loads").getByRole("link", { name: `Request ${ret.requestRef}` })).toHaveAttribute("href", `/admin/loads/${ret.id}`);
   await expect(page.getByTestId("return-badge")).toHaveCount(0);
   // An original without a carrier: the line says so and offers no button.
-  await page.goto(`/admin/loads/${ret2.id}`);
+  await gotoSteady(page, `/admin/loads/${ret2.id}`);
   await expect(page.getByTestId("original-carrier")).toContainText("Original carrier: Not assigned");
   await expect(page.getByRole("button", { name: "Use the same carrier" })).toHaveCount(0);
   await ctx.close();
@@ -473,7 +474,7 @@ test("the server re-checks a forged return: not returnable, foreign, a moved pic
     const h = r.headers()["next-action"];
     if (r.method() === "POST" && h && r.url().includes("/book")) actionId = h;
   });
-  await page.goto(`/book?return=${good.id}`);
+  await gotoSteady(page, `/book?return=${good.id}`);
   await fillDates(page);
   await page.getByRole("button", { name: "Request return" }).click();
   await page.waitForURL(/\/loads\/[0-9a-f-]{36}$/);

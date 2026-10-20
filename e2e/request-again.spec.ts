@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { adminClient, as, isoDate, uniq } from "./support/helpers";
+import { adminClient, as, gotoSteady, isoDate, uniq } from "./support/helpers";
 import { makeLocation, retireLocations, type TestLocation } from "./support/book";
 import { stripTruckLine, buildLastContacts, parseFromParam, requestAgainValues } from "../src/lib/customer/requestAgain";
 
@@ -193,18 +193,18 @@ test("the Completed filter lists delivered loads only, newest first with the del
     [older.id]: "delivered", [newer.id]: "delivered", [booked.id]: "booked", [cancelled.id]: "cancelled",
   });
   // The unfiltered list shows Request again on delivered rows only.
-  await page.goto("/loads");
+  await gotoSteady(page, "/loads");
   await expect(item(booked.loadNumber)).toHaveCount(1);
   await expect(item(booked.loadNumber).getByRole("link", { name: "Request again" })).toHaveCount(0);
   await expect(item(cancelled.loadNumber).getByRole("link", { name: "Request again" })).toHaveCount(0);
   await expect(item(newer.loadNumber).getByRole("link", { name: "Request again" })).toHaveCount(1);
   // Detail pages: delivered has the prominent button next to the Delivered note, cancelled and booked do not.
-  await page.goto(`/loads/${newer.id}`);
+  await gotoSteady(page, `/loads/${newer.id}`);
   await expect(page.locator("h1")).toHaveText(new RegExp(newer.loadNumber));
   await expect(page.getByTestId("load-state-note")).toContainText(/^Delivered on /);
   await expect(page.getByRole("link", { name: "Request again" })).toHaveAttribute("href", `/book?from=${newer.id}`);
   for (const l of [cancelled, booked]) {
-    await page.goto(`/loads/${l.id}`);
+    await gotoSteady(page, `/loads/${l.id}`);
     await expect(page.locator("h1")).toHaveText(new RegExp(l.loadNumber));
     await expect(page.getByRole("link", { name: "Request again" })).toHaveCount(0);
   }
