@@ -6,6 +6,10 @@ import { deleteLocation, saveLocation, setLocationActive } from "@/lib/admin/loc
 import type { Location } from "@/lib/types";
 import { nameIsStreet } from "@/lib/address";
 import type { ActionState } from "@/lib/admin/state";
+import { fmtDateTime } from "@/lib/format";
+
+// R45: profile id to display name, for the "Added by" and "Last edited by" lines.
+export type LocationAuthors = Record<string, string>;
 
 function Check({ name, label, defaultChecked }: { name: string; label: string; defaultChecked?: boolean }) {
   return (
@@ -49,7 +53,9 @@ function LocationForm({ location, onDone, onCancel }: { location?: Location; onD
   );
 }
 
-function Row({ loc }: { loc: Location }) {
+function Row({ loc, authors }: { loc: Location; authors: LocationAuthors }) {
+  const addedBy = loc.created_by ? authors[loc.created_by] : undefined;
+  const editedBy = loc.updated_by ? authors[loc.updated_by] : undefined;
   const [editing, setEditing] = useState(false);
   const close = () => setEditing(false);
   return (
@@ -74,6 +80,12 @@ function Row({ loc }: { loc: Location }) {
             </p>
           ) : null}
           {loc.notes ? <p className="mt-1 text-[13px] text-muted">{loc.notes}</p> : null}
+          {addedBy && loc.created_at ? (
+            <p className="mt-1 break-words text-[13px] text-muted" data-testid="location-added-by">Added by {addedBy}, {fmtDateTime(loc.created_at)}</p>
+          ) : null}
+          {editedBy && loc.updated_at ? (
+            <p className="mt-1 break-words text-[13px] text-muted" data-testid="location-edited-by">Last edited by {editedBy}, {fmtDateTime(loc.updated_at)}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-start gap-2">
           <Button type="button" variant="ghost" onClick={() => setEditing((e) => !e)}>{editing ? "Close" : "Edit"}</Button>
@@ -101,7 +113,7 @@ function Row({ loc }: { loc: Location }) {
   );
 }
 
-export function LocationManager({ locations }: { locations: Location[] }) {
+export function LocationManager({ locations, authors = {} }: { locations: Location[]; authors?: LocationAuthors }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
   const [creating, setCreating] = useState(false);
@@ -149,7 +161,7 @@ export function LocationManager({ locations }: { locations: Location[] }) {
       {shown.length === 0 ? (
         <Card><p className="text-[15px] text-muted">{locations.length === 0 ? "No locations yet. Create the first one." : "No locations match this filter."}</p></Card>
       ) : (
-        <div className="space-y-3">{shown.map((l) => <Row key={l.id} loc={l} />)}</div>
+        <div className="space-y-3">{shown.map((l) => <Row key={l.id} loc={l} authors={authors} />)}</div>
       )}
     </div>
   );

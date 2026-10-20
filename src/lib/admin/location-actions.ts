@@ -4,6 +4,7 @@ import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { UUID, plainError, str } from "./errors";
 import type { ActionState } from "./state";
+import { DUPLICATE_NAME } from "@/lib/customer/location-validate";
 
 function done() {
   revalidatePath("/admin/locations");
@@ -42,13 +43,13 @@ export async function saveLocation(_prev: ActionState, fd: FormData): Promise<Ac
   const supabase = await createClient();
   if (id) {
     const { data, error } = await supabase.from("locations").update(row).eq("id", id).select("id");
-    if (error) return { error: plainError(error) };
+    if (error) return { error: error.code === "23505" ? DUPLICATE_NAME : plainError(error) };
     if (!data || data.length === 0) return { error: "Location not found." };
     done();
     return { ok: "Location saved." };
   }
   const { error } = await supabase.from("locations").insert({ ...row, is_active: true });
-  if (error) return { error: plainError(error) };
+  if (error) return { error: error.code === "23505" ? DUPLICATE_NAME : plainError(error) };
   done();
   return { ok: "Location created." };
 }

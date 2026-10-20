@@ -2,9 +2,10 @@ import { expect, test } from "@playwright/test";
 import { adminClient, as, uniq } from "./support/helpers";
 import { makeLocation, retireLocations } from "./support/book";
 
-// R23 /locations: Maria edits the default contact name and phone (and only those) and it feeds /book.
+// R23 /locations: Maria edits a location's default contact and it feeds /book. Since DLV-041 (R45) the contact is part
+// of the full Edit form of the location; a contact only edit still changes those two columns and nothing else.
 
-test("Maria edits a location's default contact, it persists and prefills /book; no address editing is offered", async ({ browser }) => {
+test("Maria edits a location's default contact, it persists and prefills /book; nothing else on the location changes", async ({ browser }) => {
   const db = adminClient();
   const loc = await makeLocation({ prefix: "E2E-CC", contactName: "Old Name", contactPhone: "416-555-0000" });
   try {
@@ -12,20 +13,18 @@ test("Maria edits a location's default contact, it persists and prefills /book; 
     await page.goto("/locations");
     const card = page.locator('section[aria-label="Locations"] > *').filter({ has: page.getByRole("heading", { name: loc.name, exact: true }) });
     await expect(card).toHaveCount(1);
-    await expect(card.getByLabel("Default contact name")).toHaveValue("Old Name");
-    await expect(card.getByLabel("Default contact phone")).toHaveValue("416-555-0000");
+    await expect(card.getByText("Default contact: Old Name, 416-555-0000")).toBeVisible();
 
-    // The only editable controls on a location are the two contact fields (no address, city, postal, flags).
-    await expect(card.locator("input, textarea, select")).toHaveCount(2);
-    await expect(card.getByRole("button", { name: "Save contact" })).toBeDisabled(); // nothing changed yet
-    await expect(card.getByLabel(/address|city|postal|province/i)).toHaveCount(0);
-    await expect(card.getByRole("button", { name: /edit|address/i })).toHaveCount(0);
+    await card.getByRole("button", { name: `Edit ${loc.name}` }).click();
+    const edit = card.getByRole("form", { name: `Edit ${loc.name}` });
+    await expect(edit.getByLabel("Default contact name (optional)")).toHaveValue("Old Name");
+    await expect(edit.getByLabel("Default contact phone (optional)")).toHaveValue("416-555-0000");
 
     const name = uniq("Casey Contact");
     const phone = "905-555-0142";
-    await card.getByLabel("Default contact name").fill(name);
-    await card.getByLabel("Default contact phone").fill(phone);
-    await card.getByRole("button", { name: "Save contact" }).click();
+    await edit.getByLabel("Default contact name (optional)").fill(name);
+    await edit.getByLabel("Default contact phone (optional)").fill(phone);
+    await edit.getByRole("button", { name: "Save changes" }).click();
     await expect(card.getByText("Saved.")).toBeVisible();
 
     // Authoritative: the row changed in those two columns only.
@@ -38,8 +37,7 @@ test("Maria edits a location's default contact, it persists and prefills /book; 
     // It survives a reload ...
     await page.reload();
     const again = page.locator('section[aria-label="Locations"] > *').filter({ has: page.getByRole("heading", { name: loc.name, exact: true }) });
-    await expect(again.getByLabel("Default contact name")).toHaveValue(name);
-    await expect(again.getByLabel("Default contact phone")).toHaveValue(phone);
+    await expect(again.getByText(`Default contact: ${name}, ${phone}`)).toBeVisible();
 
     // ... and /book uses it, on the pickup side and on the delivery side.
     await page.goto("/book");
