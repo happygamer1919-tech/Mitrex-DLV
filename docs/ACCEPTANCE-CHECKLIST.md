@@ -153,8 +153,23 @@ Automation cannot verify a real camera, the permission prompt or the installed a
 - [ ] Open **Book a load**: the TEST location is in the delivery list, not in the pickup list. Choose it as the delivery: the Moffett box is ticked and locked, and its contact fills in. (Do not submit.)
 - [ ] Back on **Locations**, tap **Edit** on the TEST location. Change the address, tick **Can ship (pickup)**, untick **Needs a Moffett**, change the notes, tap **Save changes**: "Saved." and the new details show. In **Book a load** it is now also a pickup and the Moffett box is no longer locked.
 - [ ] The location card offers no Deactivate, Delete or Needs review control to Maria.
-- [ ] As staff open **Locations**, search for the TEST location: it shows "Added by <Maria>, <date> ET" and "Last edited by <Maria>, <date> ET", and no Needs review badge. Deactivate it afterwards (it then leaves Maria's lists).
+- [ ] As staff open **Locations**, search for the TEST location and tap **Edit** on it: it shows "Added by <Maria>, <date> ET" and "Last edited by <Maria>, <date> ET", and no Needs review badge. Deactivate it afterwards (it then leaves Maria's lists).
 - [ ] Phone (375 px): the Locations page with the edit form open does not scroll sideways.
 
+## M17. Compact views and Maria's list tools (staff on a computer and a phone, Maria on a phone). With about 300 loads in the system.
+- [ ] Staff: open /admin. Every status band shows its count in the title. Delivered and Cancelled are closed, the others open. Tap **Delivered**: it opens and says "Pickups from the last 30 days: x of y shown."
+- [ ] In a band with more than 12 loads only 12 show and **Show all <n>** opens the rest. In Delivered tap **Show older (50 more)**: older loads are added and the band stays open.
+- [ ] Each load is one line (number, route, pickup, carrier, badges). Tap **Details** on one: contacts, size and Moffett, PO, notes and ETA show. Tap the line: the load opens.
+- [ ] Search an old delivered load by its PO (older than 30 days): it is found and its band opens with "1 of y". Clear all.
+- [ ] Switch View to One list: 50 rows, then **Show more** adds 50.
+- [ ] Open a load with many events: the Timeline shows 3 and **Show all <n> events**. **Upload files** opens the four upload areas; **More actions** holds Override status and Cancel load; Delete forever is unchanged.
+- [ ] Open Locations, Lanes, Rate requests, Location requests and Users: each list is folded as described in the STAFF-GUIDE ("Compact board and load pages") and opens with one tap.
+- [ ] Maria (phone): open **Loads**. Active is open, Delivered and Cancelled are closed with their counts. Open Delivered: newest delivery first, **Show older (25 more)** adds older ones. **Request again** and **Return** are on the rows.
+- [ ] Maria: tap **Filters**, search a PO, choose a shipper and Tomorrow, Apply: chips show, the badge counts them, removing a chip works, Clear all brings everything back. Sort by Delivered, descending: the order follows.
+- [ ] Maria: tap **Export CSV**, choose this month, Download CSV: the file opens in Excel and contains only Mitrex loads, no ITS load to copy numbers.
+- [ ] Maria: open a load with more than 4 photos: 4 show and **Show all <n> photos** opens the rest.
+- [ ] Carrier (phone): **My loads** shows the active loads, then **Delivered and cancelled** closed with its count; open it, **Show older (25 more)** works.
+- [ ] Phone (375 px): none of these pages scrolls sideways and every fold and button is easy to tap.
+
 ## After testing
-- [ ] Tell engineering the results (M1 to M16: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
+- [ ] Tell engineering the results (M1 to M17: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).

@@ -19,6 +19,9 @@ Open the app from your home screen from now on.
 3. No email? Tap **Resend code** after the 30 second countdown.
 4. Wrong or expired code: tap **Resend code**.
 
+## Your list
+**My loads** shows your active loads first. Finished loads are folded under **Delivered and cancelled** (with how many there are): tap it to open. It shows the loads picked up in the last 30 days; tap **Show older (25 more)** for older ones.
+
 ## Run a load
 Open **My loads**, then tap your load. One big button moves the load to the next step. The labels, in order:
 1. **Arrived at pickup**
