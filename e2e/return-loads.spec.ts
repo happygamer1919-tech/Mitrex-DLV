@@ -462,7 +462,10 @@ test("the server re-checks a forged return: not returnable, foreign, a moved pic
   const requested = await seed({ po: uniq("RT-FORGE-REQ"), status: "requested" });
   const other = await db().from("customers").insert({ name: uniq("E2E-RT-FORGE") }).select("id").single();
   expect(other.error).toBeNull();
-  const foreign = await seed({ po: uniq("RT-FORGE-FOR"), customer: other.data!.id as string });
+  // created_by is a staff user: a load of another customer created_by Maria would be counted by the multi-truck
+  // server cap test's top-up (service role) but not by the server (Maria's RLS), an off by one in its 10 minute window.
+  const staffId = (await db().from("profiles").select("id").eq("email", "admin@e2e.test").single()).data!.id as string;
+  const foreign = await seed({ po: uniq("RT-FORGE-FOR"), customer: other.data!.id as string, createdBy: staffId });
   const { ctx, page } = await as(browser, "maria", VIEWPORT);
   // The id of the createReturnLoad action, read from a real submit of the return form (one return is made here).
   let actionId: string | null = null;
