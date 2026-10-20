@@ -2780,6 +2780,209 @@ begin
     and not has_function_privilege('anon', 'public.dlv_return_original(uuid)', 'execute'));
 end $t$;
 
+-- 20. Staff edit audit (0020, DLV-039) -------------------------------------------------------------------
+-- A staff edit of any load detail writes ONE "Details edited" event (from = to = the current status, the staff actor,
+-- human labels, location names, times as the app prints them, at most 1000 characters). A customer edit while
+-- requested, the service role and owner tooling write nothing. Clients still cannot write load_events.
+\set SE1 '32000000-0000-0000-0000-0000000000e1'
+\set SE2 '32000000-0000-0000-0000-0000000000e2'
+\set SE3 '32000000-0000-0000-0000-0000000000e3'
+\set SE4 '32000000-0000-0000-0000-0000000000e4'
+\set SE5 '32000000-0000-0000-0000-0000000000e5'
+create function rlstest.edits(p_load uuid) returns bigint language sql security definer as $f$
+  select count(*) from public.load_events where load_id = p_load and note like 'Details edited:%' $f$;
+create function rlstest.lastedit(p_load uuid) returns public.load_events language sql security definer as $f$
+  select * from public.load_events where load_id = p_load and note like 'Details edited:%' order by id desc limit 1 $f$;
+grant execute on all functions in schema rlstest to authenticated, anon;
+select rlstest.mkorig(:'SE1', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'Mitrex', 'Howden', 'booked', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkorig(:'SE2', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'Mitrex', 'Howden', 'delivered', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkorig(:'SE3', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'Mitrex', 'Howden', 'requested', null);
+
+-- 20a. the service role / owner (auth.uid() null) changes details: no event, like today
+update public.loads set pickup_date = '2031-05-05', delivery_date = '2031-05-05', weight_lbs = 1200, pieces = 4,
+  po_number = 'PO-OLD', notes = 'Old note' where id = :'SE1';
+do $t$
+begin
+  perform rlstest.chk('owner (auth.uid() null) detail update landed (guard)',
+    (select pickup_date = '2031-05-05' and po_number = 'PO-OLD' from public.loads where id = '32000000-0000-0000-0000-0000000000e1'));
+  perform rlstest.chk('owner (auth.uid() null) detail update writes NO Details edited event',
+    rlstest.edits('32000000-0000-0000-0000-0000000000e1') = 0);
+end $t$;
+
+-- 20b. staff_admin edits every kind of detail of a BOOKED load with a carrier: ONE event, exact text
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.rows('staff_admin edits pickup, delivery, both contacts, both times, size, weight, pieces, PO and notes of a booked load',
+  format($q$update public.loads set
+    pickup_location_id = (select id from public.locations where name = 'Sherbourne'),
+    delivery_location_id = (select id from public.locations where name = '125G'),
+    pickup_contact_name = 'New Pat', pickup_contact_phone = '905-111-0001',
+    delivery_contact_name = 'New Dee', delivery_contact_phone = '905-111-0002',
+    pickup_timing = 'window', pickup_date = '2031-05-06', pickup_time_start = '07:00', pickup_time_end = '09:00',
+    delivery_timing = 'appointment', delivery_date = '2031-05-07', delivery_time_start = '13:30', delivery_time_end = null,
+    equipment_size = 26, weight_lbs = 1200.5, pieces = null, po_number = 'PO-NEW', notes = E'Line one\nLine two'
+    where id = %L$q$, :'SE1'), 1);
+select rlstest.back();
+do $t$
+declare e public.load_events;
+begin
+  e := rlstest.lastedit('32000000-0000-0000-0000-0000000000e1');
+  perform rlstest.chk('staff_admin edit: exactly ONE Details edited event', rlstest.edits('32000000-0000-0000-0000-0000000000e1') = 1);
+  perform rlstest.chk('staff_admin edit: from = to = booked, actor = the admin',
+    e.from_status = 'booked' and e.to_status = 'booked' and e.actor_id = '00000000-0000-0000-0000-0000000000a1');
+  perform rlstest.chk('staff_admin edit: the note names every change with labels, location names and app formatted times',
+    e.note = 'Details edited: Pickup: Mitrex to Sherbourne; Pickup contact: P Contact, 416-000-0001 to New Pat, 905-111-0001; '
+      || 'Pickup time: Mon, May 5, 2031, 8:00 AM ET (appointment) to Tue, May 6, 2031, 7:00 AM to 9:00 AM ET (window); '
+      || 'Delivery: Howden to 125G; Delivery contact: D Contact, 416-000-0002 to New Dee, 905-111-0002; '
+      || 'Delivery time: Mon, May 5, 2031, 2:00 PM ET (appointment) to Wed, May 7, 2031, 1:30 PM ET (appointment); '
+      || 'Equipment size: 53 ft to 26 ft; Weight: 1,200 lbs to 1,200.5 lbs; Pieces: 4 to Not given; '
+      || 'PO number: PO-OLD to PO-NEW; Notes: Old note to Line one Line two',
+    e.note);
+  perform rlstest.chk('staff_admin edit: the status, carrier and ITS number are unchanged',
+    (select status = 'booked' and carrier_id = '20000000-0000-0000-0000-00000000000a' from public.loads where id = '32000000-0000-0000-0000-0000000000e1'));
+end $t$;
+
+-- 20c. staff_csr edits a DELIVERED load (identical rights): one event, Moffett recomputed from the new site
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.rows('staff_csr moves the delivery of a delivered load to 1HAM (requires Moffett)',
+  format($q$update public.loads set delivery_location_id = (select id from public.locations where name = '1HAM') where id = %L$q$, :'SE2'), 1);
+select rlstest.rows('staff_csr changes nothing that is a detail (same notes): no event expected below',
+  format($q$update public.loads set notes = notes where id = %L$q$, :'SE2'), 1);
+select rlstest.rows('staff_csr assigns another carrier (not a detail column)',
+  format($q$update public.loads set carrier_id = '20000000-0000-0000-0000-00000000000b' where id = %L$q$, :'SE2'), 1);
+select rlstest.back();
+do $t$
+declare e public.load_events;
+begin
+  e := rlstest.lastedit('32000000-0000-0000-0000-0000000000e2');
+  perform rlstest.chk('staff_csr edit: exactly ONE Details edited event (the no change update and the carrier change wrote none)',
+    rlstest.edits('32000000-0000-0000-0000-0000000000e2') = 1);
+  perform rlstest.chk('staff_csr edit: from = to = delivered, actor = the csr, Moffett forced on and named',
+    e.from_status = 'delivered' and e.to_status = 'delivered' and e.actor_id = '00000000-0000-0000-0000-0000000000a2'
+    and e.note = 'Details edited: Delivery: Howden to 1HAM; Moffett: No to Yes', e.note);
+end $t$;
+
+-- 20d. customer edit while requested: no event (today's behaviour); then a staff edit of the same requested load
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.rows('control: maria edits notes and the PO of her requested load',
+  format($q$update public.loads set notes = 'Maria note', po_number = 'PO-M' where id = %L$q$, :'SE3'), 1);
+select rlstest.cnt('maria''s edit wrote NO Details edited event (guard: the edit landed)',
+  format($q$select 1 from public.load_events where load_id = %L and note like 'Details edited:%%'$q$, :'SE3'), 0,
+  format($q$select 1 from public.loads where id = %L and notes = 'Maria note'$q$, :'SE3'));
+select rlstest.err('maria cannot write a Details edited event by hand',
+  format($q$insert into public.load_events (load_id, from_status, to_status, note) values (%L, 'requested', 'requested', 'Details edited: x')$q$, :'SE3'), 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.rows('staff_admin changes the size of the requested load',
+  format($q$update public.loads set equipment_size = 36 where id = %L$q$, :'SE3'), 1);
+select rlstest.ok('staff_admin sets the ITS number (its own event, not a detail)',
+  format($q$select public.set_its_load_number(%L, '9020-1')$q$, :'SE3'));
+select rlstest.rows('staff_admin assigns a carrier (not a detail)',
+  format($q$update public.loads set carrier_id = '20000000-0000-0000-0000-00000000000a' where id = %L$q$, :'SE3'), 1);
+select rlstest.ok('staff_admin books the load (status event only)',
+  format($q$select public.set_load_status(%L, 'booked', null, null)$q$, :'SE3'));
+select rlstest.back();
+do $t$
+declare e public.load_events;
+begin
+  e := rlstest.lastedit('32000000-0000-0000-0000-0000000000e3');
+  perform rlstest.chk('requested load: one Details edited event (staff), from = to = requested',
+    rlstest.edits('32000000-0000-0000-0000-0000000000e3') = 1 and e.from_status = 'requested' and e.to_status = 'requested'
+    and e.note = 'Details edited: Equipment size: 53 ft to 36 ft', e.note);
+  perform rlstest.chk('the ITS number and the booking kept their own events (ITS note, status change)',
+    (select count(*) from public.load_events where load_id = '32000000-0000-0000-0000-0000000000e3' and note = 'ITS load number set to 9020-1') = 1
+    and (select count(*) from public.load_events where load_id = '32000000-0000-0000-0000-0000000000e3' and from_status = 'requested' and to_status = 'booked') = 1);
+end $t$;
+
+-- 20e. long notes: the event note is cut at 1000 characters
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.rows('staff_csr writes 1500 characters of notes',
+  format($q$update public.loads set notes = repeat('x', 1500) where id = %L$q$, :'SE1'), 1);
+select rlstest.back();
+do $t$
+declare e public.load_events;
+begin
+  e := rlstest.lastedit('32000000-0000-0000-0000-0000000000e1');
+  perform rlstest.chk('a long edit note is at most 1000 characters and ends with ...',
+    length(e.note) = 1000 and right(e.note, 3) = '...' and e.note like 'Details edited: Notes: Line one Line two to xxx%', length(e.note)::text);
+  perform rlstest.chk('the load itself keeps all 1500 characters',
+    (select length(notes) from public.loads where id = '32000000-0000-0000-0000-0000000000e1') = 1500);
+end $t$;
+
+-- 20f. clients still cannot write load_events (no new grant), and a carrier cannot edit details
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.err('staff_csr cannot insert a load event by hand', format($q$insert into public.load_events (load_id, to_status, note) values (%L, 'booked', 'Details edited: forged')$q$, :'SE1'), 'permission denied');
+select rlstest.err('staff_csr cannot UPDATE a Details edited event', format($q$update public.load_events set note = 'x' where load_id = %L$q$, :'SE1'), 'permission denied');
+select rlstest.err('staff_csr cannot DELETE a Details edited event', format($q$delete from public.load_events where load_id = %L$q$, :'SE1'), 'permission denied');
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.rows('carrier A cannot change the details of its own booked load (guard: it reads it)',
+  format($q$update public.loads set notes = 'carrier' where id = %L$q$, :'SE1'), 0, format($q$select 1 from public.loads where id = %L$q$, :'SE1'));
+select rlstest.cnt('control: carrier A reads the Details edited events of its own load', format($q$select 1 from public.load_events where load_id = %L and note like 'Details edited:%%'$q$, :'SE1'), 2);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.cnt('control: maria reads the Details edited events of her booked load in her timeline', format($q$select 1 from public.load_events where load_id = %L and note like 'Details edited:%%'$q$, :'SE1'), 2);
+select rlstest.back();
+do $t$
+declare bad boolean := false; p text;
+begin
+  foreach p in array array['insert', 'update', 'delete', 'truncate'] loop
+    if has_table_privilege('authenticated', 'public.load_events', p) or has_table_privilege('anon', 'public.load_events', p) then bad := true; end if;
+  end loop;
+  perform rlstest.chk('after 0020: authenticated and anon still hold no INSERT, UPDATE, DELETE or TRUNCATE on load_events', not bad);
+end $t$;
+
+-- 20g. deleting an original (ON DELETE SET NULL on its return, run by the admin) writes no Details edited event
+select rlstest.mkorig(:'SE4', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'Mitrex', '1HAM', 'delivered', '20000000-0000-0000-0000-00000000000a');
+select rlstest.ok('owner inserts a return of SE4', rlstest.rins(:'SE5', :'SE4', '1HAM', 'Mitrex', null, '00000000-0000-0000-0000-0000000000c1'));
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.ok('the admin deletes the original SE4 forever',
+  format('select public.delete_load_forever(%L, (select load_number from public.loads where id = %L))', :'SE4', :'SE4'));
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('the return lost its link (guard) and got NO Details edited event',
+    (select return_of_load_id is null from public.loads where id = '32000000-0000-0000-0000-0000000000e5')
+    and rlstest.edits('32000000-0000-0000-0000-0000000000e5') = 0);
+end $t$;
+
+-- 20h. catalog: the trigger, the definer function, the formatter, the grants
+do $t$
+begin
+  perform rlstest.chk('loads_detail_event is an enabled AFTER UPDATE row trigger on loads calling dlv_loads_detail_event',
+    (select count(*) from pg_trigger t where t.tgrelid = 'public.loads'::regclass and t.tgname = 'loads_detail_event'
+       and not t.tgisinternal and t.tgenabled = 'O' and t.tgfoid = 'public.dlv_loads_detail_event()'::regprocedure
+       and (t.tgtype & 1) = 1 and (t.tgtype & 2) = 0 and (t.tgtype & 16) = 16) = 1);
+  perform rlstest.chk('dlv_loads_detail_event is SECURITY DEFINER with an empty search_path',
+    (select prosecdef and proconfig @> array['search_path=""'] from pg_proc where oid = 'public.dlv_loads_detail_event()'::regprocedure));
+  perform rlstest.chk('dlv_fmt_slot is IMMUTABLE, not definer, with an empty search_path',
+    (select provolatile = 'i' and not prosecdef and proconfig @> array['search_path=""'] from pg_proc where oid = 'public.dlv_fmt_slot(text, date, time, time)'::regprocedure));
+  perform rlstest.chk('anon, authenticated and PUBLIC cannot execute the two 0020 functions (asserted, never called as anon)',
+    not has_function_privilege('anon', 'public.dlv_loads_detail_event()', 'execute')
+    and not has_function_privilege('authenticated', 'public.dlv_loads_detail_event()', 'execute')
+    and not has_function_privilege('anon', 'public.dlv_fmt_slot(text, date, time, time)', 'execute')
+    and not has_function_privilege('authenticated', 'public.dlv_fmt_slot(text, date, time, time)', 'execute')
+    and not exists (select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                    where p.oid in ('public.dlv_loads_detail_event()'::regprocedure, 'public.dlv_fmt_slot(text, date, time, time)'::regprocedure)
+                      and a.grantee = 0));
+  perform rlstest.chk('dlv_fmt_slot prints like the app: appointment, window, noon and midnight',
+    public.dlv_fmt_slot('appointment', '2031-09-01', '12:00', null) = 'Mon, Sep 1, 2031, 12:00 PM ET (appointment)'
+    and public.dlv_fmt_slot('window', '2031-05-07', '00:15', '13:05') = 'Wed, May 7, 2031, 12:15 AM to 1:05 PM ET (window)');
+end $t$;
+
+-- 20i. the migration is idempotent: apply the REAL file again, one trigger, one event per edit
+\i supabase/migrations/0020_staff_edit_audit.sql
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.rows('staff_csr edits the pieces after 0020 was applied again',
+  format($q$update public.loads set pieces = 12 where id = %L$q$, :'SE2'), 1);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('0020 applied again: still ONE trigger, and the edit wrote exactly one more event',
+    (select count(*) from pg_trigger where tgrelid = 'public.loads'::regclass and tgname = 'loads_detail_event') = 1
+    and rlstest.edits('32000000-0000-0000-0000-0000000000e2') = 2
+    and (rlstest.lastedit('32000000-0000-0000-0000-0000000000e2')).note = 'Details edited: Pieces: Not given to 12');
+end $t$;
+
 -- Summary ----------------------------------------------------------------
 select name, outcome, detail from rlstest.res where outcome <> 'OK' order by n;
 select 'RLS_OK ' || count(*) filter (where outcome = 'OK') || ' OK / '
