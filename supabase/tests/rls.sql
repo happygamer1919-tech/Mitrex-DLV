@@ -1333,9 +1333,13 @@ begin
     and not has_table_privilege('authenticated', 'public.load_deletions', 'delete'));
   perform rlstest.chk('load_deletions has no foreign key (a removed user or load never blocks)',
     (select count(*) from pg_constraint where conrelid = 'public.load_deletions'::regclass and contype = 'f') = 0);
-  perform rlstest.chk('only load_events and load_documents reference loads, both ON DELETE CASCADE (catalog)',
-    (select count(*) from pg_constraint where confrelid = 'public.loads'::regclass and contype = 'f') = 2
-    and (select count(*) from pg_constraint where confrelid = 'public.loads'::regclass and contype = 'f' and confdeltype = 'c') = 2);
+  -- 0019 added the third reference (a return load names its original, ON DELETE SET NULL): a delete is still never blocked.
+  perform rlstest.chk('only load_events and load_documents (ON DELETE CASCADE) and loads.return_of_load_id (ON DELETE SET NULL) reference loads (catalog)',
+    (select count(*) from pg_constraint where confrelid = 'public.loads'::regclass and contype = 'f') = 3
+    and (select count(*) from pg_constraint where confrelid = 'public.loads'::regclass and contype = 'f' and confdeltype = 'c'
+           and conrelid in ('public.load_events'::regclass, 'public.load_documents'::regclass)) = 2
+    and (select count(*) from pg_constraint where confrelid = 'public.loads'::regclass and contype = 'f' and confdeltype = 'n'
+           and conrelid = 'public.loads'::regclass and conname = 'loads_return_of_load_id_fkey') = 1);
 end $t$;
 
 -- 14b. everyone who is not an active staff_admin is refused (each with the right confirmation text, so the ROLE is what refuses)
@@ -2514,6 +2518,266 @@ begin
     and (select count(*) from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'documents_insert') = 1
     and not has_table_privilege('authenticated', 'public.load_documents', 'delete')
     and not has_function_privilege('anon', 'public.delete_load_photo(uuid)', 'execute'));
+end $t$;
+
+-- 19. Return loads (0019, DLV-038) ------------------------------------------------------------------------------------------
+-- Seeded places: MTD (can_ship only, the original shipper that cannot receive), 1HAM (a site: can_receive only, requires
+-- Moffett), QuickScrap Metal (a scrapyard: can_receive only), Valley Metal (can_ship only: neither can_receive nor the
+-- original shipper of these loads), Mitrex and Howden (both).
+\set RO1 '31900000-0000-0000-0000-0000000000f1'
+\set RO2 '31900000-0000-0000-0000-0000000000f2'
+\set RO3 '31900000-0000-0000-0000-0000000000f3'
+\set RO4 '31900000-0000-0000-0000-0000000000f4'
+\set RO5 '31900000-0000-0000-0000-0000000000f5'
+\set RO6 '31900000-0000-0000-0000-0000000000f6'
+\set RT1 '31900000-0000-0000-0000-0000000000d1'
+\set RT2 '31900000-0000-0000-0000-0000000000d2'
+\set RT3 '31900000-0000-0000-0000-0000000000d3'
+\set RT4 '31900000-0000-0000-0000-0000000000d4'
+\set RT5 '31900000-0000-0000-0000-0000000000d5'
+\set RT6 '31900000-0000-0000-0000-0000000000d6'
+\set RT7 '31900000-0000-0000-0000-0000000000d7'
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a1', true);
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a2', true);
+select rlstest.set_active('00000000-0000-0000-0000-0000000000c1', true);
+select rlstest.set_active('00000000-0000-0000-0000-0000000000c2', true);
+select rlstest.set_active('00000000-0000-0000-0000-0000000000b1', true);
+select rlstest.set_active('00000000-0000-0000-0000-0000000000b3', true);
+
+-- An original load (as the table owner, no JWT): any customer, pickup, delivery, status and carrier.
+create function rlstest.mkorig(p_id uuid, p_cust uuid, p_user uuid, p_pickup text, p_delivery text, p_status public.load_status, p_carrier uuid) returns void
+language plpgsql security definer as $f$
+begin
+  insert into public.loads (id, customer_id, created_by, pickup_location_id, delivery_location_id,
+    equipment_size, pickup_timing, pickup_date, pickup_time_start, delivery_timing, delivery_date,
+    delivery_time_start, pickup_contact_name, pickup_contact_phone, delivery_contact_name, delivery_contact_phone)
+  values (p_id, p_cust, p_user,
+    (select id from public.locations where name = p_pickup), (select id from public.locations where name = p_delivery),
+    53, 'appointment', current_date + 1, '08:00', 'appointment', current_date + 1, '14:00',
+    'P Contact', '416-000-0001', 'D Contact', '416-000-0002');
+  perform set_config('dlv.status_fn', '1', true);
+  update public.loads set status = p_status, carrier_id = p_carrier where id = p_id;
+  perform set_config('dlv.status_fn', '0', true);
+end $f$;
+
+-- Text of an INSERT of a return load as the CURRENT user (ids resolved here, so the caller's RLS on locations does not matter).
+create function rlstest.rins(p_id uuid, p_ret uuid, p_pickup text, p_delivery text, p_cust uuid default null, p_by uuid default null) returns text
+language plpgsql stable security definer as $f$
+begin
+  return format($q$insert into public.loads (id, customer_id, created_by, pickup_location_id, delivery_location_id,
+    equipment_size, pickup_timing, pickup_date, pickup_time_start, delivery_timing, delivery_date, delivery_time_start,
+    pickup_contact_name, pickup_contact_phone, delivery_contact_name, delivery_contact_phone, status, return_of_load_id)
+    values (%L::uuid, %L::uuid, coalesce(%L::uuid, auth.uid()), %L::uuid, %L::uuid, 53, 'appointment', current_date + 2, '08:00', 'appointment',
+    current_date + 2, '14:00', 'Site Pat', '416-000-0011', 'Back Dee', '416-000-0012', 'requested', %L::uuid)$q$,
+    p_id, coalesce(p_cust, (select id from public.customers where name = 'Mitrex')), p_by,
+    (select id from public.locations where name = p_pickup), (select id from public.locations where name = p_delivery), p_ret);
+end $f$;
+grant execute on all functions in schema rlstest to authenticated, anon;
+
+-- RO1 delivered (Maria, carrier A), RO2 at_delivery, RO3 requested, RO4 enroute: all MTD to 1HAM.
+-- RO5 delivered MTD to 1HAM of the OTHER customer. RO6 booked Mitrex to Howden (Maria).
+select rlstest.mkorig(:'RO1', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'MTD MetroTool & Die Limited', '1HAM', 'delivered', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkorig(:'RO2', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'MTD MetroTool & Die Limited', '1HAM', 'at_delivery', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkorig(:'RO3', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'MTD MetroTool & Die Limited', '1HAM', 'requested', null);
+select rlstest.mkorig(:'RO4', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'MTD MetroTool & Die Limited', '1HAM', 'enroute', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkorig(:'RO5', '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000c2', 'MTD MetroTool & Die Limited', '1HAM', 'delivered', '20000000-0000-0000-0000-00000000000a');
+select rlstest.mkorig(:'RO6', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'Mitrex', 'Howden', 'booked', '20000000-0000-0000-0000-00000000000a');
+
+-- 19a. shape, grants, definitions (as the table owner)
+do $t$
+begin
+  perform rlstest.chk('fixtures: MTD ships but cannot receive, 1HAM and QuickScrap receive but cannot ship, Valley Metal cannot receive',
+    (select not can_receive and can_ship from public.locations where name = 'MTD MetroTool & Die Limited')
+    and (select can_receive and not can_ship and requires_moffett from public.locations where name = '1HAM')
+    and (select can_receive and not can_ship from public.locations where name = 'QuickScrap Metal')
+    and (select can_ship and not can_receive from public.locations where name = 'Valley Metal Finishing Ltd'));
+  perform rlstest.chk('return_of_load_id is a nullable uuid column of loads',
+    (select data_type = 'uuid' and is_nullable = 'YES' and column_default is null from information_schema.columns
+      where table_schema = 'public' and table_name = 'loads' and column_name = 'return_of_load_id'));
+  perform rlstest.chk('return_of_load_id references loads(id) ON DELETE SET NULL',
+    (select count(*) from pg_constraint where conrelid = 'public.loads'::regclass and conname = 'loads_return_of_load_id_fkey'
+       and contype = 'f' and confrelid = 'public.loads'::regclass and confdeltype = 'n') = 1);
+  perform rlstest.chk('return_of_load_id has an index',
+    (select count(*) from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = i.indkey[0]
+       where i.indrelid = 'public.loads'::regclass and a.attname = 'return_of_load_id') = 1);
+  perform rlstest.chk('dlv_return_original is SECURITY DEFINER with a fixed empty search_path',
+    (select prosecdef and proconfig @> array['search_path=""'] from pg_proc where oid = 'public.dlv_return_original(uuid)'::regprocedure));
+  perform rlstest.chk('dlv_return_original: authenticated may execute, anon and PUBLIC may not (asserted, never called as anon)',
+    has_function_privilege('authenticated', 'public.dlv_return_original(uuid)', 'execute')
+    and not has_function_privilege('anon', 'public.dlv_return_original(uuid)', 'execute')
+    and not exists (select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                    where p.oid = 'public.dlv_return_original(uuid)'::regprocedure and a.grantee = 0));
+  perform rlstest.chk('the trigger functions stay unexecutable for anon and authenticated',
+    not has_function_privilege('anon', 'public.dlv_loads_before_insert()', 'execute')
+    and not has_function_privilege('authenticated', 'public.dlv_loads_before_update()', 'execute'));
+  perform rlstest.chk('dlv_check_load_locations: no anon execute (unchanged grant)',
+    not has_function_privilege('anon', 'public.dlv_check_load_locations(public.loads)', 'execute'));
+end $t$;
+
+-- 19b. customer (Maria): a return of her own at_delivery or delivered load, pickup fixed, delivery relaxed
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.ok('maria books a return of her DELIVERED load back to the original shipper MTD (not can_receive) from the site 1HAM (not can_ship)',
+  rlstest.rins(:'RT1', :'RO1', '1HAM', 'MTD MetroTool & Die Limited'));
+select rlstest.ok('maria books a return of the same delivered load to a scrapyard (QuickScrap, can_receive)',
+  rlstest.rins(:'RT2', :'RO1', '1HAM', 'QuickScrap Metal'));
+select rlstest.ok('maria books a return of her AT_DELIVERY load',
+  rlstest.rins(:'RT3', :'RO2', '1HAM', 'MTD MetroTool & Die Limited'));
+select rlstest.err('a return delivery that is neither can_receive nor the original shipper (Valley Metal) is refused',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO1', '1HAM', 'Valley Metal Finishing Ltd'), 'delivery location cannot receive');
+select rlstest.err('pickup mismatch: a return must pick up at the original delivery location (Mitrex given)',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO1', 'Mitrex', 'MTD MetroTool & Die Limited'), 'pickup must be the delivery location');
+select rlstest.err('a return of a REQUESTED original is refused for a customer',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO3', '1HAM', 'MTD MetroTool & Die Limited'), 'at delivery or delivered');
+select rlstest.err('a return of an ENROUTE original is refused for a customer',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO4', '1HAM', 'MTD MetroTool & Die Limited'), 'at delivery or delivered');
+select rlstest.err('a return of a BOOKED original is refused for a customer',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO6', 'Howden', 'Mitrex'), 'at delivery or delivered');
+select rlstest.err('a return of the OTHER customer''s delivered load is refused (original not found for her)',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO5', '1HAM', 'MTD MetroTool & Die Limited'), 'original load was not found');
+select rlstest.err('a return of the OTHER customer''s load under the other customer''s id is refused too',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO5', '1HAM', 'MTD MetroTool & Die Limited', '10000000-0000-0000-0000-000000000002'), 'original load was not found|row-level security');
+select rlstest.err('a return of an unknown load is refused',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', '31900000-0000-0000-0000-00000000ffff', '1HAM', 'MTD MetroTool & Die Limited'), 'original load was not found');
+select rlstest.err('control: an ORDINARY load from the site 1HAM is still refused (the relaxed pickup rule is for returns only)',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', null, '1HAM', 'Mitrex'), 'pickup location cannot ship');
+select rlstest.err('control: an ORDINARY load to MTD is still refused (cannot receive)',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', null, 'Mitrex', 'MTD MetroTool & Die Limited'), 'delivery location cannot receive');
+select rlstest.ok('control: an ordinary load Mitrex to Howden still works for maria',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d9', null, 'Mitrex', 'Howden'));
+select rlstest.cnt('maria reads dlv_return_original of her own delivered load (one row)', format('select * from public.dlv_return_original(%L)', :'RO1'), 1);
+select rlstest.cnt('maria reads NOTHING from dlv_return_original of the other customer''s load (guard: it exists)',
+  format('select * from public.dlv_return_original(%L)', :'RO5'), 0, format('select 1 from public.loads where id = %L', :'RO5'));
+-- immutability, also through the status function shortcut, and the fixed pickup on a customer edit
+select rlstest.err('maria cannot change return_of_load_id of her requested return load',
+  format('update public.loads set return_of_load_id = %L where id = %L', :'RO2', :'RT1'), 'return_of_load_id is immutable');
+select rlstest.err('maria cannot clear return_of_load_id',
+  format('update public.loads set return_of_load_id = null where id = %L', :'RT1'), 'return_of_load_id is immutable');
+select rlstest.err('maria cannot turn an ordinary load into a return',
+  format('update public.loads set return_of_load_id = %L where id = %L', :'RO1', '31900000-0000-0000-0000-0000000000d9'), 'return_of_load_id is immutable');
+select rlstest.err('the status function shortcut (dlv.status_fn) does not skip the immutability',
+  format($q$do $x$ begin perform set_config('dlv.status_fn', '1', true); update public.loads set return_of_load_id = null where id = %L; end $x$$q$, :'RT1'), 'return_of_load_id is immutable');
+select set_config('dlv.status_fn', '0', true);
+select rlstest.err('maria cannot move the pickup of a return load away from the original delivery location',
+  format('update public.loads set pickup_location_id = (select id from public.locations where name = %L) where id = %L', 'Mitrex', :'RT1'), 'pickup must be the delivery location');
+select rlstest.ok('control: maria may change the delivery of a return to a scrapyard',
+  format('update public.loads set delivery_location_id = (select id from public.locations where name = %L) where id = %L', 'QuickScrap Metal', :'RT1'));
+select rlstest.ok('control: and back to the original shipper (not can_receive) on an edit',
+  format('update public.loads set delivery_location_id = (select id from public.locations where name = %L) where id = %L', 'MTD MetroTool & Die Limited', :'RT1'));
+select rlstest.err('an edit of a return to a place that is neither can_receive nor the original shipper is refused',
+  format('update public.loads set delivery_location_id = (select id from public.locations where name = %L) where id = %L', 'Valley Metal Finishing Ltd', :'RT1'), 'delivery location cannot receive');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('the stored returns: link, customer, requested, no carrier, created_by maria (guard: rows exist)',
+    (select count(*) from public.loads where id in ('31900000-0000-0000-0000-0000000000d1', '31900000-0000-0000-0000-0000000000d2', '31900000-0000-0000-0000-0000000000d3')
+       and status = 'requested' and carrier_id is null and created_by = '00000000-0000-0000-0000-0000000000c1'
+       and customer_id = (select id from public.customers where name = 'Mitrex')) = 3
+    and (select return_of_load_id from public.loads where id = '31900000-0000-0000-0000-0000000000d1') = '31900000-0000-0000-0000-0000000000f1'
+    and (select return_of_load_id from public.loads where id = '31900000-0000-0000-0000-0000000000d3') = '31900000-0000-0000-0000-0000000000f2');
+  perform rlstest.chk('the Moffett rule still holds on a return (1HAM requires it: moffett forced on)',
+    (select moffett from public.loads where id = '31900000-0000-0000-0000-0000000000d1'));
+  perform rlstest.chk('the edits landed: RT1 delivers to the original shipper MTD again, pickup still 1HAM',
+    (select delivery_location_id = (select id from public.locations where name = 'MTD MetroTool & Die Limited')
+        and pickup_location_id = (select id from public.locations where name = '1HAM')
+       from public.loads where id = '31900000-0000-0000-0000-0000000000d1'));
+  perform rlstest.chk('the refused attempts wrote nothing (no d8 row)',
+    (select count(*) from public.loads where id = '31900000-0000-0000-0000-0000000000d8') = 0);
+end $t$;
+
+-- 19c. another customer, a carrier
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c2');
+select rlstest.err('the other customer cannot book a return of maria''s delivered load',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO1', '1HAM', 'MTD MetroTool & Die Limited', '10000000-0000-0000-0000-000000000002'), 'original load was not found');
+select rlstest.ok('control: the other customer books a return of its OWN delivered load',
+  rlstest.rins(:'RT7', :'RO5', '1HAM', 'MTD MetroTool & Die Limited', '10000000-0000-0000-0000-000000000002'));
+select rlstest.cnt('the other customer reads nothing of maria''s load through dlv_return_original (guard: it exists)',
+  format('select * from public.dlv_return_original(%L)', :'RO1'), 0, format('select 1 from public.loads where id = %L', :'RO1'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.cnt('carrier A reads nothing through dlv_return_original, even of a load it carried (guard: it exists)',
+  format('select * from public.dlv_return_original(%L)', :'RO1'), 0, format('select 1 from public.loads where id = %L', :'RO1'));
+select rlstest.err('carrier A cannot insert a return load',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO1', '1HAM', 'MTD MetroTool & Die Limited'), 'row-level security|original load was not found');
+select rlstest.back();
+
+-- 19d. staff: any status of the original, still the same customer and the fixed pickup
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.ok('staff_admin books a return of a BOOKED original (staff: any status)',
+  rlstest.rins(:'RT4', :'RO6', 'Howden', 'Mitrex'));
+select rlstest.err('staff_admin: pickup mismatch is refused',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO6', 'Mitrex', 'Howden'), 'pickup must be the delivery location');
+select rlstest.err('staff_admin: a return under ANOTHER customer than the original is refused',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO5', '1HAM', 'MTD MetroTool & Die Limited'), 'original load was not found');
+select rlstest.err('staff_admin cannot change return_of_load_id either',
+  format('update public.loads set return_of_load_id = %L where id = %L', :'RO2', :'RT1'), 'return_of_load_id is immutable');
+select rlstest.err('staff_admin cannot clear return_of_load_id while the original exists',
+  format('update public.loads set return_of_load_id = null where id = %L', :'RT1'), 'return_of_load_id is immutable');
+select rlstest.cnt('staff reads dlv_return_original of any load', format('select * from public.dlv_return_original(%L)', :'RO5'), 1);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.ok('staff_csr books a return of a REQUESTED original (staff: any status)',
+  rlstest.rins(:'RT5', :'RO3', '1HAM', 'MTD MetroTool & Die Limited'));
+select rlstest.ok('staff_csr books a return for the OTHER customer of its own original (same customer)',
+  rlstest.rins(:'RT6', :'RO5', '1HAM', 'QuickScrap Metal', '10000000-0000-0000-0000-000000000002'));
+select rlstest.err('staff_csr: delivery neither can_receive nor the original shipper is refused',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', :'RO3', '1HAM', 'Valley Metal Finishing Ltd'), 'delivery location cannot receive');
+select rlstest.back();
+
+-- 19e. the service role / table owner (no JWT) stays unrestricted, like today
+select rlstest.ok('owner (auth.uid() null) inserts a return whose pickup is not the original delivery (unrestricted)',
+  rlstest.rins('31900000-0000-0000-0000-0000000000da', :'RO3', 'Mitrex', 'Howden', null, '00000000-0000-0000-0000-0000000000c1'));
+select rlstest.ok('owner (auth.uid() null) may change return_of_load_id',
+  format('update public.loads set return_of_load_id = %L where id = %L', :'RO1', '31900000-0000-0000-0000-0000000000da'));
+
+-- 19f. carriers see the column only on their own loads (no new leak)
+select set_config('dlv.status_fn', '1', true);
+update public.loads set status = 'booked', carrier_id = '20000000-0000-0000-0000-00000000000b' where id = :'RT2';
+select set_config('dlv.status_fn', '0', true);
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b3');
+select rlstest.cnt('carrier B sees its own booked return load with the link', format('select 1 from public.loads where id = %L and return_of_load_id = %L', :'RT2', :'RO1'), 1);
+select rlstest.cnt('carrier B does not see the original (carried by A) (guard: it exists)', format('select 1 from public.loads where id = %L', :'RO1'), 0, format('select 1 from public.loads where id = %L', :'RO1'));
+select rlstest.cnt('carrier B sees no requested return load (guard: RT1 exists)', format('select 1 from public.loads where id = %L', :'RT1'), 0, format('select 1 from public.loads where id = %L', :'RT1'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.cnt('carrier A does not see carrier B''s return load (guard: it exists)', format('select 1 from public.loads where id = %L', :'RT2'), 0, format('select 1 from public.loads where id = %L', :'RT2'));
+select rlstest.cnt('carrier A sees no return_of_load_id on any load it cannot read: only its own rows come back', $q$select 1 from public.loads where return_of_load_id is not null and carrier_id is distinct from public.dlv_carrier_id()$q$, 0, $q$select 1 from public.loads where return_of_load_id is not null$q$);
+select rlstest.back();
+
+-- 19g. an inactive pickup is refused on a return too
+update public.locations set is_active = false where name = 'Glengarry';
+select rlstest.mkorig('31900000-0000-0000-0000-0000000000f7', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'Mitrex', 'Howden', 'delivered', '20000000-0000-0000-0000-00000000000a');
+update public.loads set delivery_location_id = (select id from public.locations where name = 'Glengarry') where id = '31900000-0000-0000-0000-0000000000f7';
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.err('a return from an INACTIVE site is refused',
+  rlstest.rins('31900000-0000-0000-0000-0000000000d8', '31900000-0000-0000-0000-0000000000f7', 'Glengarry', 'Mitrex'), 'pickup location cannot ship');
+select rlstest.back();
+update public.locations set is_active = true where name = 'Glengarry';
+
+-- 19h. deleting the original keeps the returns, with the link cleared (ON DELETE SET NULL through the guard)
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.ok('the admin deletes the original RO1 forever',
+  format('select public.delete_load_forever(%L, (select load_number from public.loads where id = %L))', :'RO1', :'RO1'));
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('after the delete: the original is gone, both returns stay with return_of_load_id null',
+    (select count(*) from public.loads where id = '31900000-0000-0000-0000-0000000000f1') = 0
+    and (select count(*) from public.loads where id in ('31900000-0000-0000-0000-0000000000d1', '31900000-0000-0000-0000-0000000000d2') and return_of_load_id is null) = 2);
+end $t$;
+
+-- 19i. the migration is idempotent: apply the REAL file again, nothing changes
+create table rlstest.rt_before as select id, return_of_load_id, pickup_location_id, delivery_location_id, status from public.loads;
+\i supabase/migrations/0019_return_loads.sql
+do $t$
+begin
+  perform rlstest.chk('0019 applied again: the same loads and links (guard: return rows exist)',
+    (select count(*) from rlstest.rt_before where return_of_load_id is not null) >= 5
+    and (select count(*) from (select id, return_of_load_id, pickup_location_id, delivery_location_id, status from public.loads except select * from rlstest.rt_before) q) = 0
+    and (select count(*) from (select * from rlstest.rt_before except select id, return_of_load_id, pickup_location_id, delivery_location_id, status from public.loads) q) = 0);
+  perform rlstest.chk('0019 applied again: one foreign key, one index, the helper still not executable by anon',
+    (select count(*) from pg_constraint where conrelid = 'public.loads'::regclass and conname = 'loads_return_of_load_id_fkey') = 1
+    and (select count(*) from pg_indexes where schemaname = 'public' and tablename = 'loads' and indexname = 'loads_return_of_load_id_idx') = 1
+    and not has_function_privilege('anon', 'public.dlv_return_original(uuid)', 'execute'));
 end $t$;
 
 -- Summary ----------------------------------------------------------------
