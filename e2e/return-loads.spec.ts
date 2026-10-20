@@ -3,6 +3,7 @@ import { adminClient, as, isoDate, uniq, uniqIts } from "./support/helpers";
 import { makeLocation, retireLocations, type TestLocation } from "./support/book";
 import { sentEmails } from "./support/mail-mock";
 import { CARRIER_A } from "./support/users";
+import { BASE_URL } from "./support/env";
 import {
   ORIGINAL_SHIPPER_SUFFIX, RETURN_QUANTITY_MESSAGE, canReturn, parseReturnParam, returnDeliveryOptions, returnLocationError,
   returnValues, validateReturnQuantity,
@@ -452,5 +453,63 @@ test("staff: the Return badge on the board (both views) and the calendar, the li
   await page.goto(`/admin/loads/${ret2.id}`);
   await expect(page.getByTestId("original-carrier")).toContainText("Original carrier: Not assigned");
   await expect(page.getByRole("button", { name: "Use the same carrier" })).toHaveCount(0);
+  await ctx.close();
+});
+
+test("the server re-checks a forged return: not returnable, foreign, a moved pickup, two trucks, a refused delivery, and a real call works", async ({ browser }) => {
+  const po = uniq("RT-FORGE");
+  const good = await seed({ po, status: "delivered" });
+  const requested = await seed({ po: uniq("RT-FORGE-REQ"), status: "requested" });
+  const other = await db().from("customers").insert({ name: uniq("E2E-RT-FORGE") }).select("id").single();
+  expect(other.error).toBeNull();
+  const foreign = await seed({ po: uniq("RT-FORGE-FOR"), customer: other.data!.id as string });
+  const { ctx, page } = await as(browser, "maria", VIEWPORT);
+  // The id of the createReturnLoad action, read from a real submit of the return form (one return is made here).
+  let actionId: string | null = null;
+  page.on("request", (r) => {
+    const h = r.headers()["next-action"];
+    if (r.method() === "POST" && h && r.url().includes("/book")) actionId = h;
+  });
+  await page.goto(`/book?return=${good.id}`);
+  await fillDates(page);
+  await page.getByRole("button", { name: "Request return" }).click();
+  await page.waitForURL(/\/loads\/[0-9a-f-]{36}$/);
+  expect(actionId, "the return form sent a server action request").not.toBeNull();
+  const made = (await loadsByPo(po)).length;
+
+  const row = async (id: string) => (await db().from("loads").select("*").eq("id", id).single()).data as unknown as Load;
+  const valuesOf = (l: Load) => ({
+    ...returnValues(l), pickup_date: isoDate(4), pickup_time_start: "07:30", delivery_date: isoDate(4), delivery_time_start: "12:00",
+  });
+  const forge = async (args: unknown[]) => {
+    const res = await ctx.request.post(`/book?return=${good.id}`, {
+      headers: { "Next-Action": actionId!, "Content-Type": "text/plain;charset=UTF-8", Accept: "text/x-component", Origin: BASE_URL },
+      data: JSON.stringify(args), maxRedirects: 0,
+    });
+    return { status: res.status(), text: await res.text(), redirect: res.headers()["x-action-redirect"] ?? "" };
+  };
+  const g = await row(good.id);
+  const cases: [string, unknown[], RegExp][] = [
+    ["a requested original", [requested.id, valuesOf(await row(requested.id)), 1], /This load cannot be returned/],
+    ["another customer's delivered load", [foreign.id, valuesOf(await row(foreign.id)), 1], /This load cannot be returned/],
+    ["a malformed id", ["not-a-uuid", valuesOf(g), 1], /This load cannot be returned/],
+    ["a pickup that is not the original delivery", [good.id, { ...valuesOf(g), pickup_location_id: shipOnly.id }], /A return picks up where the original load was delivered/],
+    ["two trucks", [good.id, valuesOf(g), 2], /A return is always one truck/],
+    ["a delivery that cannot receive and is not the original shipper", [good.id, { ...valuesOf(g), delivery_location_id: shipOnly.id }], /This location cannot receive/],
+  ];
+  for (const [label, args, want] of cases) {
+    const r = await forge(args);
+    expect(r.status, `${label}: the forged call reached the action`).toBeLessThan(400);
+    expect(r.redirect, `${label}: no redirect to a new load`).toBe("");
+    expect(r.text, `${label}: refused with the right message`).toMatch(want);
+  }
+  expect(await loadsByPo(po), "the refused calls wrote nothing").toHaveLength(made);
+  for (const id of [requested.id, foreign.id]) {
+    expect((await db().from("loads").select("id").eq("return_of_load_id", id)).data, "no return linked to a refused original").toEqual([]);
+  }
+  // Control: the same forged call with valid values is a real call and makes one return.
+  const ok = await forge([good.id, valuesOf(g), 1]);
+  expect(ok.redirect).toMatch(/\/loads\/[0-9a-f-]{36}/);
+  expect(await loadsByPo(po)).toHaveLength(made + 1);
   await ctx.close();
 });
