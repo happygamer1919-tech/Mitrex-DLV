@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addLoadPhoto, adminClient, anon, as, insertLoad, uniq, uniqIts } from "./support/helpers";
 import { makeLocation, retireLocations, type TestLocation } from "./support/book";
 import { makeUser } from "./support/rates";
+import { loginViaUi } from "./support/login";
 import { CARRIER_A, CARRIER_B } from "./support/users";
 import { addDays } from "../src/lib/admin/cal";
 import { easternToday, parsePages, withParams } from "../src/lib/load-filters";
@@ -22,9 +23,11 @@ type Seeded = { id: string; po: string; number: string };
 const S: {
   ship: TestLocation; recv: TestLocation; booked: Seeded[]; requested: Seeded[]; recentDelivered: Seeded[]; oldDelivered: Seeded[];
   other: Seeded | null; otherCustomer: string; laneNumber: string; laneId: string; many: Seeded | null;
+  extraLoads: string[]; extraCustomers: string[]; extraLocations: string[];
 } = {
   ship: null as unknown as TestLocation, recv: null as unknown as TestLocation, booked: [], requested: [], recentDelivered: [],
   oldDelivered: [], other: null, otherCustomer: "", laneNumber: "", laneId: "", many: null,
+  extraLoads: [], extraCustomers: [], extraLocations: [],
 };
 
 async function ids() {
@@ -41,10 +44,11 @@ async function ids() {
 // Bulk insert as the service role (setup only). Each row gets a unique PO; past requested gets an ITS number.
 async function seedMany(n: number, o: {
   status: "requested" | "booked" | "delivered"; pickupDate: string; deliveredAt?: string; prefix: string; customer?: string; carrierB?: boolean;
+  shipId?: string;
 }): Promise<Seeded[]> {
   const k = await ids();
   const rows = Array.from({ length: n }, (_, i) => ({
-    customer_id: o.customer ?? k.customer, created_by: k.maria, pickup_location_id: S.ship.id, delivery_location_id: S.recv.id,
+    customer_id: o.customer ?? k.customer, created_by: k.maria, pickup_location_id: o.shipId ?? S.ship.id, delivery_location_id: S.recv.id,
     equipment_size: 53, pickup_timing: "appointment", pickup_date: o.pickupDate, pickup_time_start: `${String(6 + (i % 10)).padStart(2, "0")}:00`,
     delivery_timing: "appointment", delivery_date: o.pickupDate, delivery_time_start: "18:00",
     pickup_contact_name: "Pat", pickup_contact_phone: "416-555-0101", delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102",
@@ -94,7 +98,10 @@ test.afterAll(async () => {
   const db = adminClient();
   // Remove every load this spec seeded (local stack only, service role): 60 loads per run in the coming days would
   // otherwise fill the calendar week and the carrier and customer lists that other specs read. Photos go with them.
-  const mine = [...S.booked, ...S.requested, ...S.recentDelivered, ...S.oldDelivered, ...(S.other ? [S.other] : []), ...(S.many ? [S.many] : [])].map((l) => l.id);
+  const mine = [
+    ...[...S.booked, ...S.requested, ...S.recentDelivered, ...S.oldDelivered, ...(S.other ? [S.other] : []), ...(S.many ? [S.many] : [])].map((l) => l.id),
+    ...S.extraLoads,
+  ];
   if (mine.length > 0) {
     const docs = await db.from("load_documents").select("storage_path").in("load_id", mine);
     const paths = (docs.data ?? []).map((d) => d.storage_path as string);
@@ -103,8 +110,10 @@ test.afterAll(async () => {
     if (del.error) throw del.error;
   }
   if (S.otherCustomer) await db.from("customers").delete().eq("id", S.otherCustomer);
+  // A customer with a user stays (the profile points at it); the delete then simply does nothing.
+  for (const c of S.extraCustomers) await db.from("customers").delete().eq("id", c);
   if (S.laneId) await db.from("lane_references").delete().eq("id", S.laneId);
-  await retireLocations([S.ship?.id, S.recv?.id].filter(Boolean));
+  await retireLocations([S.ship?.id, S.recv?.id, ...S.extraLocations].filter(Boolean));
 });
 
 const isOpen = (l: Locator) => l.evaluate((el) => (el as HTMLDetailsElement).open);
@@ -491,6 +500,64 @@ test("staff lists: locations expand to the edit form, lane groups collapsed unti
   await inact.locator(":scope > summary").click();
   await expect(inact.getByText(inactive.email)).toBeVisible();
   await ctx.close();
+});
+
+test("Maria's list: a customer whose only load was delivered 40 days ago still sees her Delivered group and Show older, not no loads yet", async ({ browser }) => {
+  const db = adminClient();
+  // A customer whose only load was delivered 40 days ago: outside the 30 day window, so nothing is fetched by default.
+  const cust = await db.from("customers").insert({ name: uniq("CV-LONELY") }).select("id").single();
+  if (cust.error) throw cust.error;
+  S.extraCustomers.push(cust.data.id as string);
+  const lonely = (await seedMany(1, {
+    status: "delivered", pickupDate: day(-40), deliveredAt: new Date(Date.now() - 40 * DAY_MS).toISOString(), prefix: "CV-LONE", customer: cust.data.id as string,
+  }))[0];
+  S.extraLoads.push(lonely.id);
+  const user = await makeUser({ role: "customer", active: true, customerId: cust.data.id as string, tag: "cv-lonely" });
+
+  const lone = await anon(browser);
+  await loginViaUi(lone.page, user.email);
+  for (const path of ["/loads", "/loads?view=completed"]) {
+    await lone.page.goto(path);
+    await expect(lone.page.getByTestId("group-count-delivered"), path).toHaveText("1");
+    await expect(lone.page.getByText("You have no loads yet."), path).toHaveCount(0);
+    await expect(lone.page.getByText("No completed loads yet."), path).toHaveCount(0);
+    await expect(lone.page.getByTestId("group-older-delivered"), path).toHaveCount(1);
+  }
+  await lone.page.goto("/loads");
+  await lone.page.getByTestId("group-toggle-delivered").locator(":scope > summary").click();
+  await expect(lone.page.getByTestId("group-delivered")).toContainText("No deliveries in the last 30 days.");
+  await lone.page.getByTestId("group-older-delivered").click();
+  await expect(lone.page).toHaveURL(/[?&]dold=1(&|$)/);
+  await expect(row(lone.page, lonely.id)).toBeVisible();
+  await lone.ctx.close();
+});
+
+test("Maria's list: with a filter the Active count reads n of m where m is every active load of hers", async ({ browser }) => {
+  const k = await ids();
+  const { count: activeTotal } = await adminClient().from("loads").select("id", { count: "exact", head: true })
+    .eq("customer_id", k.customer).in("status", ["requested", "booked", "at_pickup", "loading", "enroute", "at_delivery"]);
+  expect(activeTotal).toBeGreaterThan(15); // m differs from n, so the check below is not vacuous
+  const maria = await as(browser, "maria");
+  await maria.page.goto(`/loads?shipper=${S.ship.id}&when=custom&from=${day(3)}&to=${day(3)}`);
+  await expect(maria.page.getByTestId("group-count-active")).toHaveText(`15 of ${activeTotal}`);
+  await maria.ctx.close();
+});
+
+test("a chosen shipper that only an old delivered load uses keeps its name in the chip and the select, on /loads and /admin", async ({ browser }) => {
+  const oldShip = await makeLocation({ prefix: "CV-OLDSHIP" });
+  S.extraLocations.push(oldShip.id);
+  const oldOnly = (await seedMany(1, {
+    status: "delivered", pickupDate: day(-45), deliveredAt: new Date(Date.now() - 45 * DAY_MS).toISOString(), prefix: "CV-OLDONLY", shipId: oldShip.id,
+  }))[0];
+  S.extraLoads.push(oldOnly.id);
+  for (const [who, path] of [["maria", "/loads"], ["admin", "/admin"]] as const) {
+    const s = await as(browser, who);
+    // A search with no match: no load is on screen, so the option can only come from the chosen id.
+    await s.page.goto(`${path}?shipper=${oldShip.id}&q=zzqqnomatch`);
+    await expect(s.page.getByTestId("filter-chips"), path).toContainText(`Shipper: ${oldShip.name}`);
+    await expect(s.page.getByLabel("Shipper (pickup)"), path).toHaveValue(oldShip.id);
+    await s.ctx.close();
+  }
 });
 
 test("375px: no sideways scrolling and 44px targets (48px on driver pages) with the folds open", async ({ browser }) => {
