@@ -198,8 +198,8 @@ test("deactivating a user ends their access at once; reactivating restores it", 
   await expect(admin.page.getByText(`Deactivate ${email}?`)).toBeVisible();
   await row().getByRole("button", { name: "Yes, deactivate" }).click();
   await expect.poll(async () => (await db().from("profiles").select("is_active").eq("id", id).single()).data?.is_active).toBe(false);
-  const banned = (await db().auth.admin.getUserById(id)).data.user;
-  expect(banned?.banned_until).toBeTruthy();
+  // The action writes the profile first and the auth ban right after it: poll the ban too, never read it once.
+  await expect.poll(async () => (await db().auth.admin.getUserById(id)).data.user?.banned_until ?? null).toBeTruthy();
   await expect(row().getByText("Inactive", { exact: true })).toBeVisible();
 
   // The existing session no longer opens a protected page: the user is sent to /login (never the loads page).
