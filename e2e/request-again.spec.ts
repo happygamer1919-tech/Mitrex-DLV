@@ -80,7 +80,9 @@ async function seed(o: Seed): Promise<{ id: string; loadNumber: string }> {
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
 // Minutes ago, fixed once per call site: the history lookup sees only the customer's 200 most recent loads, so the
 // seeded loads must be recent, not days old, on a database that accumulates loads across runs.
-const minAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+// Seconds, not minutes: the last contact history is the newest 200 loads, and a full e2e run creates more than 200
+// loads for Maria within a few minutes, which would push a load seeded minutes in the past out of that window.
+const secAgo = (s: number) => new Date(Date.now() - s * 1000).toISOString();
 const etDate = (iso: string) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
 
@@ -331,7 +333,7 @@ test("last contact hint: the most recent load at the location, Use last contact,
   const hDel = await makeLocation({ prefix: "E2E-RAHD", contactName: "Hdel Name", contactPhone: "416-555-0600" });
   locations.push(hLoc.id, hDel.id);
   // Inserted newest (by created_at) FIRST, so the load numbers run opposite to created_at.
-  const tNew = minAgo(3), tOld = minAgo(4);
+  const tNew = secAgo(2), tOld = secAgo(4);
   const newest = await seed({
     po: uniq("RA-HINT-NEW"), pickup: hLoc.id, delivery: hDel.id, createdAt: tNew,
     pContact: ["New Contact", "416-555-0701"], dContact: ["New Receiver", "416-555-0801"],
@@ -398,7 +400,7 @@ test("Request again shows the most recent contact at the location, which may be 
   const rDel = await makeLocation({ prefix: "E2E-RAND" });
   locations.push(rLoc.id, rDel.id);
   const po = uniq("RA-NEWER");
-  const tSrc = minAgo(6), tLater = minAgo(5);
+  const tSrc = secAgo(4), tLater = secAgo(2);
   const src = await seed({ po, pickup: rLoc.id, delivery: rDel.id, createdAt: tSrc, pContact: ["Src Contact", "416-555-0901"], dContact: ["Src Recv", "416-555-0902"] });
   const later = await seed({ po: uniq("RA-NEWER2"), pickup: rLoc.id, delivery: rDel.id, createdAt: tLater, pContact: ["Later Contact", "416-555-0903"], dContact: ["Src Recv", "416-555-0902"] });
   const { ctx, page } = await as(browser, "maria");
