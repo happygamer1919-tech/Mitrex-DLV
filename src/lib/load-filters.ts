@@ -276,6 +276,8 @@ export async function resolveSearchIds(sb: Builder, f: LoadFilters): Promise<Map
       sb.from("locations").select("id").ilike("name", `%${t}%`).limit(200),
       sb.from("carriers").select("id").ilike("name", `%${t}%`).limit(200),
     ]);
+    // A failed lookup leaves the word unresolved, so it is not pushed down (wider, never narrower).
+    if (locs.error || cars.error) return;
     out.set(t, {
       locations: ((locs.data ?? []) as { id: string }[]).map((r) => r.id),
       carriers: ((cars.data ?? []) as { id: string }[]).map((r) => r.id),

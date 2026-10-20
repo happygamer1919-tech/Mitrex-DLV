@@ -87,7 +87,7 @@ export default async function MyLoadsPage({ searchParams }: { searchParams: Prom
             </p>
             {done.length === 0 ? (
               <Card className="text-ink">
-                <p className="text-[15px] text-muted">Finished loads appear here.</p>
+                <p className="text-[15px] text-muted">{doneTotal > 0 ? `No pickups in the last ${WINDOW_DAYS} days.` : "Finished loads appear here."}</p>
               </Card>
             ) : (
               <ul className="space-y-3">

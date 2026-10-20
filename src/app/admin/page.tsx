@@ -224,9 +224,21 @@ export default async function AdminBoardPage({ searchParams }: { searchParams: P
   }
   const loadedBy = (s: LoadStatus) => loads.filter((l) => l.status === s).length;
   const totalOf = (s: LoadStatus) => (isFinished(s) ? finishedTotal[s] : loadedBy(s));
-  const carrierOpts = distinct(loads.flatMap((l) => (l.carrier_id && l.carrier ? [{ id: l.carrier_id, name: l.carrier.name }] : [])));
-  const shipperOpts = distinct(loads.map((l) => ({ id: l.pickup_location_id, name: l.pickup?.name })));
-  const receiverOpts = distinct(loads.map((l) => ({ id: l.delivery_location_id, name: l.delivery?.name })));
+  // The options come from the loads on the board; a chosen carrier, shipper or receiver that only old (not fetched) loads
+  // use is added by name, so its chip and the select never fall back to "Unknown" or "All" (R46).
+  type Named = { id: string; name: string };
+  const pickedLocs = [f.shipper, f.receiver].filter(Boolean);
+  const pickedCarrier = f.carrier && f.carrier !== "none" ? f.carrier : "";
+  const [locNames, carNames] = await Promise.all([
+    pickedLocs.length > 0 ? supabase.from("locations").select("id,name").in("id", pickedLocs) : none,
+    pickedCarrier ? supabase.from("carriers").select("id,name").eq("id", pickedCarrier) : none,
+  ]) as Res[];
+  const named = (r: Res, id: string) => (id ? ((r.data ?? []) as Named[]).filter((x) => x.id === id) : []);
+  const carrierOpts = distinct([
+    ...loads.flatMap((l) => (l.carrier_id && l.carrier ? [{ id: l.carrier_id, name: l.carrier.name }] : [])), ...named(carNames, pickedCarrier),
+  ]);
+  const shipperOpts = distinct([...loads.map((l) => ({ id: l.pickup_location_id, name: l.pickup?.name })), ...named(locNames, f.shipper)]);
+  const receiverOpts = distinct([...loads.map((l) => ({ id: l.delivery_location_id, name: l.delivery?.name })), ...named(locNames, f.receiver)]);
   const count = (s: LoadStatus) => {
     const n = (byStatus.get(s) ?? []).length;
     return filtered ? `${n} of ${totalOf(s)}` : String(isFinished(s) ? totalOf(s) : n);

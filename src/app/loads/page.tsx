@@ -98,7 +98,9 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
     : 0;
   const deliveredLimit = Math.min(winCount, CAP) + OLDER_PAGE * older.delivered;
   const [activeR, delR, canR, delCount, canCount] = await Promise.all([
-    wantActive ? narrow(base().in("status", ACTIVE)).order("created_at", { ascending: false }).limit(CAP) : none,
+    // Active loads are bounded by nature and never narrowed in the database, so the "n of m" count keeps m = every
+    // active load (the page filters them in memory).
+    wantActive ? base().in("status", ACTIVE).order("created_at", { ascending: false }).limit(CAP) : none,
     !wantDelivered ? none
       : filtered ? narrow(deliveredBase()).limit(CAP)
         : deliveredLimit > 0 ? deliveredBase().limit(deliveredLimit) : none,
@@ -117,8 +119,15 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
     delivered: isDefaultSort(f) ? sortLoads(applyFilters(loaded.delivered, f, today), { sort: "delivered", dir: "desc" }) : applyFilters(loaded.delivered, f, today),
     cancelled: isDefaultSort(f) ? sortLoads(applyFilters(loaded.cancelled, f, today), { sort: "created", dir: "desc" }) : applyFilters(loaded.cancelled, f, today),
   };
-  const shipperOpts = distinct(all.map((l) => ({ id: l.pickup_location_id, name: l.pickup?.name })));
-  const receiverOpts = distinct(all.map((l) => ({ id: l.delivery_location_id, name: l.delivery?.name })));
+  // The options come from the loads on screen; a chosen shipper or receiver that only old (not fetched) loads use is
+  // added by name, so its chip and the select never fall back to "Unknown" or "All".
+  const picked = [f.shipper, f.receiver].filter(Boolean);
+  const pickedNames = picked.length > 0
+    ? (((await supabase.from("locations").select("id,name").in("id", picked)).data ?? []) as { id: string; name: string }[])
+    : [];
+  const pickedOpt = (id: string) => (id ? pickedNames.filter((p) => p.id === id) : []);
+  const shipperOpts = distinct([...all.map((l) => ({ id: l.pickup_location_id, name: l.pickup?.name })), ...pickedOpt(f.shipper)]);
+  const receiverOpts = distinct([...all.map((l) => ({ id: l.delivery_location_id, name: l.delivery?.name })), ...pickedOpt(f.receiver)]);
   const countText = (g: keyof typeof groups) => (filtered ? `${groups[g].length} of ${totals[g]}` : String(totals[g]));
   const href = (patch: Record<string, number>) =>
     `/loads${withParams(toQuery(f), { dold: older.delivered, cold: older.cancelled, ...patch })}`;
@@ -138,7 +147,8 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
   const chip = (active: boolean) =>
     `inline-flex min-h-[44px] items-center rounded-full border px-4 text-[15px] font-medium whitespace-nowrap ${
       active ? "border-ink bg-ink text-white" : "border-line bg-white text-ink"}`;
-  const nothing = all.length === 0 && !filtered;
+  // "No loads yet" only when she truly has none: the Delivered window can be empty while older deliveries exist.
+  const nothing = all.length === 0 && !filtered && totals.delivered === 0 && totals.cancelled === 0;
   const shownCount = groups.active.length + groups.delivered.length + groups.cancelled.length;
 
   const group = (key: keyof typeof groups, title: string, open: boolean, extra?: React.ReactNode, footer?: React.ReactNode) => (
@@ -157,7 +167,8 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
           {extra}
           {groups[key].length === 0 ? (
             <p className="rounded-[16px] border border-dashed border-line px-3 py-3 text-[14px] text-muted">
-              {filtered ? "No loads match these filters." : "No loads here."}
+              {filtered ? "No loads match these filters."
+                : key === "delivered" && totals.delivered > 0 ? `No deliveries in the last ${WINDOW_DAYS} days.` : "No loads here."}
             </p>
           ) : (
             <ul className="space-y-2">{groups[key].map((l) => <Row key={l.id} l={l} />)}</ul>
