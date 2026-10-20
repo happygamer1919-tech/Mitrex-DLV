@@ -316,7 +316,7 @@ test("staff edit a booked load with a carrier: shipper, receiver, dates, size an
   await car.ctx.close();
 });
 
-test("the carrier email: ticked sends ONE email with What changed and the full details (no lane number), the resend button, a mail failure still saves", async ({ browser }) => {
+test("the carrier email: ticked sends ONE email with What changed and the full details (no lane number), the resend button (also on a delivered load), a mail failure still saves", async ({ browser }) => {
   const po = uniq("SE-MAIL");
   const l = await seed({ po, status: "booked", notes: "Gate 4" });
   // A lane reference for the load's scenario: its number must never reach the carrier.
@@ -388,6 +388,20 @@ test("the carrier email: ticked sends ONE email with What changed and the full d
     await gotoSteady(page, `/admin/loads/${req.id}/edit`);
     await expect(page.locator("h1")).toHaveText(`Edit Request ${req.requestRef}`);
     await expect(page.getByRole("checkbox", { name: "Email the updated details to the carrier" })).toHaveCount(0);
+
+    // A delivered load (its carrier controls are gone) still has the resend button, in a Carrier and booking card.
+    const done = await seed({ po: uniq("SE-DLV"), status: "delivered" });
+    await gotoSteady(page, `/admin/loads/${done.id}`);
+    await expect(page.getByRole("button", { name: "Save carrier" })).toHaveCount(0);
+    const resendDone = page.getByTestId("resend-carrier").getByRole("button", { name: "Email the details to the carrier again" });
+    await expectTall(resendDone, "Email the details to the carrier again (delivered load)");
+    await expectNoOverflow(page, "/admin/loads/[delivered]");
+    before = (await sentEmails()).length;
+    await resendDone.click();
+    await expect(page.getByTestId("resend-carrier")).toContainText(`Details emailed to ${ownerEmails.length} carrier user`);
+    const doneMails = await mailsSince(before);
+    expect(doneMails.map((m) => m.subject)).toEqual([`Load ${done.its} details`]);
+    expect(doneMails[0].to.slice().sort()).toEqual(ownerEmails.slice().sort());
     await ctx.close();
   } finally {
     await setMockStatus(200);

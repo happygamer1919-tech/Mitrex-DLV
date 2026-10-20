@@ -281,6 +281,21 @@ export default async function AdminLoadPage({ params, searchParams }: {
                 </div>
               ) : null}
             </Card>
+          ) : offersCarrierEmail(load) ? (
+            // R44: a delivered load keeps no carrier controls, but staff can still send the carrier the details again.
+            <Card>
+              <h2 className="mb-3 text-[20px] font-bold">Carrier and booking</h2>
+              <p className="text-[15px]">Carrier: <span className="font-bold">{load.carrier?.name ?? "Not assigned"}</span></p>
+              <div data-testid="resend-carrier" className="mt-4 border-t border-line pt-4">
+                <ActionForm
+                  action={resendCarrierDetails}
+                  fields={{ load_id: load.id }}
+                  label="Email the details to the carrier again"
+                  pendingLabel="Sending..."
+                  variant="ghost"
+                />
+              </div>
+            </Card>
           ) : null}
 
           {status !== "requested" ? (
