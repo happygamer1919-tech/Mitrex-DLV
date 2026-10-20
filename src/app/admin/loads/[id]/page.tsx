@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { LiveRefresh } from "@/components/LiveRefresh";
-import { Card, StatusChip } from "@/components/ui";
+import { Card, LinkButton, Notice, StatusChip } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { AssignCarrierForm, BookLoadForm, EditItsForm, EtaForm, RemovePhotoButton, StaffUpload, StatusOverrideForm } from "@/components/admin/LoadControls";
 import { ItsCopyCard } from "@/components/admin/ItsCopyCard";
@@ -19,6 +19,8 @@ type Linked = { id: string; load_number: string; its_load_number: string | null;
 import { UUID } from "@/lib/admin/errors";
 import { nameIsStreet } from "@/lib/address";
 import { assignCarrier, cancelLoad } from "@/lib/admin/load-actions";
+import { resendCarrierDetails } from "@/lib/admin/edit-actions";
+import { canStaffEdit, canStaffReturn, offersCarrierEmail } from "@/lib/admin/staff-edit";
 import { routeOf } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
@@ -54,9 +56,21 @@ function Address({ l }: { l: Loc | null }) {
   );
 }
 
-export default async function AdminLoadPage({ params }: { params: Promise<{ id: string }> }) {
+// R44: the result line after a staff edit or a staff created return (?saved=...). Unknown values show nothing.
+const SAVED: Record<string, string> = {
+  "1": "Saved.",
+  emailed: "Saved. The carrier was emailed.",
+  mail_failed: "Saved. The carrier email could not be sent.",
+  return: "Return created. It is a requested load for the same customer.",
+};
+
+export default async function AdminLoadPage({ params, searchParams }: {
+  params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string | string[] }>;
+}) {
   const profile = await requireStaff();
   const { id } = await params;
+  const { saved } = await searchParams;
+  const savedMsg = typeof saved === "string" && Object.hasOwn(SAVED, saved) ? SAVED[saved] : null;
   if (!UUID.test(id)) notFound();
 
   const supabase = await createClient();
@@ -128,6 +142,15 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
           <span data-testid="return-badge" className="rounded-full bg-[#E4DCF5] px-3 py-1 text-[13px] font-bold text-[#3B2A78]">Return</span>
         ) : null}
       </div>
+      {canStaffEdit(status) || canStaffReturn(status) ? (
+        <div data-testid="staff-load-actions" className="mb-4 flex flex-wrap gap-2">
+          {canStaffEdit(status) ? <LinkButton href={`/admin/loads/${load.id}/edit`} variant="dark">Edit details</LinkButton> : null}
+          {canStaffReturn(status) ? <LinkButton href={`/admin/loads/${load.id}/return`} variant="ghost">Create return</LinkButton> : null}
+        </div>
+      ) : null}
+      {savedMsg ? (
+        <div data-testid="saved-notice" className="mb-4 max-w-2xl"><Notice tone="ok">{savedMsg}</Notice></div>
+      ) : null}
       {original || returns.length > 0 ? (
         <div data-testid="return-links" className="mb-4 max-w-2xl rounded-[16px] border border-line bg-card p-4 text-[15px]">
           {original ? (
@@ -241,6 +264,17 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
                 </div>
               ) : null}
               <AssignCarrierForm loadId={load.id} carrierId={load.carrier_id} carriers={carriers} />
+              {offersCarrierEmail(load) ? (
+                <div data-testid="resend-carrier" className="mt-4 border-t border-line pt-4">
+                  <ActionForm
+                    action={resendCarrierDetails}
+                    fields={{ load_id: load.id }}
+                    label="Email the details to the carrier again"
+                    pendingLabel="Sending..."
+                    variant="ghost"
+                  />
+                </div>
+              ) : null}
               {status === "requested" ? (
                 <div className="mt-4 border-t border-line pt-4">
                   <BookLoadForm loadId={load.id} carrierSaved={Boolean(load.carrier_id)} itsNumber={load.its_load_number} />

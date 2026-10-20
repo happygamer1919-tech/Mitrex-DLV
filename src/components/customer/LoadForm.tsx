@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button, Card, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 import { createLoad, createReturnLoad, updateLoad } from "@/lib/customer/actions";
+import { createReturnAsStaff, updateLoadAsStaff } from "@/lib/admin/edit-actions";
 import { failure, goToLogin, withTimeout } from "@/lib/client/action-guard";
 import { MAX_TRUCKS, parseQuantityText } from "@/lib/customer/bulk";
 import {
@@ -14,6 +15,15 @@ import type { LastContacts } from "@/lib/customer/requestAgain";
 import { returnDeliveryOptions, type ReturnContext } from "@/lib/customer/returnLoad";
 import type { Location, Timing } from "@/lib/types";
 
+// R44: the staff variant of the form (staff_admin and staff_csr). Past dates are allowed, there are no "save as
+// default" boxes and no last contact hints, and the save goes to the staff actions. In edit mode the location choices
+// come from the server (they include the current locations and the return rule of R43).
+export type StaffFormProps = {
+  pickupOptions?: { id: string; label: string }[];
+  deliveryOptions?: { id: string; label: string }[];
+  offerCarrierEmail?: boolean; // "Email the updated details to the carrier" (a load with a carrier, past requested)
+};
+
 type Props = {
   mode: "create" | "edit";
   loadId?: string;
@@ -23,6 +33,7 @@ type Props = {
   lastContacts?: LastContacts; // most recent contact per location (new booking only)
   copiedFrom?: string | null; // load number a Request again was copied from
   returnOf?: ReturnContext | null; // R43: a return of this original (new return, or the edit of a return load)
+  staff?: StaffFormProps | null; // R44: staff edit (mode edit) or staff created return (mode create with returnOf)
 };
 
 function Err({ msg }: { msg?: string }) {
@@ -73,7 +84,7 @@ function CheckRow({ checked, onChange, children, disabled = false }:
 
 const NO_LAST: LastContacts = { pickup: {}, delivery: {} };
 
-export function LoadForm({ mode, loadId, locations, initial, today, lastContacts = NO_LAST, copiedFrom = null, returnOf = null }: Props) {
+export function LoadForm({ mode, loadId, locations, initial, today, lastContacts = NO_LAST, copiedFrom = null, returnOf = null, staff = null }: Props) {
   const [noticeOpen, setNoticeOpen] = useState(true);
   const [returnNoticeOpen, setReturnNoticeOpen] = useState(true);
   const [v, setV] = useState<LoadFormValues>(initial);
@@ -81,6 +92,7 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false); // own flag: a transition stays pending while Next holds the action
   const [qty, setQty] = useState("1"); // how many trucks (new booking only)
+  const [emailCarrier, setEmailCarrier] = useState(false); // R44: default unchecked
   const inflight = useRef(false); // synchronous double submit lock
 
   const parsedQty = parseQuantityText(qty);
@@ -96,10 +108,16 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
   const receivers = useMemo(() => locations.filter((l) => l.can_receive && l.is_active), [locations]);
   // R43: a return delivers to the original shipper (first, labelled, even if it cannot receive) or any receiver.
   const deliveryOptions = useMemo(
-    () => returnOf
-      ? returnDeliveryOptions(locations, returnOf.originalPickupId, initial.pickup_location_id)
-      : receivers.map((l) => ({ id: l.id, label: `${l.name} (${l.city})` })),
-    [returnOf, locations, receivers, initial.pickup_location_id],
+    () => staff?.deliveryOptions
+      ? staff.deliveryOptions
+      : returnOf
+        ? returnDeliveryOptions(locations, returnOf.originalPickupId, initial.pickup_location_id)
+        : receivers.map((l) => ({ id: l.id, label: `${l.name} (${l.city})` })),
+    [staff, returnOf, locations, receivers, initial.pickup_location_id],
+  );
+  const pickupOptions = useMemo(
+    () => staff?.pickupOptions ?? shippers.map((l) => ({ id: l.id, label: `${l.name} (${l.city})` })),
+    [staff, shippers],
   );
   const byId = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
   const pickup = byId.get(v.pickup_location_id);
@@ -138,7 +156,7 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
     e.preventDefault();
     setFormError(null);
     const payload: LoadFormValues = { ...v, moffett: moffettOn };
-    const found = validateLoad(payload);
+    const found = validateLoad(payload, today, { allowPast: Boolean(staff) });
     if (mode === "create" && !returnOf && "error" in parsedQty) found.quantity = parsedQty.error;
     setErrors(found);
     if (Object.keys(found).length > 0) {
@@ -151,8 +169,10 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
     void (async () => {
       try {
         const res = await withTimeout(
-          mode === "edit" && loadId ? updateLoad(loadId, payload)
-            : returnOf ? createReturnLoad(returnOf.originalId, payload, 1) : createLoad(payload, trucks),
+          staff
+            ? (mode === "edit" && loadId ? updateLoadAsStaff(loadId, payload, emailCarrier) : createReturnAsStaff(returnOf?.originalId, payload))
+            : mode === "edit" && loadId ? updateLoad(loadId, payload)
+              : returnOf ? createReturnLoad(returnOf.originalId, payload, 1) : createLoad(payload, trucks),
         );
         // On success the action redirects, so a returned value is always a failure.
         if (res?.fieldErrors) setErrors(res.fieldErrors);
@@ -182,7 +202,7 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
         <TimingSwitch value={timing} onChange={(t) => set(`${side}_timing`, t)} name={title} />
         <Err msg={errors[`${side}_timing`]} />
         <Field label={`${title} date`}>
-          <Input type="date" min={today} value={v[dateKey]} aria-invalid={Boolean(errors[dateKey])}
+          <Input type="date" min={staff ? undefined : today} value={v[dateKey]} aria-invalid={Boolean(errors[dateKey])}
             onChange={(e) => set(dateKey, e.target.value)} />
         </Field>
         <Err msg={errors[dateKey]} />
@@ -222,7 +242,7 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
     const saveKey = `save_${side}_default` as const;
     const locId = v[`${side}_location_id`];
     const loc = byId.get(locId);
-    const last = mode === "create" && locId ? lastContacts[side][locId] : undefined;
+    const last = mode === "create" && !staff && locId ? lastContacts[side][locId] : undefined;
     const same = last ? v[nameKey].trim() === last.name && v[phoneKey].trim() === last.phone : false;
     const hasDefault = Boolean(loc?.default_contact_name || loc?.default_contact_phone);
     const when = last ? `${last.label}, ${fmtDateEt(last.createdAt)}` : "";
@@ -244,7 +264,7 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
             <Err msg={errors[phoneKey]} />
           </div>
         </div>
-        {mode === "create" ? (
+        {mode === "create" && !staff ? (
           <div aria-live="polite" data-testid={`${side}-last-contact`} className="text-[13px] text-muted">
             {last ? (
               same
@@ -265,14 +285,16 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
             Use last contact
           </button>
         ) : null}
-        <CheckRow checked={v[saveKey]} disabled={!locId} onChange={(b) => set(saveKey, b)}>
-          Save as default for this location
-        </CheckRow>
+        {staff ? null : (
+          <CheckRow checked={v[saveKey]} disabled={!locId} onChange={(b) => set(saveKey, b)}>
+            Save as default for this location
+          </CheckRow>
+        )}
       </div>
     );
   }
 
-  if (!returnOf && (shippers.length === 0 || receivers.length === 0)) {
+  if (!returnOf && !staff && (shippers.length === 0 || receivers.length === 0)) {
     return (
       <Notice tone="info">
         There is no location available to {shippers.length === 0 ? "ship from" : "deliver to"} yet.
@@ -316,7 +338,7 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
 
       <Card>
         <h2 className="mb-3 text-[20px] font-bold">Pickup</h2>
-        {returnOf ? (
+        {returnOf && !staff?.pickupOptions ? (
           <div data-testid="return-pickup">
             <p className="mb-1 text-[13px] font-medium text-muted">Pickup location</p>
             <p className="text-[16px] font-bold break-words">
@@ -329,7 +351,7 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
             <Select value={v.pickup_location_id} aria-invalid={Boolean(errors.pickup_location_id)}
               onChange={(e) => pickLocation("pickup", e.target.value)}>
               <option value="">Select pickup location</option>
-              {shippers.map((l) => <option key={l.id} value={l.id}>{l.name} ({l.city})</option>)}
+              {pickupOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </Select>
           </Field>
         )}
@@ -444,11 +466,25 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
         </Card>
       ) : null}
 
+      {staff?.offerCarrierEmail && mode === "edit" ? (
+        <Card>
+          <CheckRow checked={emailCarrier} onChange={setEmailCarrier}>
+            <span data-testid="email-carrier-label">Email the updated details to the carrier</span>
+          </CheckRow>
+          <p className="text-[13px] text-muted">Leave it unticked to save without telling the carrier. The carrier sees the new details in the app either way.</p>
+        </Card>
+      ) : null}
+
       <div className="flex flex-wrap gap-3">
         <Button type="submit" big disabled={pending} className="w-full sm:w-auto">
-          {pending ? "Saving..." : mode === "edit" ? "Save changes" : returnOf ? "Request return" : trucks > 1 ? `Request ${trucks} loads` : "Request load"}
+          {pending ? "Saving..." : mode === "edit" ? "Save changes" : returnOf ? (staff ? "Create return" : "Request return") : trucks > 1 ? `Request ${trucks} loads` : "Request load"}
         </Button>
-        {mode === "edit" && loadId ? (
+        {staff ? (
+          <Link href={`/admin/loads/${mode === "edit" && loadId ? loadId : returnOf?.originalId ?? ""}`}
+            className="inline-flex min-h-[56px] w-full items-center justify-center rounded-full border border-line px-5 text-[18px] font-bold sm:w-auto">
+            Back to load
+          </Link>
+        ) : mode === "edit" && loadId ? (
           <Link href={`/loads/${loadId}`}
             className="inline-flex min-h-[56px] w-full items-center justify-center rounded-full border border-line px-5 text-[18px] font-bold sm:w-auto">
             Back to load
