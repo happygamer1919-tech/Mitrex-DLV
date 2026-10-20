@@ -147,10 +147,11 @@ SQL
 
   echo "--- nothing of 0021 exists yet (must be absent)"
   v=$(q <<'SQL'
-select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'locations'
-   and column_name in ('created_at', 'created_by', 'updated_by');
+select case when c.n = 3 and to_regprocedure('public.dlv_locations_before_insert()') is null then 0 else c.n end
+  from (select count(*) as n from information_schema.columns where table_schema = 'public' and table_name = 'locations'
+          and column_name in ('created_at', 'created_by', 'updated_by')) c;
 SQL
-  ) || exit 1; need "locations has no created_at, created_by or updated_by" "$v" "0"
+  ) || exit 1; need "locations has no created_at, created_by or updated_by (or exactly the three that rollback-0021 keeps)" "$v" "0"
   v=$(q <<'SQL'
 select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public' and p.proname in ('dlv_locations_before_insert', 'dlv_location_customer_rules');
@@ -249,7 +250,7 @@ If a block fails midway: the failing file is one transaction, so it left nothing
 
 The migration runs as one transaction, so a failure inside the file undoes the whole file. This is only for undoing a file that APPLIED and that you then decide to back out. Do not run it against production without the owner's explicit go. Reuse `$DATABASE_URL_DIRECT`. Roll the app back FIRST (to the DLV-039 deploy): the new app's Add location and full edit need 0021.
 
-- 0021: drops the trigger `locations_before_insert`, the functions `dlv_locations_before_insert()` and `dlv_location_customer_rules(locations)` and the policy `locations_customer_insert`, and puts back the 0009 contact only guard `dlv_locations_before_update()` (not definer) and the 0003 policy `locations_update`, as ONE transaction. The three columns `created_at`, `created_by` and `updated_by` STAY with their values (dropping them would delete who added and edited each location; drop them by hand only with the owner's go). Locations Maria added stay and stay active. After this rollback block A reports the three columns as present (expected); block B re-applies cleanly.
+- 0021: drops the trigger `locations_before_insert`, the functions `dlv_locations_before_insert()` and `dlv_location_customer_rules(locations)` and the policy `locations_customer_insert`, and puts back the 0009 contact only guard `dlv_locations_before_update()` (not definer) and the 0003 policy `locations_update`, as ONE transaction. The three columns `created_at`, `created_by` and `updated_by` STAY with their values (dropping them would delete who added and edited each location; drop them by hand only with the owner's go). Locations Maria added stay and stay active. To re-apply after this rollback run block A again (it accepts the three kept columns when no other part of 0021 exists, and still fails on any other part of 0021), then block B, then block C. Block C after a re-apply fails "the apply wrote no author" when people added or edited locations while 0021 was live (their author values were kept on purpose): that FAIL is expected in that case; every other line must PASS.
 
 ```zsh
 # BLOCK rollback-0021
@@ -507,6 +508,7 @@ Method: `supabase db reset --last 1` took the local database to 0020 (read back 
 | Negative arm: `grant execute` on `dlv_locations_before_insert` to anon | Block C: rc 1, 2 FAIL (no client role may execute, anon executes a function). Revoked, green again. |
 | Negative arm: the insert trigger disabled | Block C: rc 1, 1 FAIL (the trigger check). Enabled, block C 48 PASS, POSTCHECK_OK. |
 | Rollback 0021 | rc 0, ROLLBACK_0021_OK. Block C then failed closed (rc 1, "FAIL the 0021 functions are missing", POSTCHECK_FAIL); the public function count went back to 33 and the policy count to 29 (the 0020 values); block A then failed only on "locations has no created_at, created_by or updated_by" (the columns are kept on purpose) and passed "the old contact only guard of 0009 is in place". Behaviour after the rollback (simulated Maria session, rolled back): a contact edit is allowed, an address edit is refused "only default contact fields are editable", an insert is refused by row level security. Block B re-applied 0021 and block C gave 48 PASS, POSTCHECK_OK. |
+| Review (2026-10-20): re-apply after a rollback | Found: after rollback-0021 block A failed on the three kept columns, so block A wrote PRECHECK_RESULT=FAIL and block B refused to run; the old note "block B re-applies cleanly" only worked with a stale state file. Fixed: block A now accepts exactly the three columns when no other part of 0021 exists. Rehearsed again VERBATIM (`env -i ... zsh -f`, fresh `supabase db reset --last 1`, 1 staff_admin, 1 customer user, 1 pending request): A 13 PASS PRECHECK_OK; B APPLY_OK; C 48 PASS; B again APPLY_OK; C 48 PASS; A after the apply rc 1 with 5 FAIL (still fails closed); rollback ROLLBACK_0021_OK; C rc 1 POSTCHECK_FAIL; A 13 PASS PRECHECK_OK; B APPLY_OK; C 48 PASS POSTCHECK_OK. Second arm: a simulated Maria session added a location while 0021 was live, then rollback, A PRECHECK_OK, B APPLY_OK, C rc 1 with exactly 1 FAIL, "the apply wrote no author" (her kept author value), as section 5 says. |
 | Functional rules of 0021 | Not part of the blocks. supabase/tests/rls.sql section 21 (78 checks: Maria's insert with forced flags and author, every business field, each forbidden column, the customer rules, no delete, inactive rows and users, carrier owner and driver, staff unchanged with the author columns kept, owner tooling, a deleted author, the booking rules, a second apply of the real file) and e2e/customer-locations.spec.ts. 5 database mutations were each caught by rls.sql. |
 
 ## Production result
