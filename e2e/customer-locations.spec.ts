@@ -136,7 +136,7 @@ test("the server checks the form: required fields, ship or receive, the 120 char
   await ctx.close();
 });
 
-test("Maria edits every field; /book follows the flags at once (lists and the Moffett lock); staff see Last edited by", async ({ browser }) => {
+test("Maria edits every field, /book follows the flags at once (lists and the Moffett lock), staff see Last edited by", async ({ browser }) => {
   const loc = await makeLocation({ prefix: "E2E-ML-EDIT", contactName: "Old Contact", contactPhone: "416-555-0000" });
   made.push(loc.id);
   const newName = uniq("E2E-ML-EDITED");
