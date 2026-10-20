@@ -68,7 +68,9 @@ async function seed(o: {
   const day = o.day ?? isoDate(2);
   const its = status === "requested" ? null : uniqIts();
   const { data, error } = await db().from("loads").insert({
-    customer_id: o.customer ?? customerId, created_by: mariaId,
+    // A load of ANOTHER customer is created_by the staff admin: one created_by Maria would be counted by the multi-truck
+    // server cap test's top-up (service role) but not by the server (Maria's RLS), an off by one in its 10 minute window.
+    customer_id: o.customer ?? customerId, created_by: o.customer && o.customer !== customerId ? adminId : mariaId,
     pickup_location_id: o.pickup ?? shipA.id, delivery_location_id: o.delivery ?? recvA.id,
     equipment_size: 53, moffett: false, weight_lbs: o.weight ?? 1200, pieces: o.pieces ?? 4, po_number: o.po, notes: o.notes ?? "Old note", status,
     pickup_timing: "appointment", pickup_date: day, pickup_time_start: "08:00",
