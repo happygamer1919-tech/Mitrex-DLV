@@ -70,7 +70,7 @@ Pages update by themselves.
 ## Find a load in your list
 Your **Loads** list has three groups. Tap a group title to open or close it.
 - **Active**: everything not delivered or cancelled. It is open.
-- **Delivered**: closed at first. It holds the loads delivered in the last 30 days, newest first. Tap **Show older (25 more)** for older ones.
+- **Delivered**: closed at first. It holds the loads delivered in the last 30 days, newest first. Tap **Show older (25 more)** for older ones (also when it says "No deliveries in the last 30 days.").
 - **Cancelled**: closed at first, newest first, **Show older** for more.
 - **Request again** and **Return** sit right on the row, no need to open anything.
 - Tap **Filters** to search (load number, request number, PO, pickup or delivery place, carrier), or to choose a status, shipper, receiver, truck size or pickup date (Today, Tomorrow, Next 7 days or your own dates). Tap **Apply**.
