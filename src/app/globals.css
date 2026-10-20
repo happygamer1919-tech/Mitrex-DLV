@@ -40,3 +40,11 @@ select {
   background-size: 16px 16px;
   padding-right: 40px;
 }
+/* R46 compact views: a details/summary disclosure draws its own chevron (summary.disclosure), so the native marker is
+   hidden on every engine (WebKit keeps it unless the pseudo element is hidden too). */
+summary.disclosure { list-style: none; }
+summary.disclosure::-webkit-details-marker { display: none; }
+details[open] > summary.disclosure .disclosure-chevron { transform: rotate(90deg); }
+details > summary.disclosure .disclosure-when-open { display: none; }
+details[open] > summary.disclosure .disclosure-when-open { display: inline; }
+details[open] > summary.disclosure .disclosure-when-closed { display: none; }
