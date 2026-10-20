@@ -53,42 +53,34 @@ function LocationForm({ location, onDone, onCancel }: { location?: Location; onD
   );
 }
 
+// R46: a compact row (name, place, badges and the actions on one line). "Edit" expands the row: the contact, the notes,
+// who added and last edited it, and the edit form. The collapsed part stays in the page (hidden), so a find on the page
+// still lands on it after expanding.
 function Row({ loc, authors }: { loc: Location; authors: LocationAuthors }) {
   const addedBy = loc.created_by ? authors[loc.created_by] : undefined;
   const editedBy = loc.updated_by ? authors[loc.updated_by] : undefined;
   const [editing, setEditing] = useState(false);
   const close = () => setEditing(false);
+  const panelId = `loc-panel-${loc.id}`;
   return (
     // A plain div, not Card: Card already sets border-line, and two border colors on one element leave the winner to CSS order.
-    <div className={`rounded-[16px] bg-card p-4 ${loc.needs_review ? "border-2 border-amber" : "border border-line"}`}>
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="break-words text-[16px] font-bold">{loc.name}</p>
-          <p className="break-words text-[15px]">
+    <div data-testid="location-row" className={`rounded-[16px] bg-card px-4 py-2 ${loc.needs_review ? "border-2 border-amber" : "border border-line"}`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+          <p className="min-w-0 max-w-full text-[16px] font-bold [overflow-wrap:anywhere]">{loc.name}</p>
+          <p className="min-w-0 max-w-full text-[14px] text-muted [overflow-wrap:anywhere]">
             {nameIsStreet(loc) ? "" : `${loc.address_line}, `}{loc.city}, {loc.province} {loc.postal_code ?? ""}
           </p>
-          <div className="mt-2 flex flex-wrap gap-2 text-[13px]">
-            {!loc.is_active ? <span className="rounded-full bg-[#F7D9D9] px-3 py-1 text-[#7A1F1F]">Inactive</span> : null}
-            {loc.needs_review ? <span className="rounded-full bg-amber px-3 py-1 text-[#2B1500]">Needs review</span> : null}
-            {loc.can_ship ? <span className="rounded-full bg-[#DCE6F5] px-3 py-1">Ships</span> : null}
-            {loc.can_receive ? <span className="rounded-full bg-[#DCE6F5] px-3 py-1">Receives</span> : null}
-            {loc.requires_moffett ? <span className="rounded-full bg-ink px-3 py-1 text-white">Moffett</span> : null}
+          <div className="flex flex-wrap gap-1.5 text-[12px]">
+            {!loc.is_active ? <span className="rounded-full bg-[#F7D9D9] px-2.5 py-0.5 text-[#7A1F1F]">Inactive</span> : null}
+            {loc.needs_review ? <span className="rounded-full bg-amber px-2.5 py-0.5 text-[#2B1500]">Needs review</span> : null}
+            {loc.can_ship ? <span className="rounded-full bg-[#DCE6F5] px-2.5 py-0.5">Ships</span> : null}
+            {loc.can_receive ? <span className="rounded-full bg-[#DCE6F5] px-2.5 py-0.5">Receives</span> : null}
+            {loc.requires_moffett ? <span className="rounded-full bg-ink px-2.5 py-0.5 text-white">Moffett</span> : null}
           </div>
-          {loc.default_contact_name || loc.default_contact_phone ? (
-            <p className="mt-2 text-[13px] text-muted">
-              Contact: {[loc.default_contact_name, loc.default_contact_phone].filter(Boolean).join(", ")}
-            </p>
-          ) : null}
-          {loc.notes ? <p className="mt-1 text-[13px] text-muted">{loc.notes}</p> : null}
-          {addedBy && loc.created_at ? (
-            <p className="mt-1 break-words text-[13px] text-muted" data-testid="location-added-by">Added by {addedBy}, {fmtDateTime(loc.created_at)}</p>
-          ) : null}
-          {editedBy && loc.updated_at ? (
-            <p className="mt-1 break-words text-[13px] text-muted" data-testid="location-edited-by">Last edited by {editedBy}, {fmtDateTime(loc.updated_at)}</p>
-          ) : null}
         </div>
         <div className="flex flex-wrap items-start gap-2">
-          <Button type="button" variant="ghost" onClick={() => setEditing((e) => !e)}>{editing ? "Close" : "Edit"}</Button>
+          <Button type="button" variant="ghost" aria-expanded={editing} aria-controls={panelId} onClick={() => setEditing((e) => !e)}>{editing ? "Close" : "Edit"}</Button>
           <ActionForm
             action={setLocationActive}
             fields={{ id: loc.id, active: loc.is_active ? "false" : "true" }}
@@ -108,7 +100,21 @@ function Row({ loc, authors }: { loc: Location; authors: LocationAuthors }) {
           />
         </div>
       </div>
-      {editing ? <div className="mt-4 border-t border-line pt-4"><LocationForm location={loc} onDone={close} onCancel={close} /></div> : null}
+      <div id={panelId} hidden={!editing} data-testid="location-panel" className="mt-3 border-t border-line pt-3">
+        {loc.default_contact_name || loc.default_contact_phone ? (
+          <p className="text-[13px] text-muted">
+            Contact: {[loc.default_contact_name, loc.default_contact_phone].filter(Boolean).join(", ")}
+          </p>
+        ) : null}
+        {loc.notes ? <p className="mt-1 text-[13px] text-muted">{loc.notes}</p> : null}
+        {addedBy && loc.created_at ? (
+          <p className="mt-1 break-words text-[13px] text-muted" data-testid="location-added-by">Added by {addedBy}, {fmtDateTime(loc.created_at)}</p>
+        ) : null}
+        {editedBy && loc.updated_at ? (
+          <p className="mt-1 break-words text-[13px] text-muted" data-testid="location-edited-by">Last edited by {editedBy}, {fmtDateTime(loc.updated_at)}</p>
+        ) : null}
+        {editing ? <div className="mt-3"><LocationForm location={loc} onDone={close} onCancel={close} /></div> : null}
+      </div>
     </div>
   );
 }
