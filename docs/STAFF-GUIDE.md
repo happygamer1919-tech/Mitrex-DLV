@@ -43,12 +43,22 @@ Requested loads show a small line "Copy ITS 1269" so you can see the number with
 - The return load page shows the **Return** badge and "Return of 313" with a link to the first load. The first load lists it under "Return loads".
 - While a return has no carrier, **Carrier and booking** shows "Original carrier: <name>" and a **Use the same carrier** button. It saves that carrier exactly like **Save carrier** (same emails: nothing is sent while the load is Requested; the carrier is emailed when you book). Then enter the ITS number and **Mark booked** as usual.
 - A return picks up at a site that may not be a normal shipper and may go back to a shipper that is not a normal receiver. That is allowed for returns only.
+- You can also make a return yourself: open a load that is At delivery or Delivered and tap **Create return**. The form is filled the other way round (pickup is the site, delivery is the first shipper; choose another place if the frames go elsewhere). Add the dates and tap **Create return**. The return is a Requested load for the same customer, linked to the first load, and no request email goes out. You land on the new load: use **Use the same carrier**, enter the ITS number and book as usual.
+
+## Change a load (any detail, any time before it is cancelled)
+- Open the load and tap **Edit details** (top of the page). It works at every status except Cancelled, also after the load is booked, moving or delivered.
+- You can change the pickup place, the delivery place, both contacts, both times (appointment or window, dates and hours), the truck size, Moffett, weight, pieces, PO number and notes. The status, the carrier and the ITS number keep their own controls on the load page.
+- Past dates are allowed for staff (a load that is moving or delivered has dates in the past). The delivery still cannot be before the pickup, and a time window must end after it starts.
+- The lists offer every active place that can ship (pickup) or receive (delivery), plus the places the load has now even if they were switched off since. If you change one place, the other one must still be usable; the page tells you if it is not.
+- **Email the updated details to the carrier**: tick it to send the carrier one email "Load 313 updated" with what changed and all the current details. Leave it unticked (the default) to save quietly. After saving the page says "Saved.", "Saved. The carrier was emailed." or "Saved. The carrier email could not be sent." (the change is saved in every case; call the carrier if the email failed).
+- Every change is written in the timeline as "Details edited: ..." with the old and the new value, under your name. Maria and the carrier see that line in their timelines, and their pages show the new details straight away. Maria is not emailed.
+- To send the carrier the details again without changing anything, use **Email the details to the carrier again** in **Carrier and booking** (booked and moving loads with a carrier).
 
 ## When there is no reference for a lane
 The load page shows an amber box "No ITS reference for this lane and size". Use the old way for this one (look the lane up in ITS yourself), then tap **Add it** in the box. The Lanes page opens with the pickup, delivery and size filled in. Type the ITS load you used and tap **Add lane**. The next request for the same lane and size shows it. The same row serves every load of that lane and size, so one entry is enough.
 
 ## Fix or change a number
-Open **Lanes** in the top menu. Tap **Edit** on the row, change the number, tap **Save**. To change many rows at once use **Export CSV**, edit the file and **Import CSV** (the page tells you which rows are wrong; nothing is imported until every row is right).
+Open **Lanes** in the top menu. Tap **Edit** on the row, change the number (or the pickup, the delivery or the truck size if the row was entered for the wrong lane), tap **Save**. If another row already has that pickup, delivery and size, the page says so and nothing changes: edit that row instead. To change many rows at once use **Export CSV**, edit the file and **Import CSV** (the page tells you which rows are wrong; nothing is imported until every row is right).
 
 ## Rate requests (Maria asks for a price on a new lane)
 This is separate from booking. A rate request is not a load and creates no load.

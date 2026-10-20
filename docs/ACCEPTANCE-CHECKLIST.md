@@ -1,4 +1,4 @@
-# Owner acceptance checklist (M1 to M14)
+# Owner acceptance checklist (M1 to M15)
 
 Run these on the live portal, https://portal.dlvlogistics.com. Each step says what you do and what you must see. Tick a box only when you saw the expected result. If something differs, write what you saw next to it and tell dispatch/engineering.
 
@@ -135,5 +135,16 @@ Automation cannot verify a real camera, the permission prompt or the installed a
 - [ ] Open the Return button on the same first load again: the note "A return was already requested for this load" shows. Cancel the TEST return afterwards.
 - [ ] Phone (375 px): nothing scrolls sideways, the Return button is easy to tap.
 
+## M15. Staff edit of a load (staff on a computer and a phone). Steps 3 and 4 need migration 0020 applied (the timeline line).
+- [ ] Open a booked TEST load (PO starting `TEST-`) that has a carrier. Near the top tap **Edit details**. The form shows the current details; "Email the updated details to the carrier" is there and NOT ticked.
+- [ ] Change the delivery place, the delivery contact, the pickup date and the truck size. Leave the box unticked and tap **Save changes**. The load page says "Saved." and shows the new details. No email reaches the carrier.
+- [ ] The Timeline shows "Details edited: Delivery: <old> to <new>; ..." with your name. Maria opens the load: she sees the new details and the same line. The carrier opens the load in the app: the new place and contact show.
+- [ ] Edit again, change the PO number, TICK the box, save. The page says "Saved. The carrier was emailed." The carrier gets "Load <number> updated" listing "PO number: <old> to <new>" and all the details. The email has no "ITS load to copy" number.
+- [ ] In **Carrier and booking** tap **Email the details to the carrier again**: the page says "Details emailed to ..." and the carrier gets "Load <number> details".
+- [ ] Open a delivered TEST load: **Edit details** works with a date in the past. Set the delivery date before the pickup date: the form refuses it. A cancelled TEST load has no Edit details button.
+- [ ] Open a delivered TEST load and tap **Create return**: "Create a return", pickup fixed to the site, delivery preset to the first shipper. Add dates and tap **Create return**: you land on the new load ("Return created."), it is Requested for the same customer, says "Return of <number>", and no request email arrives. Tap **Use the same carrier**.
+- [ ] Open **Lanes**, tap **Edit** on a row, change the delivery or the size, tap **Save**: the row moves to its new place. Edit it to a pickup, delivery and size that another row already has: the page says it already exists and nothing changes. (Put it back afterwards.)
+- [ ] Sign in as Maria and open `/admin/loads/<id>/edit` of her load: "not found". Phone (375 px): the edit form and the return form do not scroll sideways.
+
 ## After testing
-- [ ] Tell engineering the results (M1 to M14: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
+- [ ] Tell engineering the results (M1 to M15: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).

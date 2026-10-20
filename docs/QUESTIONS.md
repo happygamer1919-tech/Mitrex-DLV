@@ -108,3 +108,13 @@ Open question: should the PO number be left empty on a repeat (a new shipment us
 6. Should the CSV export get a return_of column? Default used: NO, the CSV columns are unchanged in this card. Adding one is a small change in the export.
 7. Several returns for one load. Default used: allowed. A second Return shows "A return was already requested for this load: <number>." but does not block.
 8. Should Maria see the original carrier's name on the return form? Default used: no, only staff see it (email and the staff load page).
+
+## DLV-039 Staff edit (defaults used, owner may change)
+1. Should a cancelled load be editable? Default used: NO. Every other status can be edited (requested through delivered). A cancelled load shows no Edit details button and the server refuses it. If a cancelled load needs a fix, move it back with the status override first.
+2. Past dates. Default used: ALLOWED for staff (a load that is moving or delivered has dates in the past), still refused for Maria. Delivery before pickup and a window that ends before it starts are refused for everyone.
+3. "Email the updated details to the carrier". Default used: the box starts UNCHECKED, so a quiet correction sends nothing. Tick it when the carrier must know. Say so if it should start ticked.
+4. Should Maria be emailed when staff change a booked load? Default used: NO. She sees the new values on her load page straight away and the "Details edited" line in her timeline. Adding an email to Maria is one call in the save.
+5. Should the carrier email go to the carrier for a Requested load? Default used: NO. Carriers do not see Requested loads, so the box is offered only once the load is past Requested and has a carrier.
+6. Who may edit? Default used: staff_admin and staff_csr alike (identical operational rights, R4).
+7. Changing ONE place when the OTHER one was switched off since (inactive, or no longer ships or receives). Default used: refused with a plain message naming the place, because the database checks both places whenever one changes. Keeping both places as they are always works. Say so if staff should be able to keep a switched off place while changing the other one (a database change).
+8. Should the carrier email include weight and pieces? Default used: YES, with the other details (equipment, Moffett, PO, notes). Say so if they should be left out.

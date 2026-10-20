@@ -31,6 +31,8 @@ Tap it once per step. It also tells you the "Next status".
 
 Two steps need a photo first. The big button is grey until you have taken it (see the next two sections).
 
+Dispatch can change a load after it was given to you (a different pickup or delivery place, contact, date or time). Your load page always shows the current details. When dispatch wants you to know, you get an email "Load 313 updated" that lists what changed, or "Load 313 details" with everything again. Always check the load page before you drive.
+
 ## Photo of the loaded freight
 When the load is in **Loading**, a white box **Loaded photo** appears with a big green button **Take loaded photo**.
 1. Tap **Take loaded photo**. The camera opens inside the app. The first time, your phone asks to allow the camera: tap **Allow**.
