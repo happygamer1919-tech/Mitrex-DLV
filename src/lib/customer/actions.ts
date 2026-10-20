@@ -4,9 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCustomer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import type { Location } from "@/lib/types";
+import type { Load, Location } from "@/lib/types";
 import { buildTruckRows, exceedsRecentCap, insertTruckLoads, MAX_LOADS_PER_WINDOW, RECENT_WINDOW_MINUTES, validateQuantity } from "./bulk";
 import { notifyStaffOfRequest } from "./notify";
+import { canReturn, parseReturnParam, returnLocationError, validateReturnQuantity } from "./returnLoad";
 import { toLoadRow, validateLoad, type ActionResult, type LoadFormValues } from "./validate";
 
 type Sb = Awaited<ReturnType<typeof createClient>>;
@@ -33,6 +34,22 @@ async function checkLocations(sb: Sb, v: LoadFormValues):
   }
   if (!delivery.can_receive || !delivery.is_active) {
     return { error: { fieldErrors: { delivery_location_id: "This location cannot receive." } } };
+  }
+  return { pickup, delivery, moffett: v.moffett || pickup.requires_moffett || delivery.requires_moffett };
+}
+
+type Original = Pick<Load, "id" | "pickup_location_id" | "delivery_location_id" | "status">;
+
+// R43: the location rule of a return load (the database applies the same one in dlv_check_load_locations).
+async function checkReturnLocations(sb: Sb, v: LoadFormValues, original: Original):
+  Promise<{ pickup: Location; delivery: Location; moffett: boolean } | { error: ActionResult }> {
+  const { data } = await sb.from("locations").select("*").in("id", [v.pickup_location_id, v.delivery_location_id]);
+  const rows = (data ?? []) as Location[];
+  const pickup = rows.find((r) => r.id === v.pickup_location_id);
+  const delivery = rows.find((r) => r.id === v.delivery_location_id);
+  const bad = returnLocationError(v, original, pickup, delivery);
+  if (bad || !pickup || !delivery) {
+    return { error: { fieldErrors: { [bad?.field ?? "pickup_location_id"]: bad?.message ?? "This pickup location is not available." } } };
   }
   return { pickup, delivery, moffett: v.moffett || pickup.requires_moffett || delivery.requires_moffett };
 }
@@ -97,12 +114,73 @@ export async function createLoad(values: LoadFormValues, quantity: unknown = 1):
   redirect(`/loads?booked=${loads.map((l) => l.id).join(",")}`);
 }
 
+// R43: a return of one of the customer's own loads that is at delivery or delivered. Everything is checked again here
+// (the form is untrusted): the original, its status, the fixed pickup, the delivery rule and exactly ONE truck. The
+// database checks the same rules again on insert (0019).
+export async function createReturnLoad(originalId: unknown, values: LoadFormValues, quantity: unknown = 1): Promise<ActionResult> {
+  const profile = await requireCustomer();
+  const id = parseReturnParam(originalId);
+  if (!id || !profile.customer_id) return { error: NOT_RETURNABLE };
+  const fieldErrors = validateLoad(values);
+  if (Object.keys(fieldErrors).length > 0) return { fieldErrors };
+  const q = validateReturnQuantity(quantity);
+  if ("error" in q) return { fieldErrors: { quantity: q.error } };
+  const sb = await createClient();
+  const { data: orig } = await sb.from("loads").select("id,pickup_location_id,delivery_location_id,status")
+    .eq("id", id).eq("customer_id", profile.customer_id).maybeSingle();
+  const original = orig as Original | null;
+  if (!original || !canReturn(original.status)) return { error: NOT_RETURNABLE };
+  const loc = await checkReturnLocations(sb, values, original);
+  if ("error" in loc) return loc.error;
+
+  const since = new Date(Date.now() - RECENT_WINDOW_MINUTES * 60_000).toISOString();
+  const { count, error: countErr } = await sb
+    .from("loads").select("id", { count: "exact", head: true })
+    .eq("created_by", profile.id).gte("created_at", since);
+  if (countErr) return { error: GENERIC };
+  if (exceedsRecentCap(count ?? 0, 1, recentCap())) {
+    return { error: `That is a lot of loads in a short time (limit ${recentCap()} in ${RECENT_WINDOW_MINUTES} minutes). Wait a few minutes, or contact DLV.` };
+  }
+
+  const rows = buildTruckRows(values, loc.moffett, 1, profile.customer_id, profile.id)
+    .map((r) => ({ ...r, return_of_load_id: original.id }));
+  const made = await insertTruckLoads(sb, rows);
+  if ("error" in made) return { error: made.error || GENERIC };
+  const load = made.loads[0];
+
+  await saveDefaults(sb, values);
+  const { data: cust } = await sb.from("customers").select("name").eq("id", profile.customer_id).maybeSingle();
+  await notifyStaffOfRequest({
+    loads: [{ id: load.id, loadNumber: load.load_number }],
+    pickupName: loc.pickup.name,
+    deliveryName: loc.delivery.name,
+    moffett: loc.moffett,
+    values,
+    customerName: (cust as { name: string } | null)?.name ?? null,
+    returnOfLoadId: original.id,
+  });
+  revalidatePath("/loads");
+  revalidatePath(`/loads/${original.id}`);
+  revalidatePath("/locations");
+  redirect(`/loads/${load.id}`);
+}
+
+const NOT_RETURNABLE = "This load cannot be returned. Open it again from your loads.";
+
 export async function updateLoad(loadId: string, values: LoadFormValues): Promise<ActionResult> {
   await requireCustomer();
   const fieldErrors = validateLoad(values);
   if (Object.keys(fieldErrors).length > 0) return { fieldErrors };
   const sb = await createClient();
-  const loc = await checkLocations(sb, values);
+  // R43: a return load keeps its own location rule on an edit (pickup fixed, the original shipper allowed).
+  const { data: cur } = await sb.from("loads").select("return_of_load_id").eq("id", loadId).maybeSingle();
+  const returnOf = (cur as { return_of_load_id: string | null } | null)?.return_of_load_id ?? null;
+  let original: Original | null = null;
+  if (returnOf) {
+    const { data: o } = await sb.from("loads").select("id,pickup_location_id,delivery_location_id,status").eq("id", returnOf).maybeSingle();
+    original = o as Original | null;
+  }
+  const loc = original ? await checkReturnLocations(sb, values, original) : await checkLocations(sb, values);
   if ("error" in loc) return loc.error;
 
   const { data, error } = await sb

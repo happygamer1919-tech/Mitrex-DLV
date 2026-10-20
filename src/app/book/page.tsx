@@ -7,14 +7,17 @@ import {
   buildLastContacts, HISTORY_COLUMNS, HISTORY_LIMIT, parseFromParam, requestAgainValues, type HistoryRow,
 } from "@/lib/customer/requestAgain";
 import { EMPTY_LOAD_FORM, type LoadFormValues } from "@/lib/customer/validate";
+import { RETURNABLE, parseReturnParam, returnValues, type ReturnContext } from "@/lib/customer/returnLoad";
 import { todayEastern } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import type { Load, Location } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function BookPage({ searchParams }: { searchParams: Promise<{ from?: string | string[] }> }) {
-  const { from } = await searchParams;
+export default async function BookPage({ searchParams }: { searchParams: Promise<{ from?: string | string[]; return?: string | string[] }> }) {
+  const sp = await searchParams;
+  const { from } = sp;
+  const hasReturn = Object.prototype.hasOwnProperty.call(sp, "return");
   const profile = await requireCustomer();
   const supabase = await createClient();
   const { data } = await supabase.from("locations").select("*").eq("is_active", true).order("name");
@@ -28,7 +31,33 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   // Request again: ?from=<load id> is untrusted. Anything but the customer's own delivered load opens an empty form.
   let initial: LoadFormValues = EMPTY_LOAD_FORM;
   let copiedFrom: string | null = null;
-  const fromId = parseFromParam(from);
+  // Return (R43): ?return=<load id> is untrusted too, and wins over ?from= whenever it is present. Only the customer's own
+  // load at delivery or delivered, with the reload site still active, opens the return form; anything else opens the
+  // empty form and says nothing.
+  let returnOf: ReturnContext | null = null;
+  const returnId = hasReturn ? parseReturnParam(sp.return) : null;
+  if (returnId && profile.customer_id) {
+    const { data: src } = await supabase.from("loads").select("*")
+      .eq("id", returnId).eq("customer_id", profile.customer_id).in("status", [...RETURNABLE]).maybeSingle();
+    const l = src as unknown as Load | null;
+    const site = l ? locations.find((x) => x.id === l.delivery_location_id) : undefined;
+    if (l && site) {
+      const { data: prev } = await supabase.from("loads").select("load_number,its_load_number")
+        .eq("return_of_load_id", l.id).neq("status", "cancelled").order("created_at", { ascending: false }).limit(1);
+      const existing = ((prev ?? []) as { load_number: string; its_load_number: string | null }[])[0];
+      initial = returnValues(l);
+      returnOf = {
+        originalId: l.id,
+        originalLabel: customerLabel(l),
+        siteName: site.name,
+        siteCity: site.city,
+        originalPickupId: l.pickup_location_id,
+        originalPickupContact: { name: l.pickup_contact_name, phone: l.pickup_contact_phone },
+        existingReturn: existing ? customerLabel(existing) : null,
+      };
+    }
+  }
+  const fromId = hasReturn ? null : parseFromParam(from);
   if (fromId && profile.customer_id) {
     const { data: src } = await supabase.from("loads").select("*")
       .eq("id", fromId).eq("customer_id", profile.customer_id).eq("status", "delivered").maybeSingle();
@@ -43,11 +72,11 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
 
   return (
     <Shell profile={profile}>
-      <PageTitle>Book a load</PageTitle>
+      <PageTitle>{returnOf ? "Book a return" : "Book a load"}</PageTitle>
       <LoadForm
-        key={copiedFrom ? fromId : "new"}
+        key={returnOf ? `return-${returnOf.originalId}` : copiedFrom ? fromId : "new"}
         mode="create" locations={locations} initial={initial} today={todayEastern()}
-        lastContacts={lastContacts} copiedFrom={copiedFrom}
+        lastContacts={lastContacts} copiedFrom={copiedFrom} returnOf={returnOf}
       />
     </Shell>
   );
