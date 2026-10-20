@@ -446,7 +446,7 @@ test("staff_csr has the same rights: edits a delivered load with a past date; de
   await ctx.close();
 });
 
-test("a customer and a carrier cannot reach the edit or return route, signed out goes to login, and the staff actions refuse them", async ({ browser }) => {
+test("a customer and a carrier cannot reach the edit or return route, signed out goes to login, and the staff actions (edit, return, resend) refuse them", async ({ browser }) => {
   const l = await seed({ po: uniq("SE-DENY"), status: "delivered" });
   // The action ids, read from real staff submits (one edit is saved here).
   const staff = await as(browser, "admin", VIEWPORT);
@@ -470,7 +470,22 @@ test("a customer and a carrier cannot reach the edit or return route, signed out
   expect(retId(), "the return form sent a server action request").not.toBeNull();
   const made = ((await db().from("loads").select("id").eq("return_of_load_id", l.id)).data ?? []).map((x) => x.id as string);
   parked.push(...made);
+  // The resend button posts a form (multipart): keep the real request, headers and body, to replay it as others.
+  let resendReq: { headers: Record<string, string>; body: Buffer } | null = null;
+  staff.page.on("request", (r) => {
+    const h = r.headers();
+    if (r.method() === "POST" && h["next-action"] && r.url().includes(`/admin/loads/${l.id}`) && !r.url().includes("/edit") && !r.url().includes("/return")) {
+      resendReq = { headers: { "Next-Action": h["next-action"], "Content-Type": h["content-type"], Accept: "text/x-component", Origin: BASE_URL }, body: r.postDataBuffer()! };
+    }
+  });
+  await gotoSteady(staff.page, `/admin/loads/${l.id}`);
+  await staff.page.getByTestId("resend-carrier").getByRole("button", { name: "Email the details to the carrier again" }).click();
+  await expect(staff.page.getByTestId("resend-carrier")).toContainText("Details emailed to");
+  expect(resendReq, "the resend button sent a server action request").not.toBeNull();
   await staff.ctx.close();
+  const detailsMails = async () => (await sentEmails()).filter((m) => m.subject === `Load ${l.its} details`).length;
+  const mailsAtStart = await detailsMails();
+  expect(mailsAtStart, "control: the staff resend sent one email").toBe(1);
 
   const snapshot = async () => ({ load: await row(l.id), events: (await edits(l.id)).length, returns: ((await db().from("loads").select("id").eq("return_of_load_id", l.id)).data ?? []).length });
   const start = await snapshot();
@@ -488,11 +503,15 @@ test("a customer and a carrier cannot reach the edit or return route, signed out
     expect(e.redirect, `${who}: the edit action redirects home before anything is read`).toMatch(new RegExp(`^${home}(;|$)`));
     const r = await forge(ctx, `/admin/loads/${l.id}/return`, retId()!, [l.id, forgedValues]);
     expect(r.redirect, `${who}: the return action redirects home`).toMatch(new RegExp(`^${home}(;|$)`));
+    const rr = resendReq as unknown as { headers: Record<string, string>; body: Buffer };
+    const res = await ctx.request.post(`/admin/loads/${l.id}`, { headers: rr.headers, data: rr.body, maxRedirects: 0 });
+    expect(res.headers()["x-action-redirect"] ?? "", `${who}: the resend action redirects home`).toMatch(new RegExp(`^${home}(;|$)`));
     await ctx.close();
   }
   const end = await snapshot();
   expect(end.load.po_number).toBe(start.load.po_number);
   expect([end.events, end.returns]).toEqual([start.events, start.returns]);
+  expect(await detailsMails(), "no carrier email was sent by a customer or a carrier").toBe(mailsAtStart);
 
   const out = await anon(browser);
   await out.page.goto(`/admin/loads/${l.id}/edit`);
