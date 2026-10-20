@@ -19,6 +19,7 @@ export type BoardLoad = {
   delivery_location_id: string;
   eta: string | null;
   carrier_id: string | null;
+  return_of_load_id?: string | null; // R43: a return load (0019)
   pickup: LocLite | null;
   delivery: LocLite | null;
   carrier: { name: string } | null;
@@ -26,10 +27,12 @@ export type BoardLoad = {
 };
 
 export const BOARD_SELECT =
-  "id,load_number,po_number,created_at,its_load_number,status,pickup_date,pickup_timing,pickup_time_start,pickup_time_end,equipment_size,pickup_location_id,delivery_location_id,eta,carrier_id," +
+  "id,load_number,po_number,created_at,its_load_number,status,pickup_date,pickup_timing,pickup_time_start,pickup_time_end,equipment_size,pickup_location_id,delivery_location_id,eta,carrier_id,return_of_load_id," +
   "pickup:locations!pickup_location_id(name,city,province)," +
   "delivery:locations!delivery_location_id(name,city,province)," +
   "carrier:carriers(name),load_documents(kind)";
+
+export const isReturn = (l: { return_of_load_id?: string | null }): boolean => Boolean(l.return_of_load_id);
 
 export function routeOf(l: Pick<BoardLoad, "pickup" | "delivery">): string {
   return `${l.pickup?.name ?? "Unknown"} to ${l.delivery?.name ?? "Unknown"}`;
