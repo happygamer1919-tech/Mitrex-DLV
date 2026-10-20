@@ -74,4 +74,4 @@ Maria adds new locations and changes every detail of a location herself (name, a
 - On **Locations** (top menu) each location shows "Added by <name>, <date> ET" (for locations added since this change) and "Last edited by <name>, <date> ET".
 - Her new locations are always active and never flagged for review. Only staff can switch a location off, flag it for review or delete it.
 - A changed address shows on every load that uses the location, also on booked loads. If she changes a place used by a load on the road, check the carrier has the right address.
-- **Requests** (top menu) still lists location requests she sent before this change; approve or reject them as before.
+- **Requests** (top menu) still lists location requests she sent before this change; approve or reject them as before. Before you approve an old address change, open the location: if Maria already changed it herself, approving would put the older values from the request back, so reject the request instead.

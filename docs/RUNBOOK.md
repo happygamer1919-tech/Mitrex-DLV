@@ -72,7 +72,7 @@ Deleting one truck of a multi-truck booking only deletes that truck; the others 
 1. Open **Requests**. Pending ones are at the top.
 2. Read the details. For a change, the existing location is named.
 3. Tap **Approve**, or **Reject** then **Yes, reject**.
-4. The customer sees the result under "My location requests".
+4. Since DLV-041 Maria adds and edits locations herself, so only requests she sent before that change remain. While pending she sees them under "Requests waiting for DLV"; once answered they leave her page. Before approving a change request, check the location: if Maria already changed it herself, approving puts the older request values back, so reject the request instead.
 
 ## Restore a paused Supabase project
 1. Open the Supabase dashboard and select the project.
