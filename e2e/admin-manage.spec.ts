@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { adminClient, anon, as, insertLoad, uniq } from "./support/helpers";
+import { adminClient, anon, as, insertLoad, uniq, openFold } from "./support/helpers";
 import { loginViaUi } from "./support/login";
 
 // R26 staff managers (locations, carriers, users), R4 roles (a CSR is not an admin), R36 deactivation.
@@ -200,6 +200,9 @@ test("deactivating a user ends their access at once; reactivating restores it", 
   await expect.poll(async () => (await db().from("profiles").select("is_active").eq("id", id).single()).data?.is_active).toBe(false);
   // The action writes the profile first and the auth ban right after it: poll the ban too, never read it once.
   await expect.poll(async () => (await db().auth.admin.getUserById(id)).data.user?.banned_until ?? null).toBeTruthy();
+  // R46: a deactivated user moves to the collapsed "Deactivated users" list; open it.
+  await expect(admin.page.getByTestId("users-inactive").getByText(email)).toHaveCount(1);
+  await openFold(admin.page, "users-inactive");
   await expect(row().getByText("Inactive", { exact: true })).toBeVisible();
 
   // The existing session no longer opens a protected page: the user is sent to /login (never the loads page).

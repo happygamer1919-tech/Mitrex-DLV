@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { adminClient, as, gotoSteady, isoDate, uniq, uniqIts } from "./support/helpers";
+import { adminClient, as, gotoSteady, isoDate, uniq, uniqIts, openFold } from "./support/helpers";
 import { makeLocation, retireLocations, type TestLocation } from "./support/book";
 import { sentEmails } from "./support/mail-mock";
 import { CARRIER_A } from "./support/users";
@@ -185,6 +185,9 @@ test("the Return button shows only on at delivery and delivered loads, on the li
   const { ctx, page } = await as(browser, "maria", VIEWPORT);
   await gotoSteady(page, "/loads");
   await expect(page.locator("h1")).toHaveText(/My loads/);
+  // R46: the Delivered and Cancelled groups start collapsed
+  await openFold(page, "group-toggle-delivered");
+  await openFold(page, "group-toggle-cancelled");
   for (const [st, l] of Object.entries(s) as [Status, Seeded][]) {
     const row = page.getByRole("listitem").filter({ hasText: l.its ?? l.requestRef });
     await expect(row, `${st} row`).toHaveCount(1);

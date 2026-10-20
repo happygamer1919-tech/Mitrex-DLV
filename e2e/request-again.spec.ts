@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { adminClient, as, gotoSteady, isoDate, uniq } from "./support/helpers";
+import { adminClient, as, gotoSteady, isoDate, uniq, openFold } from "./support/helpers";
 import { makeLocation, retireLocations, type TestLocation } from "./support/book";
 import { stripTruckLine, buildLastContacts, parseFromParam, requestAgainValues } from "../src/lib/customer/requestAgain";
 
@@ -194,6 +194,9 @@ test("the Completed filter lists delivered loads only, newest first with the del
   });
   // The unfiltered list shows Request again on delivered rows only.
   await gotoSteady(page, "/loads");
+  // R46: Delivered and Cancelled start collapsed; open them so their rows are on screen.
+  await openFold(page, "group-toggle-delivered");
+  await openFold(page, "group-toggle-cancelled");
   await expect(item(booked.loadNumber)).toHaveCount(1);
   await expect(item(booked.loadNumber).getByRole("link", { name: "Request again" })).toHaveCount(0);
   await expect(item(cancelled.loadNumber).getByRole("link", { name: "Request again" })).toHaveCount(0);

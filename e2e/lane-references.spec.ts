@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { spawnSync } from "node:child_process";
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { adminClient, anon, as, gotoSteady, insertLoad, isoDate, parseCsv, readDownload, staffBook, uniq, uniqIts } from "./support/helpers";
+import { adminClient, anon, as, gotoSteady, insertLoad, isoDate, parseCsv, readDownload, staffBook, uniq, uniqIts, openBand } from "./support/helpers";
 import { fillBooking, makeLocation, retireLocations, type TestLocation } from "./support/book";
 import { BASE_URL, DB_URL, localEnv } from "./support/env";
 import { assertLocalUrl } from "./support/guard";
@@ -192,6 +192,9 @@ test("the board shows a small Copy ITS line for Requested loads only (a booked l
   const b = await requested(mitrex, u481, 26, "booked");
   const s = await admin(browser, "/admin");
   const page = s.page;
+  // R46: an open band shows 12 cards, then "Show all".
+  await openBand(page, "requested");
+  await openBand(page, "booked");
   const card = (id: string) => page.locator(`a[href="/admin/loads/${id}"]`);
   await expect(card(r.id)).toBeVisible();
   await expect(card(r.id).getByTestId("board-copy-its")).toHaveText("Copy ITS 1269");
@@ -822,6 +825,7 @@ test("mobile 375px: /admin/lanes (list, add form, import preview) and the load c
     const box = await page.getByRole("button", { name }).boundingBox();
     expect(box!.height, name).toBeGreaterThanOrEqual(44);
   }
+  await page.locator('section[aria-label="Pickup Mitrex"] summary').click(); // R46: lane groups start collapsed
   const edit = await laneRow(page, "Mitrex", "1HAM", 26).getByRole("button", { name: "Edit" }).boundingBox();
   expect(edit!.height).toBeGreaterThanOrEqual(44);
   await page.goto(`/admin/loads/${l.id}`);

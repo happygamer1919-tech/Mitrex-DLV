@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminClient, as, forceStatus, insertLoad, loadRow, uniq } from "./support/helpers";
+import { adminClient, as, forceStatus, insertLoad, loadRow, uniq, openMoreActions } from "./support/helpers";
 
 test("customer edits a requested load; the same edit is refused after staff books it", async ({ browser }) => {
   const { id } = await insertLoad({ po: uniq("EDIT-OLD"), status: "requested", notes: "old notes" });
@@ -91,6 +91,7 @@ test("staff can cancel a booked load, with a confirm step", async ({ browser }) 
   const { id, loadNumber } = await insertLoad({ po: uniq("STAFFCXL"), status: "booked" });
   const { ctx, page } = await as(browser, "admin");
   await page.goto(`/admin/loads/${id}`);
+  await openMoreActions(page); // R46: Cancel load sits under More actions
   await page.getByRole("button", { name: "Cancel load", exact: true }).click();
   await expect(page.getByText(`Cancel ${loadNumber}? The customer and carrier will see it as cancelled.`)).toBeVisible();
   // Nothing happened yet: the confirm step is a real gate.
