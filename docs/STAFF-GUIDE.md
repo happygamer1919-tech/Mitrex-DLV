@@ -37,6 +37,13 @@ Requested loads show a small line "Copy ITS 1269" so you can see the number with
 - View "One list" shows every match in one list (a table on a computer, cards on a phone). "By status" keeps the status bands.
 - Each active filter shows as a chip. Tap a chip to remove it, or Clear all. While a filter is on, the counts read like "3 of 9".
 
+## Return loads (the truck takes the empty frames back)
+- Maria books a return from a load that is At delivery or Delivered. You get an email "New return load requested (Request MTX-0007)" whose first lines say "A new return load was requested by Mitrex." and "Return of 313, original carrier: Kaja Transport" (or "Not assigned"). Everything else in the email is as usual, including the ITS load to copy line.
+- On the board (both views) and on the calendar a return load has a small purple **Return** badge next to its number.
+- The return load page shows the **Return** badge and "Return of 313" with a link to the first load. The first load lists it under "Return loads".
+- While a return has no carrier, **Carrier and booking** shows "Original carrier: <name>" and a **Use the same carrier** button. It saves that carrier exactly like **Save carrier** (same emails: nothing is sent while the load is Requested; the carrier is emailed when you book). Then enter the ITS number and **Mark booked** as usual.
+- A return picks up at a site that may not be a normal shipper and may go back to a shipper that is not a normal receiver. That is allowed for returns only.
+
 ## When there is no reference for a lane
 The load page shows an amber box "No ITS reference for this lane and size". Use the old way for this one (look the lane up in ITS yourself), then tap **Add it** in the box. The Lanes page opens with the pickup, delivery and size filled in. Type the ITS load you used and tap **Add lane**. The next request for the same lane and size shows it. The same row serves every load of that lane and size, so one entry is enough.
 

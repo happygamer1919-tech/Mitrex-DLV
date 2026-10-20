@@ -1,4 +1,4 @@
-# Owner acceptance checklist (M1 to M7)
+# Owner acceptance checklist (M1 to M14)
 
 Run these on the live portal, https://portal.dlvlogistics.com. Each step says what you do and what you must see. Tick a box only when you saw the expected result. If something differs, write what you saw next to it and tell dispatch/engineering.
 
@@ -124,5 +124,16 @@ Automation cannot verify a real camera, the permission prompt or the installed a
 - [ ] On a phone (375 px wide) nothing scrolls sideways and every button is easy to tap.
 - [ ] Clear all returns the full board.
 
+## M14. Return loads (Maria on a phone, staff on a computer). Needs migration 0019 applied.
+- [ ] Staff: move a TEST load (PO starting `TEST-`) to **At delivery** with an override. Maria: open it. A **Return** button shows. On a Requested or Booked TEST load there is no Return button.
+- [ ] Maria: tap **Return**. The page says "Book a return" and "Return of <number>. The truck reloads at <site>." The pickup is the site and cannot be changed; its contact is the delivery contact of the first load.
+- [ ] **Delivery location** shows the first load's shipper with "(original shipper)" and the first load's pickup contact. Choose **QuickScrap Metal**: its contact fills in. Choose the original shipper again: the first contact comes back.
+- [ ] Size, Moffett, weight, pieces, PO and notes match the first load; dates are empty; there is no "How many trucks?". Choose dates, tap **Request return**.
+- [ ] The new load says "Return of <number>" and the link opens the first load, which lists it under "Return loads" with its status.
+- [ ] Staff email: subject "New return load requested (Request MTX-...)", the line "Return of <number>, original carrier: <name>".
+- [ ] Staff: the board and the calendar show a **Return** badge on it. Open it: "Original carrier: <name>" and **Use the same carrier**. Tap it: the carrier is saved and the select shows it.
+- [ ] Open the Return button on the same first load again: the note "A return was already requested for this load" shows. Cancel the TEST return afterwards.
+- [ ] Phone (375 px): nothing scrolls sideways, the Return button is easy to tap.
+
 ## After testing
-- [ ] Tell engineering the results (M1 to M13: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
+- [ ] Tell engineering the results (M1 to M14: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).

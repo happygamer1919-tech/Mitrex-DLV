@@ -98,3 +98,13 @@ Open question: should the PO number be left empty on a repeat (a new shipment us
 9. A broken camera. If a driver's camera does not work at all, the fallback opens the phone camera app; if that fails too, dispatch uses the staff upload on behalf of the carrier or the status override (recorded in the timeline).
 10. Photo retention. Photos are kept for the life of the load and deleted with it (Delete forever). There is no automatic cleanup.
 11. Real devices. The camera, the permission prompt and the installed PWA were tested only with Chromium's fake video device (WebKit has no fake camera). The manual gate M12 asks for a real iPhone and a real Android phone before the drivers rely on it.
+
+## DLV-038 Return loads (defaults used, owner may change)
+1. When is Return offered? Default used: only when the load is At delivery or Delivered (the truck is at the site or has unloaded). Staff may still make a return of any load later (DLV-039).
+2. How many trucks per return? Default used: ONE. The form has no trucks stepper and the server refuses any other number. Book a second return for a second truck.
+3. What is copied? Default used: truck size, Moffett, weight, pieces, PO number and notes (without the "Truck i of N" line). Dates and times are always empty. Say so if the weight or the PO should start empty for a return of empty frames.
+4. A return picks up at a site that is not a shipper (can_ship off). Default used: allowed for returns only, as long as the site is active. Ordinary loads still need a shipper.
+5. Email subject for staff. Default used: "New return load requested (Request MTX-0007)" with the line "Return of <number>, original carrier: <name or Not assigned>".
+6. Should the CSV export get a return_of column? Default used: NO, the CSV columns are unchanged in this card. Adding one is a small change in the export.
+7. Several returns for one load. Default used: allowed. A second Return shows "A return was already requested for this load: <number>." but does not block.
+8. Should Maria see the original carrier's name on the return form? Default used: no, only staff see it (email and the staff load page).
