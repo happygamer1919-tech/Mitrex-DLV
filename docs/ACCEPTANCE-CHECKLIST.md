@@ -146,5 +146,15 @@ Automation cannot verify a real camera, the permission prompt or the installed a
 - [ ] Open **Lanes**, tap **Edit** on a row, change the delivery or the size, tap **Save**: the row moves to its new place. Edit it to a pickup, delivery and size that another row already has: the page says it already exists and nothing changes. (Put it back afterwards.)
 - [ ] Sign in as Maria and open `/admin/loads/<id>/edit` of her load: "not found". Phone (375 px): the edit form and the return form do not scroll sideways.
 
+## M16. Maria adds and edits locations herself (Maria on a phone, staff on a computer). Needs migration 0021 applied.
+- [ ] Sign in as Maria and open **Locations**. There is an **Add location** link at the top and an **Add location** form at the bottom; there is no "Request new location" or "Request address change" form any more.
+- [ ] Add a TEST location: name starting `TEST-`, a street, a city, ON, tick only **Can receive (delivery)** and **Needs a Moffett**, a contact name and phone. Tap **Add location**: the page says "<name> was added. You can book with it now." and the location is in the list.
+- [ ] Add it again with the same name: the form says "A location with this name already exists." and nothing is added.
+- [ ] Open **Book a load**: the TEST location is in the delivery list, not in the pickup list. Choose it as the delivery: the Moffett box is ticked and locked, and its contact fills in. (Do not submit.)
+- [ ] Back on **Locations**, tap **Edit** on the TEST location. Change the address, tick **Can ship (pickup)**, untick **Needs a Moffett**, change the notes, tap **Save changes**: "Saved." and the new details show. In **Book a load** it is now also a pickup and the Moffett box is no longer locked.
+- [ ] The location card offers no Deactivate, Delete or Needs review control to Maria.
+- [ ] As staff open **Locations**, search for the TEST location: it shows "Added by <Maria>, <date> ET" and "Last edited by <Maria>, <date> ET", and no Needs review badge. Deactivate it afterwards (it then leaves Maria's lists).
+- [ ] Phone (375 px): the Locations page with the edit form open does not scroll sideways.
+
 ## After testing
-- [ ] Tell engineering the results (M1 to M15: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).
+- [ ] Tell engineering the results (M1 to M16: pass or what you saw). Test loads stay in the system with the `TEST-` PO number. Staff can cancel any not-delivered one; ask engineering if you want them removed from the database (that needs your explicit approval).

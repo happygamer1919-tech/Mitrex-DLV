@@ -83,13 +83,27 @@ The driver takes two photos with the app's own camera: the freight loaded on the
 - Before that the card tells you when the photos will appear. The page updates by itself.
 - You only see the photos of your own loads. You cannot add or remove photos; ask DLV if one is missing.
 
-## Locations
-On the **Locations** page you can:
-- Save the default contact for a location (**Save contact**).
-- **Request new location**: fill in the name, address and whether it ships, receives or needs a Moffett. Tap **Send request**.
-- **Request address change**: pick the location, fill only what changes, tap **Send request**.
+## Add or change a location
+You are in charge of your locations. You do not need to ask DLV: every change is saved at once.
 
-Under "My location requests" each request shows pending, approved or rejected. DLV reviews them.
+Add a new location:
+1. Open **Locations** in the top menu and tap **Add location** (at the top of the page, or scroll to the form at the bottom).
+2. Fill in the location name, the street address, the city and the province (two letters, for example ON). The postal code is optional.
+3. Tick what happens there: **Can ship (pickup)**, **Can receive (delivery)** or both. Tick **Needs a Moffett** if a Moffett is needed to load or unload there.
+4. Optional: a default contact name and phone (they fill in by themselves when you book), and notes (up to 1000 characters).
+5. Tap **Add location**. The page says "<name> was added. You can book with it now." It is in the booking form straight away.
+
+Change a location:
+1. On **Locations**, tap **Edit** on the location.
+2. Change any field: name, address, city, province, postal code, can ship, can receive, Moffett, default contact, notes.
+3. Tap **Save changes**. The page says "Saved." Tap **Cancel** to leave without saving.
+
+Good to know:
+- The booking form follows your changes at once. A place that no longer ships is not offered as a pickup; a place that needs a Moffett ticks and locks the Moffett box.
+- A changed address also shows on loads that already use that location. If a load is already on its way, call DLV as well.
+- Each location needs a name that no other location has. If the name is taken the form says "A location with this name already exists."
+- Only DLV can switch a location off or remove it. Ask DLV if a place is no longer used.
+- Requests you sent before this change are listed under "Requests waiting for DLV" until DLV answers them.
 
 ## Rates: ask for a price on a new lane
 Use this when you need a price for a lane that DLV does not have yet. It does not book a load.

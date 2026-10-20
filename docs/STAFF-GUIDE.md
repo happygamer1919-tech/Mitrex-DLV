@@ -68,3 +68,10 @@ This is separate from booking. A rate request is not a load and creates no load.
 4. The page says "Rate saved. The customer was emailed that the rate is in the app." Maria gets an email that says the rate is ready; the email never shows the price. She sees the amount on her **Rates** page. If the page says the email could not be sent, tell Maria by phone that the rate is in the app.
 5. Entered the wrong amount? Open the request again: **Current rate** is shown and the form is filled in. Change it and tap **Correct the rate**. Maria gets a short email "Your rate was updated in the app" (still no price).
 6. If Maria cancelled the request the page says so and the form is gone.
+
+## Locations Maria adds or changes herself
+Maria adds new locations and changes every detail of a location herself (name, address, ship, receive, Moffett, default contact, notes). There is no request to approve and no email: her change is live at once, also in the booking form.
+- On **Locations** (top menu) each location shows "Added by <name>, <date> ET" (for locations added since this change) and "Last edited by <name>, <date> ET".
+- Her new locations are always active and never flagged for review. Only staff can switch a location off, flag it for review or delete it.
+- A changed address shows on every load that uses the location, also on booked loads. If she changes a place used by a load on the road, check the carrier has the right address.
+- **Requests** (top menu) still lists location requests she sent before this change; approve or reject them as before.
