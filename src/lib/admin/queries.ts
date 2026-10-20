@@ -20,6 +20,14 @@ export type BoardLoad = {
   eta: string | null;
   carrier_id: string | null;
   return_of_load_id?: string | null; // R43: a return load (0019)
+  delivered_at?: string | null;
+  // R46: shown when a compact board card is expanded
+  moffett?: boolean;
+  notes?: string | null;
+  pickup_contact_name?: string;
+  pickup_contact_phone?: string;
+  delivery_contact_name?: string;
+  delivery_contact_phone?: string;
   pickup: LocLite | null;
   delivery: LocLite | null;
   carrier: { name: string } | null;
@@ -28,6 +36,7 @@ export type BoardLoad = {
 
 export const BOARD_SELECT =
   "id,load_number,po_number,created_at,its_load_number,status,pickup_date,pickup_timing,pickup_time_start,pickup_time_end,equipment_size,pickup_location_id,delivery_location_id,eta,carrier_id,return_of_load_id," +
+  "delivered_at,moffett,notes,pickup_contact_name,pickup_contact_phone,delivery_contact_name,delivery_contact_phone," +
   "pickup:locations!pickup_location_id(name,city,province)," +
   "delivery:locations!delivery_location_id(name,city,province)," +
   "carrier:carriers(name),load_documents(kind)";
@@ -44,11 +53,7 @@ export function pickupTimeLabel(l: Pick<BoardLoad, "pickup_timing" | "pickup_tim
     : `${fmtTime(l.pickup_time_start)} ET`;
 }
 
-const BOL_EXPECTED: LoadStatus[] = ["booked", "at_pickup", "loading", "enroute", "at_delivery"];
-
-export function bolPending(l: Pick<BoardLoad, "status" | "load_documents">): boolean {
-  return BOL_EXPECTED.includes(l.status) && !l.load_documents.some((d) => d.kind === "bol");
-}
+export { bolPending } from "@/lib/load-filters";
 
 export function podPending(l: Pick<BoardLoad, "status" | "load_documents">): boolean {
   return l.status === "delivered" && !l.load_documents.some((d) => d.kind === "pod");

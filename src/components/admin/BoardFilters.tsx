@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { STATUS_LABEL } from "@/lib/types";
 import {
-  SIZES, SORT_KEYS, STATUSES, toQuery, type BoardFilters as F, type SortKey,
-} from "@/lib/admin/board-filters";
+  SIZES, STATUSES, cleared, sortKeysFor, toQuery, type LoadFilters as F, type Scope, type SortKey,
+} from "@/lib/load-filters";
 
 type Opt = { id: string; name: string };
 
 export const SORT_LABEL: Record<SortKey, string> = {
   pickup_time: "Pickup time", shipper: "Shipper", receiver: "Receiver", carrier: "Carrier",
-  its_number: "ITS number", size: "Size", created: "Created",
+  its_number: "ITS number", size: "Size", created: "Created", delivered: "Delivered",
 };
 
 const WHEN_LABEL = { today: "Today", tomorrow: "Tomorrow", week: "Next 7 days", custom: "Custom dates" } as const;
@@ -24,10 +24,19 @@ function Pill({ href, active, children, testid }: { href: string; active: boolea
   );
 }
 
-// Staff board controls. A plain GET form: the state lives in the URL, so it works without JavaScript,
-// can be bookmarked and survives the 15 second live refresh.
+// Staff board controls (R42).
 export function BoardFilters({ f, carriers, shippers, receivers }: { f: F; carriers: Opt[]; shippers: Opt[]; receivers: Opt[] }) {
-  const q = (patch: Partial<F>) => `/admin${toQuery({ ...f, ...patch })}`;
+  return <LoadFilterControls scope="staff" base="/admin" f={f} carriers={carriers} shippers={shippers} receivers={receivers} />;
+}
+
+// List controls shared by the staff board (R42) and Maria's /loads (R46, scope "customer": no carrier filter, no Needs
+// BOL or Needs ITS pills, no view choice, her own sort keys). A plain GET form: the state lives in the URL, so it works
+// without JavaScript, can be bookmarked and survives the 15 second live refresh.
+export function LoadFilterControls({ scope, base, f, carriers = [], shippers, receivers }: {
+  scope: Scope; base: string; f: F; carriers?: Opt[]; shippers: Opt[]; receivers: Opt[];
+}) {
+  const staff = scope === "staff";
+  const q = (patch: Partial<F>) => `${base}${toQuery({ ...f, ...patch })}`;
   const chips: { key: string; label: string; href: string }[] = [];
   const nameOf = (o: Opt[], id: string) => o.find((x) => x.id === id)?.name ?? "Unknown";
   if (f.q) chips.push({ key: "q", label: `Search: ${f.q}`, href: q({ q: "" }) });
@@ -46,18 +55,20 @@ export function BoardFilters({ f, carriers, shippers, receivers }: { f: F; carri
         <Pill testid="pill-today" active={f.when === "today"} href={q({ when: f.when === "today" ? "" : "today", from: "", to: "" })}>Today</Pill>
         <Pill testid="pill-tomorrow" active={f.when === "tomorrow"} href={q({ when: f.when === "tomorrow" ? "" : "tomorrow", from: "", to: "" })}>Tomorrow</Pill>
         <Pill testid="pill-week" active={f.when === "week"} href={q({ when: f.when === "week" ? "" : "week", from: "", to: "" })}>Next 7 days</Pill>
-        <Pill testid="pill-unassigned" active={f.carrier === "none"} href={q({ carrier: f.carrier === "none" ? "" : "none" })}>Not assigned</Pill>
-        <Pill testid="pill-bol" active={f.needsBol} href={q({ needsBol: !f.needsBol })}>Needs BOL</Pill>
-        <Pill testid="pill-its" active={f.needsIts} href={q({ needsIts: !f.needsIts })}>Needs ITS number</Pill>
+        {staff ? <>
+          <Pill testid="pill-unassigned" active={f.carrier === "none"} href={q({ carrier: f.carrier === "none" ? "" : "none" })}>Not assigned</Pill>
+          <Pill testid="pill-bol" active={f.needsBol} href={q({ needsBol: !f.needsBol })}>Needs BOL</Pill>
+          <Pill testid="pill-its" active={f.needsIts} href={q({ needsIts: !f.needsIts })}>Needs ITS number</Pill>
+        </> : null}
       </div>
       <details className="rounded-[16px] border border-line bg-card p-3">
         <summary className="flex min-h-[44px] cursor-pointer items-center gap-2 text-[15px] font-medium">
           Filters
           <span data-testid="filters-badge" className="rounded-full bg-mint px-2 py-0.5 text-[13px]">{chips.length}</span>
         </summary>
-        <form method="get" action="/admin" className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <form method="get" action={base} className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-[13px] text-muted sm:col-span-2">Search
-            <input name="q" defaultValue={f.q} maxLength={80} placeholder="ITS number, request, PO, place, carrier" className={field} />
+            <input name="q" defaultValue={f.q} maxLength={80} placeholder={staff ? "ITS number, request, PO, place, carrier" : "Load number, request, PO, place, carrier"} className={field} />
           </label>
           <label className="block text-[13px] text-muted">Status
             <select name="status" defaultValue={f.status} className={field}>
@@ -65,13 +76,15 @@ export function BoardFilters({ f, carriers, shippers, receivers }: { f: F; carri
               {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
             </select>
           </label>
-          <label className="block text-[13px] text-muted">Carrier
-            <select name="carrier" defaultValue={f.carrier} className={field}>
-              <option value="">All</option>
-              <option value="none">Not assigned</option>
-              {carriers.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-          </label>
+          {staff ? (
+            <label className="block text-[13px] text-muted">Carrier
+              <select name="carrier" defaultValue={f.carrier} className={field}>
+                <option value="">All</option>
+                <option value="none">Not assigned</option>
+                {carriers.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </label>
+          ) : null}
           <label className="block text-[13px] text-muted">Shipper (pickup)
             <select name="shipper" defaultValue={f.shipper} className={field}>
               <option value="">All</option>
@@ -104,7 +117,7 @@ export function BoardFilters({ f, carriers, shippers, receivers }: { f: F; carri
           </label>
           <label className="block text-[13px] text-muted">Sort by
             <select name="sort" defaultValue={f.sort} className={field}>
-              {SORT_KEYS.map((k) => <option key={k} value={k}>{SORT_LABEL[k]}</option>)}
+              {sortKeysFor(scope).map((k) => <option key={k} value={k}>{SORT_LABEL[k]}</option>)}
             </select>
           </label>
           <label className="block text-[13px] text-muted">Order
@@ -113,17 +126,19 @@ export function BoardFilters({ f, carriers, shippers, receivers }: { f: F; carri
               <option value="desc">Descending</option>
             </select>
           </label>
-          <label className="block text-[13px] text-muted">View
-            <select name="view" defaultValue={f.view} className={field}>
-              <option value="status">By status</option>
-              <option value="list">One list</option>
-            </select>
-          </label>
+          {staff ? (
+            <label className="block text-[13px] text-muted">View
+              <select name="view" defaultValue={f.view} className={field}>
+                <option value="status">By status</option>
+                <option value="list">One list</option>
+              </select>
+            </label>
+          ) : f.view === "completed" ? <input type="hidden" name="view" value="completed" /> : null}
           {f.needsBol ? <input type="hidden" name="bol" value="1" /> : null}
           {f.needsIts ? <input type="hidden" name="its" value="1" /> : null}
           <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
             <button type="submit" data-testid="filters-apply" className="min-h-[44px] rounded-full bg-ink px-5 text-[15px] font-medium text-white">Apply</button>
-            <Link href="/admin" data-testid="filters-clear" className="inline-flex min-h-[44px] items-center rounded-full border border-line bg-white px-5 text-[15px] font-medium">Clear all</Link>
+            <Link href={`${base}${toQuery(cleared(f))}`} data-testid="filters-clear" className="inline-flex min-h-[44px] items-center rounded-full border border-line bg-white px-5 text-[15px] font-medium">Clear all</Link>
           </div>
         </form>
       </details>
@@ -136,7 +151,7 @@ export function BoardFilters({ f, carriers, shippers, receivers }: { f: F; carri
               </Link>
             </li>
           ))}
-          <li><Link data-testid="chips-clear" href={`/admin${toQuery({ ...f, q: "", status: "", carrier: "", shipper: "", receiver: "", size: 0, when: "", from: "", to: "", needsBol: false, needsIts: false })}`} className="inline-flex min-h-[44px] items-center px-2 text-[14px] underline">Clear all</Link></li>
+          <li><Link data-testid="chips-clear" href={`${base}${toQuery(cleared(f))}`} className="inline-flex min-h-[44px] items-center px-2 text-[14px] underline">Clear all</Link></li>
         </ul>
       ) : null}
     </section>
