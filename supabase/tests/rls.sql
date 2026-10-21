@@ -2520,6 +2520,9 @@ begin
     and not has_table_privilege('authenticated', 'public.load_documents', 'delete')
     and not has_function_privilege('anon', 'public.delete_load_photo(uuid)', 'execute'));
 end $t$;
+-- 0018 restates dlv_can_access_doc; production runs every migration once, in order, so the later file that restates it
+-- again (0022, DLV-043) is applied right after to put the function back to the migrated state for every section below.
+\i supabase/migrations/0022_carrier_never_booked_cancel.sql
 
 -- 19. Return loads (0019, DLV-038) ------------------------------------------------------------------------------------------
 -- Seeded places: MTD (can_ship only, the original shipper that cannot receive), 1HAM (a site: can_receive only, requires
@@ -3242,6 +3245,164 @@ begin
     and (rlstest.loc('R21 Second Apply')).is_active and not (rlstest.loc('R21 Second Apply')).needs_review
     and (rlstest.loc('R21 Second Apply')).created_by = '00000000-0000-0000-0000-0000000000c1');
 end $t$;
+
+-- 22. A carrier never sees a load that was never booked to it (0022, DLV-043 CAR-01) ------------------------------------
+-- Staff may save a carrier on a request before booking it. If that request is then cancelled (by Maria or by staff)
+-- the status leaves 'requested' but the load was never booked: the carrier must see neither the load, its timeline,
+-- its documents nor the locations it uses, and Maria must not see that carrier. A booked then cancelled load stays.
+-- Carrier C (own owner and driver) is fresh, so no earlier section can make it visible through another load.
+\set C22 '20000000-0000-0000-0000-00000000022c'
+\set O22 '00000000-0000-0000-0000-0000000002b1'
+\set D22 '00000000-0000-0000-0000-0000000002b2'
+\set R22A '32200000-0000-0000-0000-0000000000a1'
+\set R22B '32200000-0000-0000-0000-0000000000b1'
+\set R22C '32200000-0000-0000-0000-0000000000c1'
+\set R22D '32200000-0000-0000-0000-0000000000d1'
+select rlstest.set_active('00000000-0000-0000-0000-0000000000a1', true);
+select rlstest.set_active('00000000-0000-0000-0000-0000000000c1', true);
+insert into public.carriers (id, name) values (:'C22', 'R22 Carrier C');
+insert into auth.users (id, aud, role, email) values
+  (:'O22', 'authenticated', 'authenticated', 'owner22@t.test'),
+  (:'D22', 'authenticated', 'authenticated', 'driver22@t.test');
+insert into public.profiles (id, email, role, customer_id, carrier_id) values
+  (:'O22', 'owner22@t.test', 'carrier_owner', null, :'C22'),
+  (:'D22', 'driver22@t.test', 'carrier_driver', null, :'C22');
+-- one private pickup site per load, used by nothing else, so the location check is about that load alone
+insert into public.locations (name, address_line, city, province, can_ship, can_receive) values
+  ('R22 Secret A', '1 Hidden Rd', 'Toronto', 'ON', true, true),
+  ('R22 Secret B', '2 Hidden Rd', 'Toronto', 'ON', true, true),
+  ('R22 Secret C', '3 Hidden Rd', 'Toronto', 'ON', true, true),
+  ('R22 Secret D', '4 Hidden Rd', 'Toronto', 'ON', true, true);
+-- R22A: requested with carrier C, Maria cancels. R22B: requested with carrier C, staff cancel.
+-- R22C: requested with carrier C, staff book it, then staff cancel (control: stays visible).
+-- R22D: put at delivered directly with carrier C and no booked_at (owner tooling and e2e fixtures do this; control).
+select rlstest.mkorig(:'R22A', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'R22 Secret A', 'Howden', 'requested', :'C22');
+select rlstest.mkorig(:'R22B', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'R22 Secret B', 'Howden', 'requested', :'C22');
+select rlstest.mkorig(:'R22C', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'R22 Secret C', 'Howden', 'requested', :'C22');
+select rlstest.mkorig(:'R22D', (select id from public.customers where name = 'Mitrex'), '00000000-0000-0000-0000-0000000000c1', 'R22 Secret D', 'Howden', 'delivered', :'C22');
+insert into storage.objects (bucket_id, name) values
+  ('documents', :'R22A' || '/bol/b2200000-0000-0000-0000-0000000000a1.pdf'),
+  ('documents', :'R22B' || '/bol/b2200000-0000-0000-0000-0000000000b1.pdf'),
+  ('documents', :'R22C' || '/bol/b2200000-0000-0000-0000-0000000000c1.pdf'),
+  ('documents', :'R22D' || '/bol/b2200000-0000-0000-0000-0000000000d1.pdf');
+insert into public.load_documents (load_id, kind, storage_path, uploaded_by) values
+  (:'R22A', 'bol', :'R22A' || '/bol/b2200000-0000-0000-0000-0000000000a1.pdf', '00000000-0000-0000-0000-0000000000a1'),
+  (:'R22B', 'bol', :'R22B' || '/bol/b2200000-0000-0000-0000-0000000000b1.pdf', '00000000-0000-0000-0000-0000000000a1'),
+  (:'R22C', 'bol', :'R22C' || '/bol/b2200000-0000-0000-0000-0000000000c1.pdf', '00000000-0000-0000-0000-0000000000a1'),
+  (:'R22D', 'bol', :'R22D' || '/bol/b2200000-0000-0000-0000-0000000000d1.pdf', '00000000-0000-0000-0000-0000000000a1');
+
+-- What one carrier user sees of one load: the load, its timeline, both document tables, the doc function, its pickup site.
+create function rlstest.sees22(p_name text, p_load text, p_site text, p_expected int) returns void language plpgsql as $f$
+begin
+  perform rlstest.cnt(p_name || ': the load', format($q$select 1 from public.loads where id = %L::uuid$q$, p_load), p_expected,
+    format($q$select 1 from public.loads where id = %L::uuid$q$, p_load));
+  perform rlstest.cnt(p_name || ': its timeline', format($q$select 1 from public.load_events where load_id = %L::uuid$q$, p_load),
+    case when p_expected = 0 then 0 else rlstest.su_count(format($q$select 1 from public.load_events where load_id = %L::uuid$q$, p_load)) end,
+    format($q$select 1 from public.load_events where load_id = %L::uuid$q$, p_load));
+  perform rlstest.cnt(p_name || ': the BOL row', format($q$select 1 from public.load_documents where load_id = %L::uuid$q$, p_load), p_expected,
+    format($q$select 1 from public.load_documents where load_id = %L::uuid$q$, p_load));
+  perform rlstest.cnt(p_name || ': the BOL object', format($q$select 1 from storage.objects where bucket_id = 'documents' and name like %L$q$, p_load || '/bol/%'), p_expected,
+    format($q$select 1 from storage.objects where bucket_id = 'documents' and name like %L$q$, p_load || '/bol/%'));
+  perform rlstest.chk(p_name || ': dlv_can_access_doc read',
+    public.dlv_can_access_doc(p_load || '/bol/b2200000-0000-0000-0000-0000000000' || right(p_load, 2) || '.pdf', false) = (p_expected = 1));
+  perform rlstest.cnt(p_name || ': the private pickup site', format($q$select 1 from public.locations where name = %L$q$, p_site), p_expected,
+    format($q$select 1 from public.locations where name = %L$q$, p_site));
+end $f$;
+grant execute on all functions in schema rlstest to authenticated, anon;
+
+-- 22a. while requested (control: the old rule already hid these)
+select rlstest.as_user(:'O22');
+select rlstest.sees22('carrier C owner, R22A requested', :'R22A', 'R22 Secret A', 0);
+select rlstest.back();
+
+-- the cancels, through the real function: Maria cancels R22A, staff cancel R22B; staff book then cancel R22C
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.ok('Maria cancels her request R22A that has a carrier saved', format($q$select public.set_load_status(%L, 'cancelled', null, 'R22 Maria cancel')$q$, :'R22A'));
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.ok('staff cancel the request R22B that has a carrier saved', format($q$select public.set_load_status(%L, 'cancelled', null, 'R22 staff cancel')$q$, :'R22B'));
+select rlstest.ok('staff set the ITS number of R22C', format($q$select public.set_its_load_number(%L, '92201')$q$, :'R22C'));
+select rlstest.ok('staff book R22C', format($q$select public.set_load_status(%L, 'booked', null, null)$q$, :'R22C'));
+select rlstest.ok('staff cancel the booked R22C', format($q$select public.set_load_status(%L, 'cancelled', null, 'R22 booked then cancelled')$q$, :'R22C'));
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('guard: R22A and R22B are cancelled with carrier C and were never booked',
+    (select count(*) from public.loads where id in ('32200000-0000-0000-0000-0000000000a1', '32200000-0000-0000-0000-0000000000b1')
+       and status = 'cancelled' and booked_at is null and carrier_id = '20000000-0000-0000-0000-00000000022c') = 2);
+  perform rlstest.chk('guard: R22C is cancelled with carrier C and has booked_at',
+    (select count(*) from public.loads where id = '32200000-0000-0000-0000-0000000000c1'
+       and status = 'cancelled' and booked_at is not null and carrier_id = '20000000-0000-0000-0000-00000000022c') = 1);
+  perform rlstest.chk('guard: R22D is delivered with carrier C and no booked_at',
+    (select count(*) from public.loads where id = '32200000-0000-0000-0000-0000000000d1'
+       and status = 'delivered' and booked_at is null and carrier_id = '20000000-0000-0000-0000-00000000022c') = 1);
+end $t$;
+
+-- 22b. the carrier owner and driver see nothing of the never booked cancelled loads, and still see the controls
+select rlstest.as_user(:'O22');
+select rlstest.sees22('carrier C owner, R22A cancelled by Maria, never booked', :'R22A', 'R22 Secret A', 0);
+select rlstest.sees22('carrier C owner, R22B cancelled by staff, never booked', :'R22B', 'R22 Secret B', 0);
+select rlstest.sees22('control: carrier C owner, R22C booked then cancelled', :'R22C', 'R22 Secret C', 1);
+select rlstest.sees22('control: carrier C owner, R22D delivered without booked_at', :'R22D', 'R22 Secret D', 1);
+select rlstest.cnt('carrier C owner reads the contact phone of no never booked load',
+  $q$select 1 from public.loads where pickup_contact_phone = '416-000-0001' and id in ('32200000-0000-0000-0000-0000000000a1', '32200000-0000-0000-0000-0000000000b1')$q$, 0,
+  $q$select 1 from public.loads where id in ('32200000-0000-0000-0000-0000000000a1', '32200000-0000-0000-0000-0000000000b1')$q$);
+select rlstest.cnt('control: carrier C owner reads its own carrier row', $q$select 1 from public.carriers where id = '20000000-0000-0000-0000-00000000022c'$q$, 1);
+select rlstest.err('carrier C owner cannot upload a POD to the never booked R22A',
+  rlstest.sins(:'R22A' || '/pod/b2200000-0000-0000-0000-0000000001a1.jpg'), 'row-level security');
+select rlstest.back();
+select rlstest.as_user(:'D22');
+select rlstest.sees22('carrier C driver, R22A cancelled by Maria, never booked', :'R22A', 'R22 Secret A', 0);
+select rlstest.sees22('carrier C driver, R22B cancelled by staff, never booked', :'R22B', 'R22 Secret B', 0);
+select rlstest.sees22('control: carrier C driver, R22C booked then cancelled', :'R22C', 'R22 Secret C', 1);
+select rlstest.back();
+
+-- 22c. Maria sees carrier C only through the load that was booked (R22C) or is live (R22D); without them, not at all
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.cnt('control: Maria sees carrier C while it carries R22C and R22D', $q$select 1 from public.carriers where id = '20000000-0000-0000-0000-00000000022c'$q$, 1);
+select rlstest.back();
+do $t$ begin
+  perform set_config('dlv.status_fn', '1', true);
+  update public.loads set carrier_id = null where id in ('32200000-0000-0000-0000-0000000000c1', '32200000-0000-0000-0000-0000000000d1');
+  perform set_config('dlv.status_fn', '0', true);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.cnt('Maria does not see carrier C through her never booked cancelled requests', $q$select 1 from public.carriers where id = '20000000-0000-0000-0000-00000000022c'$q$, 0,
+  $q$select 1 from public.carriers where id = '20000000-0000-0000-0000-00000000022c'$q$);
+select rlstest.chk('dlv_customer_can_see_carrier is false for carrier C', not public.dlv_customer_can_see_carrier('20000000-0000-0000-0000-00000000022c'));
+select rlstest.cnt('control: Maria still reads her cancelled requests R22A and R22B', $q$select 1 from public.loads where id in ('32200000-0000-0000-0000-0000000000a1', '32200000-0000-0000-0000-0000000000b1')$q$, 2);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.cnt('control: staff read both never booked cancelled loads and their BOL rows',
+  $q$select 1 from public.load_documents where load_id in ('32200000-0000-0000-0000-0000000000a1', '32200000-0000-0000-0000-0000000000b1')$q$, 2);
+select rlstest.back();
+
+-- 22d. definitions and grants: the four rules carry the booked_at clause; nothing else widened; the real file applies again
+do $t$
+begin
+  perform rlstest.chk('loads_select carrier branch carries the cancelled and booked_at clause',
+    (select qual from pg_policies where schemaname = 'public' and tablename = 'loads' and policyname = 'loads_select') like '%booked_at IS NOT NULL%');
+  perform rlstest.chk('the three helpers carry the booked_at clause',
+    position('booked_at is not null' in pg_get_functiondef('public.dlv_carrier_can_see_location(uuid)'::regprocedure)) > 0
+    and position('booked_at is not null' in pg_get_functiondef('public.dlv_customer_can_see_carrier(uuid)'::regprocedure)) > 0
+    and position('booked_at is null' in pg_get_functiondef('public.dlv_can_access_doc(text, boolean)'::regprocedure)) > 0);
+  perform rlstest.chk('anon executes none of the three helpers; authenticated executes all three',
+    not has_function_privilege('anon', 'public.dlv_carrier_can_see_location(uuid)', 'execute')
+    and not has_function_privilege('anon', 'public.dlv_customer_can_see_carrier(uuid)', 'execute')
+    and not has_function_privilege('anon', 'public.dlv_can_access_doc(text, boolean)', 'execute')
+    and has_function_privilege('authenticated', 'public.dlv_carrier_can_see_location(uuid)', 'execute')
+    and has_function_privilege('authenticated', 'public.dlv_customer_can_see_carrier(uuid)', 'execute')
+    and has_function_privilege('authenticated', 'public.dlv_can_access_doc(text, boolean)', 'execute'));
+end $t$;
+\i supabase/migrations/0022_carrier_never_booked_cancel.sql
+do $t$
+begin
+  perform rlstest.chk('0022 applied again: exactly one loads_select policy',
+    (select count(*) from pg_policies where schemaname = 'public' and tablename = 'loads' and policyname = 'loads_select') = 1);
+end $t$;
+select rlstest.as_user(:'O22');
+select rlstest.sees22('after a second apply, carrier C owner, R22A', :'R22A', 'R22 Secret A', 0);
+select rlstest.back();
 
 -- Summary ----------------------------------------------------------------
 select name, outcome, detail from rlstest.res where outcome <> 'OK' order by n;
