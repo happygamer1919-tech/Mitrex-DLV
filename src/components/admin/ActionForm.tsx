@@ -2,6 +2,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { Button, Notice } from "@/components/ui";
 import type { ActionState, AdminAction } from "@/lib/admin/state";
+import { guardAction } from "@/lib/client/action-guard";
 
 type Props = {
   action: AdminAction;
@@ -19,7 +20,7 @@ type Props = {
 export function ActionForm({
   action, fields = {}, label, pendingLabel, variant = "dark", confirm, confirmLabel, showOk = true,
 }: Props) {
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(action, {});
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(guardAction(action), {});
   const [asking, setAsking] = useState(false);
 
   useEffect(() => {

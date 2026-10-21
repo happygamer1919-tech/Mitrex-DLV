@@ -3,6 +3,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { Button, Card, Field, Input, Notice, Select } from "@/components/ui";
 import { inviteUser } from "@/lib/admin/user-actions";
 import type { ActionState } from "@/lib/admin/state";
+import { guardAction } from "@/lib/client/action-guard";
 
 const ROLE_LABEL: Record<string, string> = {
   staff_admin: "Staff admin",
@@ -15,7 +16,7 @@ const ROLE_LABEL: Record<string, string> = {
 export function InviteForm({
   customers, carriers,
 }: { customers: { id: string; name: string }[]; carriers: { id: string; name: string; is_active: boolean }[] }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(inviteUser, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(inviteUser), {});
   const [role, setRole] = useState("staff_csr");
   const [key, setKey] = useState(0);
   const roleRef = useRef<HTMLSelectElement>(null);

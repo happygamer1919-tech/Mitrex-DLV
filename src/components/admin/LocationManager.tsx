@@ -6,6 +6,7 @@ import { deleteLocation, saveLocation, setLocationActive } from "@/lib/admin/loc
 import type { Location } from "@/lib/types";
 import { nameIsStreet } from "@/lib/address";
 import type { ActionState } from "@/lib/admin/state";
+import { guardAction } from "@/lib/client/action-guard";
 import { fmtDateTime } from "@/lib/format";
 
 // R45: profile id to display name, for the "Added by" and "Last edited by" lines.
@@ -21,7 +22,7 @@ function Check({ name, label, defaultChecked }: { name: string; label: string; d
 }
 
 function LocationForm({ location, onDone, onCancel }: { location?: Location; onDone: () => void; onCancel: () => void }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(saveLocation, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(saveLocation), {});
   useEffect(() => { if (state.ok) onDone(); }, [state.ok, onDone]);
   return (
     <form action={action} className="space-y-3">

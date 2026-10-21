@@ -8,6 +8,7 @@ import {
 } from "@/lib/customer/location-validate";
 import { nameIsStreet } from "@/lib/address";
 import type { Location } from "@/lib/types";
+import { failure, goToLogin, withTimeout } from "@/lib/client/action-guard";
 
 // R45 (DLV-041): Maria's own location forms. The add form creates the location at once; Edit opens the same fields
 // for one location and Save applies at once. Status (active) and review flags are DLV's and are never offered here.
@@ -117,7 +118,17 @@ export function AddLocationForm() {
     e.preventDefault();
     setMsg(null);
     startTransition(async () => {
-      const res = await addCustomerLocation(v);
+      // DLV-043 STAFF-03: a rejected action (no session, offline) used to replace the page with Next's error page and
+      // lose what was typed. Now it signs in again or says so here, with every field kept.
+      let res: Awaited<ReturnType<typeof addCustomerLocation>>;
+      try {
+        res = await withTimeout(addCustomerLocation(v));
+      } catch (err) {
+        const f = failure(err);
+        if (f.sessionExpired) { goToLogin(); return; }
+        setMsg({ tone: "error", text: f.message });
+        return;
+      }
       if (res.errors) { setErrors(res.errors); setMsg({ tone: "error", text: "Check the fields marked below." }); return; }
       if (res.error) { setMsg({ tone: "error", text: res.error }); return; }
       const name = v.name.trim();
@@ -161,7 +172,15 @@ export function LocationCard({ location }: { location: Location }) {
     e.preventDefault();
     setMsg(null);
     startTransition(async () => {
-      const res = await updateCustomerLocation(location.id, v);
+      let res: Awaited<ReturnType<typeof updateCustomerLocation>>;
+      try {
+        res = await withTimeout(updateCustomerLocation(location.id, v));
+      } catch (err) {
+        const f = failure(err);
+        if (f.sessionExpired) { goToLogin(); return; }
+        setMsg({ tone: "error", text: f.message });
+        return;
+      }
       if (res.errors) { setErrors(res.errors); setMsg({ tone: "error", text: "Check the fields marked below." }); return; }
       if (res.error) { setMsg({ tone: "error", text: res.error }); return; }
       setErrors({});

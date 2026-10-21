@@ -7,6 +7,7 @@ import { Disclosure } from "@/components/Disclosure";
 import { createLane, deleteLane, importLanes, updateLane } from "@/lib/admin/lane-actions";
 import { MAX_IMPORT_ROWS, validateLaneImport } from "@/lib/admin/lane-csv";
 import type { ActionState } from "@/lib/admin/state";
+import { guardAction } from "@/lib/client/action-guard";
 
 export type LaneRow = {
   id: string; pickupId: string; deliveryId: string; pickup: string; delivery: string; size: number;
@@ -18,7 +19,7 @@ export type Prefill = { pickup: string; delivery: string; size: number } | null;
 const SIZES = [26, 36, 53];
 
 function AddLane({ locations, prefill, onDone }: { locations: LocOption[]; prefill: Prefill; onDone: () => void }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(createLane, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(createLane), {});
   // Controlled fields: a refused submit keeps what was typed (an uncontrolled form is reset after every action).
   const [pickup, setPickup] = useState(prefill?.pickup ?? "");
   const [delivery, setDelivery] = useState(prefill?.delivery ?? "");
@@ -50,7 +51,7 @@ function AddLane({ locations, prefill, onDone }: { locations: LocOption[]; prefi
           </Select>
         </Field>
         <Field label="ITS load to copy" hint="Digits, optionally a dash and digits (313 or 313-2).">
-          <Input name="number" required maxLength={30} inputMode="numeric" autoComplete="off" value={number} onChange={(e) => setNumber(e.target.value)} />
+          <Input name="number" required maxLength={30} autoComplete="off" value={number} onChange={(e) => setNumber(e.target.value)} />
         </Field>
       </div>
       <Field label="Note (optional)"><Textarea name="note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
@@ -65,7 +66,7 @@ function AddLane({ locations, prefill, onDone }: { locations: LocOption[]; prefi
 }
 
 function EditLane({ lane, locations, onDone }: { lane: LaneRow; locations: LocOption[]; onDone: () => void }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(updateLane, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(updateLane), {});
   useEffect(() => { if (state.ok) onDone(); }, [state.ok, onDone]);
   // Controlled fields, submitted through onSubmit (not the form action prop): React resets a form after an action prop
   // ran, and a reset select shows its first option while the state still holds the choice. A refused save (a
@@ -101,7 +102,7 @@ function EditLane({ lane, locations, onDone }: { lane: LaneRow; locations: LocOp
         </Field>
       </div>
       <div className="grid gap-3 sm:grid-cols-[200px_1fr]">
-        <Field label="ITS load to copy"><Input name="number" required maxLength={30} inputMode="numeric" autoComplete="off" value={number} onChange={(e) => setNumber(e.target.value)} /></Field>
+        <Field label="ITS load to copy"><Input name="number" required maxLength={30} autoComplete="off" value={number} onChange={(e) => setNumber(e.target.value)} /></Field>
         <Field label="Note"><Input name="note" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -128,7 +129,7 @@ function Row({ lane, locations }: { lane: LaneRow; locations: LocOption[] }) {
             </span>
           </div>
           {lane.note ? <p data-testid="lane-note" className="mt-2 break-words text-[15px]">{lane.note}</p> : null}
-          <p className="mt-2 text-[13px] text-muted">Last updated by {lane.updated} ET</p>
+          <p data-testid="lane-updated" className="mt-2 text-[13px] text-muted">Last updated by {lane.updated}</p>
         </div>
         <div className="text-right">
           <p className="text-[13px] text-muted">ITS load to copy</p>
@@ -157,7 +158,7 @@ function ImportCard({ locations }: { locations: LocOption[] }) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [readError, setReadError] = useState("");
-  const [state, action, pending] = useActionState<ActionState, FormData>(importLanes, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(importLanes), {});
   useEffect(() => { if (state.ok) { setText(""); setFile(null); } }, [state]);
 
   const preview = useMemo(() => (text.trim() ? validateLaneImport(text, locations) : null), [text, locations]);

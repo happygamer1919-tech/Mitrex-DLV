@@ -2,6 +2,7 @@
 import { useActionState, useState } from "react";
 import { Button, Card, Field, Input, Notice, Textarea } from "@/components/ui";
 import { createRateRequest, type RateFormState } from "@/lib/rates/actions";
+import { guardAction } from "@/lib/client/action-guard";
 import { DIMS_MAX, EMPTY_RATE_FORM, NOTES_MAX, RATE_SIZES, type RateFields, type RateFormValues } from "@/lib/rates/validate";
 
 function Err({ id, msg }: { id: string; msg?: string }) {
@@ -11,7 +12,7 @@ function Err({ id, msg }: { id: string; msg?: string }) {
 // Customers only. Controlled fields, so a refused submit keeps what was typed (an uncontrolled form is reset after
 // every action). Every rule is checked by the server action (src/lib/rates/validate.ts) and again by the database.
 export function RateRequestForm() {
-  const [state, action, pending] = useActionState<RateFormState, FormData>(createRateRequest, {});
+  const [state, action, pending] = useActionState<RateFormState, FormData>(guardAction(createRateRequest), {});
   const [v, setV] = useState<RateFormValues>(EMPTY_RATE_FORM);
   const set = (k: RateFields, value: string) => setV((p) => ({ ...p, [k]: value }));
   const errors = state.fieldErrors ?? {};

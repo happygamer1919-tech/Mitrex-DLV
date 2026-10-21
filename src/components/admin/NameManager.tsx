@@ -3,11 +3,12 @@ import { useActionState, useEffect, useState } from "react";
 import { Button, Card, Field, Input, Notice } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
 import type { ActionState, AdminAction } from "@/lib/admin/state";
+import { guardAction } from "@/lib/client/action-guard";
 
 type Item = { id: string; name: string; is_active?: boolean };
 
 function CreateForm({ action, noun }: { action: AdminAction; noun: string }) {
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(action, {});
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(guardAction(action), {});
   const [key, setKey] = useState(0);
   useEffect(() => { if (state.ok) setKey((k) => k + 1); }, [state.ok]);
   return (
@@ -30,7 +31,7 @@ function Row({
   item, noun, renameAction, toggleAction,
 }: { item: Item; noun: string; renameAction: AdminAction; toggleAction?: AdminAction }) {
   const [editing, setEditing] = useState(false);
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(renameAction, {});
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(guardAction(renameAction), {});
   useEffect(() => { if (state.ok) setEditing(false); }, [state.ok]);
   const inactive = item.is_active === false;
 
