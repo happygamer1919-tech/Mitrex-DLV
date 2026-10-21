@@ -42,4 +42,4 @@
 | Staff edit every detail of a load at any status except cancelled, Details edited audit (migration 0020, apply pack 10), optional carrier email and resend, staff created return, lane scenario edit (DLV-039) | #39 | merged; production result of apply pack 10 not recorded in the pack yet |
 | Maria adds and edits locations herself, staff see who added and edited (migration 0021, apply pack 11, DLV-041) | #40 | merged; production result of apply pack 11 not recorded in the pack yet |
 | Compact views everywhere (collapsible bands and groups, Show all, Show older, compact cards and rows, folded load page sections), Maria's search, filters, sort and CSV export (DLV-040, no migration) | #41 | merged |
-| Sanity sweep and fixes: a refused staff status override keeps the typed note, ETA and ITS number (DLV-043, no migration) | #42 | open |
+| Sanity sweep and fixes: a refused staff status override keeps the typed note, ETA and ITS number (DLV-043, no migration) | #43 | open |
