@@ -128,20 +128,24 @@ export function EditItsForm({ loadId, itsNumber }: { loadId: string; itsNumber: 
 
 export function StatusOverrideForm({ loadId, current, itsNumber }: { loadId: string; current: LoadStatus; itsNumber: string | null }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(overrideStatus, {});
+  const [, startSave] = useTransition();
   const [status, setStatus] = useState<LoadStatus | "">("");
-  const statusRef = useRef<HTMLSelectElement>(null);
-  // React resets the form after every action. WebKit then blanks a controlled select (its DOM value
-  // goes back to the disabled placeholder) while state still holds the choice, so a second submit is
-  // blocked by the browser's required check. Put the choice back after each result.
+  const formRef = useRef<HTMLFormElement>(null);
+  // Submitted through onSubmit, not the form action prop: React resets a form after an action prop ran, so a refused
+  // override (a bad ITS number, a blank note) wiped the note, the ETA and the ITS number staff had typed, and WebKit
+  // blanked the chosen status. A refusal now keeps everything as typed; only a saved override clears the form.
   useEffect(() => {
-    if (statusRef.current && status) statusRef.current.value = status;
-  }, [state, status]);
+    if (!state.ok) return;
+    formRef.current?.reset();
+    setStatus("");
+  }, [state]);
   const options = (Object.keys(STATUS_LABEL) as LoadStatus[]).filter((s) => s !== current);
   return (
-    <form action={action} className="space-y-3">
+    <form ref={formRef} className="space-y-3"
+      onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startSave(() => action(fd)); }}>
       <input type="hidden" name="load_id" value={loadId} />
       <Field label="New status">
-        <Select ref={statusRef} name="status" required value={status} onChange={(e) => setStatus(e.target.value as LoadStatus)}>
+        <Select name="status" required value={status} onChange={(e) => setStatus(e.target.value as LoadStatus)}>
           <option value="" disabled>Choose a status</option>
           {options.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
         </Select>
