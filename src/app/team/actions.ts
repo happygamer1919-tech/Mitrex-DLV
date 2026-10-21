@@ -29,8 +29,13 @@ export async function addDriver(emailInput: string, nameInput: string): Promise<
 
   // Already on this team? The owner can read the team through RLS, so saying so leaks nothing.
   const supabase = await createClient();
-  const { data: team } = await supabase.from("profiles").select("email").eq("carrier_id", owner.carrier_id);
-  if ((team ?? []).some((m) => String(m.email).toLowerCase() === email)) {
+  const { data: team } = await supabase.from("profiles").select("email,is_active").eq("carrier_id", owner.carrier_id);
+  const match = (team ?? []).find((m) => String(m.email).toLowerCase() === email);
+  if (match && match.is_active === false) {
+    // DLV-043 CAR-10: only dispatch turns a deactivated driver back on.
+    return { ok: false, error: "This driver was deactivated by dispatch. Contact dispatch to turn them back on." };
+  }
+  if (match) {
     return { ok: false, error: "That person is already on your team." };
   }
 

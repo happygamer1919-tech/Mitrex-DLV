@@ -6,10 +6,26 @@ import { removeLoadPhoto } from "@/lib/carrier/photo-actions";
 import { failure, goToLogin, withTimeout } from "@/lib/client/action-guard";
 import type { PhotoItem } from "@/lib/carrier/photos";
 
+// DLV-043 CAR-07: a signed link changes on every server render (it carries its own issue time), so each 15 s poll made
+// every thumbnail download again on the driver's phone. The first link of each photo is kept for 50 minutes; the page
+// signs step photos for an hour.
+const KEEP_MS = 50 * 60_000;
+function useStableUrls(photos: PhotoItem[]): PhotoItem[] {
+  const cache = useRef(new Map<string, { url: string; at: number }>());
+  const now = Date.now();
+  return photos.map((p) => {
+    const hit = cache.current.get(p.id);
+    if (hit && now - hit.at < KEEP_MS) return { ...p, url: hit.url };
+    if (p.url) cache.current.set(p.id, { url: p.url, at: now });
+    return p;
+  });
+}
+
 // The photos already stored for the open step, with the SERVER time of each (Eastern time). A carrier can remove a
 // photo it took itself while the step is still open (the database decides; this list only offers the button).
-export function PhotoThumbs({ loadId, photos, canRemove }: { loadId: string; photos: PhotoItem[]; canRemove: boolean }) {
+export function PhotoThumbs({ loadId, photos: fresh, canRemove }: { loadId: string; photos: PhotoItem[]; canRemove: boolean }) {
   const router = useRouter();
+  const photos = useStableUrls(fresh);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const inflight = useRef(false);

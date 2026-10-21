@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
-  TZ, easternLocalToIso, fmtDate, fmtDateTime, fmtSlot, fmtTime, isoToEasternLocal,
+  TZ, easternLocalToIso, fmtDate, fmtDateTime, fmtSlot, fmtTime, isoToEasternLocal, telHref,
 } from "../src/lib/format";
 
 // R2: every displayed time is Eastern (America/Toronto) and says "ET". Pure helpers, no browser.
@@ -150,4 +150,18 @@ test("the reverse direction is monotonic across both transitions (iso -> wall ->
     }
   }
   expect(bad).toEqual([]);
+});
+
+// DLV-043 CAR-04: phones are free text; "Call" dials the first number only, an extension after a pause.
+test("telHref dials the first number only and keeps an extension after a pause", () => {
+  expect(telHref("416-555-1234")).toBe("tel:4165551234");
+  expect(telHref("+1 (416) 555-1234")).toBe("tel:+14165551234");
+  expect(telHref("905-555-0100 ext 214")).toBe("tel:9055550100,214");
+  expect(telHref("905-555-0100 Ext. 214")).toBe("tel:9055550100,214");
+  expect(telHref("416-555-1234 x22")).toBe("tel:4165551234,22");
+  expect(telHref("416-555-1234 #5")).toBe("tel:4165551234,5");
+  expect(telHref("416-555-1234 / 647-555-9876")).toBe("tel:4165551234");
+  expect(telHref("416-555-1234, 647-555-9876")).toBe("tel:4165551234");
+  expect(telHref("416-555-1234; 647-555-9876")).toBe("tel:4165551234");
+  expect(telHref("416-555-1234 or 647-555-9876")).toBe("tel:4165551234");
 });

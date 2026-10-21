@@ -6,7 +6,7 @@ import { Button, Field, Input, Notice } from "@/components/ui";
 import { PodPicker } from "@/components/camera/PodPicker";
 import { CameraCapture, type Captured } from "@/components/camera/CameraCapture";
 import { PhotoThumbs } from "@/components/carrier/PhotoThumbs";
-import { storePodPhoto } from "@/lib/carrier/pod-upload";
+import { POD_FORMAT_MESSAGE, storePodPhoto } from "@/lib/carrier/pod-upload";
 import { storeLoadPhoto } from "@/lib/carrier/photo-upload";
 import { MAX_PHOTOS, PHOTO_BUTTON, PHOTO_NEEDED_HINT, PHOTO_TITLE, photoKindForStatus, type PhotoItem } from "@/lib/carrier/photos";
 import { NEXT_LABEL, NEXT_STATUS } from "@/lib/carrier/loads";
@@ -32,22 +32,53 @@ type Props = {
 
 type ModalKind = "enroute" | "pod" | "eta" | "photo" | null;
 
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// DLV-043 CAR-08: the same dialog behaviour as the staff delete dialog. Focus goes into the dialog when it opens, Tab and Shift+Tab stay inside it, Escape closes it (not while saving), the page
+// behind does not scroll, and focus returns to the button that opened it.
 function Modal({ title, onClose, busy, children }: { title: string; onClose: () => void; busy: boolean; children: React.ReactNode }) {
   const titleId = useId();
+  const dialog = useRef<HTMLDivElement>(null);
+  const state = useRef({ onClose, busy });
+  state.current = { onClose, busy };
   useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // The dialog itself takes focus (it is announced with its title); a field is not focused on purpose, so a phone
+    // does not pop its keyboard or date wheel over the dialog before the driver reads it.
+    dialog.current?.focus();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) onClose();
+      if (e.key === "Escape") {
+        if (!state.current.busy) state.current.onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !dialog.current) return;
+      const items = [...dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      e.preventDefault();
+      if (items.length === 0) return;
+      // Focus is moved by hand, so the loop holds in every browser (Safari skips buttons when Tab is pressed by default).
+      const idx = items.findIndex((el) => el === document.activeElement);
+      const next = e.shiftKey ? (idx <= 0 ? items.length - 1 : idx - 1) : (idx < 0 || idx === items.length - 1 ? 0 : idx + 1);
+      items[next].focus();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      if (opener && opener.isConnected) opener.focus();
+    };
+  }, []);
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-4">
       <div
+        ref={dialog}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-[16px] bg-white p-5 text-ink sm:rounded-[16px]"
+        tabIndex={-1}
+        data-testid="driver-dialog"
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-[16px] bg-white p-5 text-ink outline-none sm:rounded-[16px]"
       >
         <h2 id={titleId} className="mb-4 text-[20px] font-bold">{title}</h2>
         {children}
@@ -192,6 +223,7 @@ export function LoadActions({ loadId, userId, status, etaLabel, etaLocal, defaul
         const res = await storePodPhoto({ loadId, userId, file, pathRef: podPath, attempt });
         if (!res.ok) {
           if (res.step === "cancelled") return { ok: false as const, error: "Cancelled." };
+          if (res.step === "format") return { ok: false as const, error: `${POD_FORMAT_MESSAGE} The load is not marked delivered yet.` };
           return {
             ok: false as const,
             error: res.step === "upload"

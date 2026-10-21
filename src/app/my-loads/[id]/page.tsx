@@ -43,16 +43,18 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
     .eq("load_id", id)
     .order("created_at", { ascending: false });
   const docs = (docRows ?? []) as LoadDocument[];
-  const bol = docs.find((d) => d.kind === "bol");
+  // DLV-043 CAR-05: every BOL, newest first (Maria's page and the booking email have them all; a second file is often
+  // page 2 of the same BOL).
+  const bolDocs = docs.filter((d) => d.kind === "bol");
   const podDocs = docs.filter((d) => d.kind === "pod");
   const pod = podDocs[0];
 
-  async function signed(path: string | undefined): Promise<string | null> {
+  async function signed(path: string | undefined, seconds = 300): Promise<string | null> {
     if (!path) return null;
-    const { data: s } = await supabase.storage.from("documents").createSignedUrl(path, 300);
+    const { data: s } = await supabase.storage.from("documents").createSignedUrl(path, seconds);
     return s?.signedUrl ?? null;
   }
-  const bolUrl = await signed(bol?.storage_path);
+  const bols = await Promise.all(bolDocs.map(async (d) => ({ id: d.id, url: await signed(d.storage_path) })));
   const pods = await Promise.all(podDocs.map(async (d) => ({ id: d.id, url: await signed(d.storage_path) })));
 
   // The photos of the step this status asks for (loaded photo while loading, delivery photo at delivery), oldest first.
@@ -61,7 +63,8 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
   const stepPhotos: PhotoItem[] = stepKind
     ? await Promise.all(
         docs.filter((d) => d.kind === stepKind).sort((a, b) => a.created_at.localeCompare(b.created_at)).map(async (d) => ({
-          id: d.id, url: await signed(d.storage_path), when: fmtDateTime(d.created_at), mine: d.uploaded_by === profile.id,
+          // DLV-043 CAR-07: an hour, so the thumbnail keeps one address while the page polls (PhotoThumbs reuses it).
+          id: d.id, url: await signed(d.storage_path, 3600), when: fmtDateTime(d.created_at), mine: d.uploaded_by === profile.id,
         })),
       )
     : [];
@@ -151,12 +154,19 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
 
         <Card className="space-y-3 text-ink">
           <h2 className="text-[20px] font-bold">Documents</h2>
-          {bolUrl ? (
-            <a href={bolUrl} target="_blank" rel="noopener noreferrer" className={`${btnClass("dark", true)} min-h-[56px] w-full`}>
-              Download BOL
-            </a>
+          {bols.length === 0 ? (
+            <p className="text-[15px] text-muted">No BOL has been uploaded yet.</p>
           ) : (
-            <p className="text-[15px] text-muted">{bol ? "The BOL link could not be created. Refresh the page." : "No BOL has been uploaded yet."}</p>
+            <div className="space-y-3" data-testid="carrier-bols">
+              {bols.map((b, i) => b.url ? (
+                <a key={b.id} href={b.url} target="_blank" rel="noopener noreferrer" data-testid="carrier-bol-link"
+                  className={`${btnClass("dark", true)} min-h-[56px] w-full`}>
+                  Download BOL{bols.length > 1 ? ` ${i + 1}` : ""}
+                </a>
+              ) : (
+                <p key={b.id} className="text-[15px] text-muted">The link for BOL{bols.length > 1 ? ` ${i + 1}` : ""} could not be created. Refresh the page.</p>
+              ))}
+            </div>
           )}
         </Card>
       </div>

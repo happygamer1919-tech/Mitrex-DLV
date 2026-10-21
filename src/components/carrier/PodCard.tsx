@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { btnClass, Button, Card, Notice } from "@/components/ui";
 import { PodPicker } from "@/components/camera/PodPicker";
-import { storePodPhoto } from "@/lib/carrier/pod-upload";
+import { POD_FORMAT_MESSAGE, storePodPhoto } from "@/lib/carrier/pod-upload";
 import { failure, goToLogin, withTimeout } from "@/lib/client/action-guard";
 
 // Carrier "Proof of delivery" card on a delivered load: add the POD after delivery, or another one. The in-app camera
@@ -30,7 +30,7 @@ export function PodCard({ loadId, userId, pods }: { loadId: string; userId: stri
     try {
       const res = await withTimeout(storePodPhoto({ loadId, userId, file, pathRef, attempt }));
       if (!res.ok) {
-        setError(res.step === "save"
+        setError(res.step === "format" ? POD_FORMAT_MESSAGE : res.step === "save"
           ? "The photo could not be saved. Tap Try again."
           : "The photo did not upload. Check your connection and tap Try again.");
         return;
