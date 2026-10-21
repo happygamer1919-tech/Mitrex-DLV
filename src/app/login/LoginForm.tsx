@@ -50,10 +50,22 @@ export function LoginForm({ initialError, nextPath }: { initialError: string | n
       // so every non-throttle, non-network answer (including "signups not allowed") looks the same.
       const { error: err } = await supabase.auth.signInWithOtp({
         email: address,
-        options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/auth/callback` },
+        // DLV-043 SEC-06: the emailed link brings the user back to the page they came from, like the code does.
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: `${window.location.origin}/auth/callback${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`,
+        },
       });
       if (err && isRateLimit(err)) {
         setError("Too many requests. Wait a minute and try again.");
+        return false;
+      }
+      // DLV-043 SEC-03: the server was reached but failed (5xx, for example the mail service is down): no code was
+      // sent. Said plainly, before the network check (supabase-js reports a 5xx as a retryable fetch error, which read
+      // "Network problem. Check your connection" although the connection was fine). 4xx answers stay generic, so the
+      // page still never reveals which emails exist.
+      if (err && typeof err.status === "number" && err.status >= 500) {
+        setError("We could not send the code. Try again in a minute, or call DLV dispatch.");
         return false;
       }
       if (err && isNetwork(err)) {
@@ -67,7 +79,7 @@ export function LoginForm({ initialError, nextPath }: { initialError: string | n
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [nextPath]);
 
   async function onSend(e: React.FormEvent) {
     e.preventDefault();
