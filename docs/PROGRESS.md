@@ -39,3 +39,4 @@
 | Board filters and sorting on the staff board (DLV-036) | #36 | merged |
 | Gallery option on the photo steps (DLV-035) | #37 | merged |
 | Return loads: a Return button recreates a load the other way round, linked to the original (migration 0019, apply pack 9) | #38 | open, migration 0019 not applied |
+| Staff edit every detail of a load at any status except cancelled, Details edited audit (migration 0020, apply pack 10), optional carrier email and resend, staff created return, lane scenario edit (DLV-039) | #39 | open, migration 0020 not applied |

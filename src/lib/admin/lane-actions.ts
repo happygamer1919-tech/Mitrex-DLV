@@ -44,19 +44,29 @@ export async function createLane(_prev: ActionState, fd: FormData): Promise<Acti
   return { ok: "Lane added." };
 }
 
+// R44: the inline edit changes the scenario too (pickup, delivery, size), not only the number and the note. The same
+// checks as Add lane; a scenario that another row already has is refused with the duplicate message.
 export async function updateLane(_prev: ActionState, fd: FormData): Promise<ActionState> {
   await requireStaff();
   const id = str(fd, "id");
+  const pickup = str(fd, "pickup");
+  const delivery = str(fd, "delivery");
+  const size = sizeOf(fd);
   const number = str(fd, "number");
   const note = str(fd, "note");
   if (!UUID.test(id)) return { error: "Lane not found." };
+  if (!UUID.test(pickup)) return { error: "Choose the pickup location." };
+  if (!UUID.test(delivery)) return { error: "Choose the delivery location." };
+  if (pickup === delivery) return { error: "Pickup and delivery must be different locations." };
+  if (size === null) return { error: "Truck size must be 26, 36 or 53." };
   const bad = validLaneNumber(number);
   if (bad) return { error: bad };
   if (note.length > NOTE_MAX) return { error: `The note is too long (at most ${NOTE_MAX} characters).` };
   const sb = await createClient();
   const { data, error } = await sb.from("lane_references")
-    .update({ its_reference_load: number, note: note || null }).eq("id", id).select("id");
-  if (error) return { error: plainError(error) };
+    .update({ pickup_location_id: pickup, delivery_location_id: delivery, equipment_size: size, its_reference_load: number, note: note || null })
+    .eq("id", id).select("id");
+  if (error) return { error: error.code === "23505" ? DUPLICATE : plainError(error) };
   if (!data || data.length === 0) return { error: "Lane not found." };
   done();
   return { ok: "Saved." };

@@ -4,6 +4,7 @@ import { sendEmail, type EmailAttachment } from "@/lib/email";
 import { fmtSlot } from "@/lib/format";
 import { addressWithName } from "@/lib/address";
 import { itsOrRef } from "@/lib/load-number";
+import { carrierDetailsMail, offersCarrierEmail, type CarrierMailLoad } from "./staff-edit";
 
 type Loc = { name: string; address_line: string; city: string; province: string; postal_code: string | null } | null;
 
@@ -209,6 +210,39 @@ export async function notifyCustomerBolUploaded(loadId: string, storagePath: str
     }
     const body = [`A BOL was uploaded for load ${num}.`, "", line, "", `Open the load: ${link}`].join("\n");
     const ok = await sendEmail(to, `BOL for load ${num}`, body, attachments);
+    return ok ? to.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+// ---- R44 (DLV-039): the carrier email after a staff edit, and the "Email the details to the carrier again" button. ----
+
+export const CARRIER_MAIL_SELECT =
+  "id,load_number,its_load_number,status,carrier_id,equipment_size,moffett,weight_lbs,pieces,po_number,notes," +
+  "pickup_timing,pickup_date,pickup_time_start,pickup_time_end,delivery_timing,delivery_date,delivery_time_start,delivery_time_end," +
+  "pickup_contact_name,pickup_contact_phone,delivery_contact_name,delivery_contact_phone," +
+  "pickup:locations!pickup_location_id(name,address_line,city,province,postal_code)," +
+  "delivery:locations!delivery_location_id(name,address_line,city,province,postal_code)";
+
+// ONE email to the active users of the load's carrier (the recipients of notifyCarrierAssigned): "Load <number>
+// updated" with the What changed list, or "Load <number> details" when `changes` is null. Only for a load with a
+// carrier that is past requested and not cancelled. Call ONLY after the actor was verified as staff. Never throws.
+// Returns the number of recipients addressed (0 when nothing was sent).
+export async function notifyCarrierDetails(loadId: string, changes: string[] | null): Promise<number> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.from("loads").select(CARRIER_MAIL_SELECT).eq("id", loadId).maybeSingle();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const l = data as any;
+    if (!l || !offersCarrierEmail(l)) return 0;
+    const admin = createAdminClient();
+    const { data: users } = await admin.from("profiles").select("email").eq("carrier_id", l.carrier_id).eq("is_active", true);
+    const to = ((users ?? []) as { email: string }[]).map((u) => u.email).filter(Boolean);
+    if (to.length === 0) return 0;
+    const l2 = { ...l, pickupName: l.pickup?.name ?? "Unknown", deliveryName: l.delivery?.name ?? "Unknown" } as CarrierMailLoad;
+    const mail = carrierDetailsMail(l2, changes, siteUrl());
+    const ok = await sendEmail(to, mail.subject, mail.body);
     return ok ? to.length : 0;
   } catch {
     return 0;

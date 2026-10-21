@@ -35,7 +35,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 
 function checkSlot(
-  v: LoadFormValues, side: "pickup" | "delivery", today: string, errors: FieldErrors,
+  v: LoadFormValues, side: "pickup" | "delivery", today: string, errors: FieldErrors, allowPast: boolean,
 ) {
   const label = side === "pickup" ? "Pickup" : "Delivery";
   const timing = v[`${side}_timing`];
@@ -49,7 +49,7 @@ function checkSlot(
   if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
     errors[`${side}_date`] = `${label} date is required.`;
   }
-  else if (date < today) errors[`${side}_date`] = `${label} date cannot be in the past (Eastern time).`;
+  else if (!allowPast && date < today) errors[`${side}_date`] = `${label} date cannot be in the past (Eastern time).`;
   if (!TIME_RE.test(start)) {
     errors[`${side}_time_start`] = timing === "window" ? `${label} window start is required.` : `${label} appointment time is required.`;
   }
@@ -59,8 +59,12 @@ function checkSlot(
   }
 }
 
+// Options of validateLoad. allowPast: staff edits (R44) may keep or set a past date (an in-progress or delivered load
+// has past dates); every other rule stays, including delivery not before pickup and a window end after its start.
+export type ValidateOptions = { allowPast?: boolean };
+
 // Shared by the browser form and the server actions. Returns an empty object when valid.
-export function validateLoad(v: LoadFormValues, today: string = todayEastern()): FieldErrors {
+export function validateLoad(v: LoadFormValues, today: string = todayEastern(), opts: ValidateOptions = {}): FieldErrors {
   const e: FieldErrors = {};
   // Server actions receive arbitrary input: reject anything that is not the expected shape.
   const bools: (keyof LoadFormValues)[] = ["save_pickup_default", "save_delivery_default", "moffett"];
@@ -80,8 +84,9 @@ export function validateLoad(v: LoadFormValues, today: string = todayEastern()):
   if (!v.delivery_contact_name.trim()) e.delivery_contact_name = "Delivery contact name is required.";
   if (!v.delivery_contact_phone.trim()) e.delivery_contact_phone = "Delivery contact phone is required.";
   if (!["26", "36", "53"].includes(v.equipment_size)) e.equipment_size = "Choose an equipment size.";
-  checkSlot(v, "pickup", today, e);
-  checkSlot(v, "delivery", today, e);
+  const allowPast = opts.allowPast === true;
+  checkSlot(v, "pickup", today, e, allowPast);
+  checkSlot(v, "delivery", today, e, allowPast);
   if (!e.pickup_date && !e.delivery_date && v.delivery_date < v.pickup_date) {
     e.delivery_date = "Delivery date cannot be before the pickup date.";
   }

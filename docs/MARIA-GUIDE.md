@@ -53,6 +53,7 @@ Edit the fields freely. Tick "Save as default for this location" to keep the new
 ## Change or cancel
 - While the status is Requested you can tap **Edit load** then **Save changes**, or **Cancel load** then **Yes, cancel this load**. Cancelling cannot be undone.
 - After DLV books it, the page says "Contact DLV to change this load". Call or email dispatch (below).
+- When DLV changes something for you (a place, a contact, a date, the truck size), your load page shows the new details by itself and the Timeline says "Details edited:" with what changed. No email is sent for this.
 
 ## What each status means
 - **Requested**: sent, DLV has not booked a truck yet.
