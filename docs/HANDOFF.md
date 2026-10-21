@@ -71,7 +71,7 @@ All commands run in the repo root. Use the LOCAL Supabase stack only (127.0.0.1)
 6. Failure ceiling: after 3 failed fix attempts on one ticket, stop, log it, mark it blocked.
 7. Plain hyphens only in all text: no em or en dashes, anywhere.
 8. Hosted Supabase does NOT read `supabase/templates/magic_link.html`. After any change the owner pastes it in the dashboard (Authentication, Emails, Magic Link). Steps are in docs/RUNBOOK.md. The owner was asked to do this; whether he did is unknown.
-9. Supabase Auth SMTP password must equal the current Resend key, otherwise login shows "Network problem".
+9. Supabase Auth SMTP password must equal the current Resend key, otherwise no code email goes out. Since DLV-043 the login page then says "We could not send the code. Try again in a minute, or call DLV dispatch." (any 5xx from the code endpoint); "Network problem" now means the browser did not reach Supabase at all.
 10. Workflow agents run in worktrees under `.claude/worktrees/` and can start from a stale base: every brief must say `git fetch origin && git checkout -b <branch> origin/main`. Agents cannot run zsh files in their sandbox, so the lead reruns the apply-pack blocks verbatim (section 7).
 11. Do not let subagents touch the shared local database at the same time (db reset by one breaks the other). Give each its own ports.
 12. Squash merges make later branches conflict in docs/PROGRESS.md: resolve by keeping both rows (union).
