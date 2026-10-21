@@ -111,8 +111,14 @@ test("a status override needs a note: refused without one (database unchanged), 
   await note.evaluate((el) => el.removeAttribute("required"));
   for (const blank of ["", "   "]) {
     await note.fill(blank);
+    // Wait for THIS refusal to come back: from the second round on, the message is already on screen, and React
+    // resets the form when the action settles, so a note typed before that would be wiped.
+    const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/admin/loads/${id}`));
     await go.click();
+    await answered;
     await expect(page.getByText("A note is required for a status override.")).toBeVisible();
+    await expect(go).toBeEnabled();
+    await expect(note).toHaveValue("");
     expect((await loadRow(id)).status).toBe("booked");
     expect(await eventCount()).toBe(events0);
     // The chosen status is still selected after a refusal (WebKit used to blank it, blocking the retry).

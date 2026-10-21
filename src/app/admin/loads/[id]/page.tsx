@@ -13,10 +13,12 @@ import { itsOrRef, staffLabel } from "@/lib/load-number";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, fmtSlot, isoToEasternLocal, telHref } from "@/lib/format";
-import { STATUS_LABEL, type DocKind, type LoadDocument, type LoadEvent } from "@/lib/types";
+import { STATUS_LABEL, type DocKind, type LoadDocument, type LoadEvent, type LoadStatus } from "@/lib/types";
+
+type Linked = { id: string; load_number: string; its_load_number: string | null; status: LoadStatus; carrier_id?: string | null; carrier?: { name: string } | null };
 import { UUID } from "@/lib/admin/errors";
 import { nameIsStreet } from "@/lib/address";
-import { cancelLoad } from "@/lib/admin/load-actions";
+import { assignCarrier, cancelLoad } from "@/lib/admin/load-actions";
 import { routeOf } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
@@ -63,11 +65,18 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
   const load = data as any;
   if (!load) notFound();
 
-  const [carriersRes, eventsRes, docsRes] = await Promise.all([
+  const [carriersRes, eventsRes, docsRes, origRes, retRes] = await Promise.all([
     supabase.from("carriers").select("id,name,is_active").order("name"),
     supabase.from("load_events").select("*").eq("load_id", id).order("created_at").order("id"),
     supabase.from("load_documents").select("*").eq("load_id", id).order("created_at"),
+    // R43: the link both ways, and the original's carrier for "Use the same carrier"
+    load.return_of_load_id
+      ? supabase.from("loads").select("id,load_number,its_load_number,status,carrier_id,carrier:carriers(name)").eq("id", load.return_of_load_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase.from("loads").select("id,load_number,its_load_number,status").eq("return_of_load_id", id).order("created_at"),
   ]);
+  const original = origRes.data as unknown as Linked | null;
+  const returns = (retRes.data ?? []) as Linked[];
   const carriers = (carriersRes.data ?? []) as { id: string; name: string; is_active: boolean }[];
   const events = (eventsRes.data ?? []) as LoadEvent[];
   const docs = (docsRes.data ?? []) as LoadDocument[];
@@ -115,7 +124,32 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
         {status === "delivered" && !hasPod ? (
           <span data-testid="pod-pending" className="rounded-full bg-amber px-3 py-1 text-[13px] font-medium text-[#2B1500]">POD pending</span>
         ) : null}
+        {load.return_of_load_id ? (
+          <span data-testid="return-badge" className="rounded-full bg-[#E4DCF5] px-3 py-1 text-[13px] font-bold text-[#3B2A78]">Return</span>
+        ) : null}
       </div>
+      {original || returns.length > 0 ? (
+        <div data-testid="return-links" className="mb-4 max-w-2xl rounded-[16px] border border-line bg-card p-4 text-[15px]">
+          {original ? (
+            <p data-testid="return-of">
+              <Link href={`/admin/loads/${original.id}`} className="inline-flex min-h-[44px] items-center font-bold underline">Return of {staffLabel(original)}</Link>
+            </p>
+          ) : null}
+          {returns.length > 0 ? (
+            <div data-testid="return-loads">
+              <p className="font-bold">Return loads:</p>
+              <ul className="mt-1 space-y-1">
+                {returns.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-2">
+                    <Link href={`/admin/loads/${r.id}`} className="inline-flex min-h-[44px] items-center underline">{staffLabel(r)}</Link>
+                    <StatusChip status={r.status} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mb-4 max-w-2xl">
         <ItsCopyCard
@@ -192,6 +226,20 @@ export default async function AdminLoadPage({ params }: { params: Promise<{ id: 
           {!closed ? (
             <Card>
               <h2 className="mb-3 text-[20px] font-bold">Carrier and booking</h2>
+              {original && !load.carrier_id ? (
+                <div data-testid="original-carrier" className="mb-4 space-y-2 border-b border-line pb-4">
+                  <p className="text-[15px]">Original carrier: <span className="font-bold">{original.carrier?.name ?? "Not assigned"}</span></p>
+                  {original.carrier_id ? (
+                    <ActionForm
+                      action={assignCarrier}
+                      fields={{ load_id: load.id, carrier_id: original.carrier_id }}
+                      label="Use the same carrier"
+                      pendingLabel="Saving..."
+                      variant="dark"
+                    />
+                  ) : null}
+                </div>
+              ) : null}
               <AssignCarrierForm loadId={load.id} carrierId={load.carrier_id} carriers={carriers} />
               {status === "requested" ? (
                 <div className="mt-4 border-t border-line pt-4">

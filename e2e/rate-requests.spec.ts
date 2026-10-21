@@ -256,7 +256,7 @@ test("staff enter the rate: the customer is emailed (active customer users only,
   const mrow = m.page.locator(`[data-testid="rate-row"][data-ref="${row0.ref}"]`);
   await expect(mrow.getByTestId("rate-status")).toHaveText("Waiting for rate");
   await expect(mrow.getByTestId("rate-quote")).toHaveCount(0);
-  expect(await mrow.innerText()).not.toMatch(/\d,\d{3}\.\d{2}|CAD|USD/); // no amount or currency on a request that is not quoted yet
+  expect(await mrow.innerText()).not.toMatch(/\d,\d{3}\.\d{2}|\bCAD\b|\bUSD\b/); // no amount or currency on a request that is not quoted yet
 
   const s = await as(browser, "admin");
   await gotoSteady(s.page, "/admin/rates");

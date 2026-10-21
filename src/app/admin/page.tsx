@@ -11,7 +11,7 @@ import { deletedBanner } from "@/lib/admin/delete-load";
 import { resolveMany, scenarioKey, type LaneReference } from "@/lib/admin/lane-reference";
 import { BoardFilters, SORT_LABEL } from "@/components/admin/BoardFilters";
 import { applyFilters, easternToday, isFiltered, parseFilters, toQuery, type BoardFilters as F, type SortKey } from "@/lib/admin/board-filters";
-import { BOARD_SELECT, bolPending, pickupTimeLabel, podPending, routeOf, type BoardLoad } from "@/lib/admin/queries";
+import { BOARD_SELECT, bolPending, isReturn, pickupTimeLabel, podPending, routeOf, type BoardLoad } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +48,10 @@ function LoadCard({ l, copy }: { l: BoardLoad; copy: LaneReference | null | unde
       className="block rounded-[16px] border border-line bg-card p-3 hover:border-ink"
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[16px] font-bold"><LoadNumber l={l} audience="staff" /></span>
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-[16px] font-bold"><LoadNumber l={l} audience="staff" /></span>
+          {isReturn(l) ? <span data-testid="board-return-badge" className="rounded-full bg-[#E4DCF5] px-2 py-0.5 text-[12px] font-bold text-[#3B2A78]">Return</span> : null}
+        </span>
         <span className="text-[13px] text-muted">{l.equipment_size} ft</span>
       </div>
       <p className="mt-1 break-words text-[15px]">{routeOf(l)}</p>
@@ -105,7 +108,12 @@ function OneList({ f, shown, total, copyOf }: { f: F; shown: BoardLoad[]; total:
               <tbody>
                 {shown.map((l) => (
                   <tr key={l.id} className="border-t border-line">
-                    <td className="px-3 py-2 font-bold"><Link href={`/admin/loads/${l.id}`} className="inline-flex min-h-[44px] items-center underline"><LoadNumber l={l} audience="staff" /></Link></td>
+                    <td className="px-3 py-2 font-bold">
+                      <span className="inline-flex flex-wrap items-center gap-2">
+                        <Link href={`/admin/loads/${l.id}`} className="inline-flex min-h-[44px] items-center underline"><LoadNumber l={l} audience="staff" /></Link>
+                        {isReturn(l) ? <span data-testid="board-return-badge" className="rounded-full bg-[#E4DCF5] px-2 py-0.5 text-[12px] font-bold text-[#3B2A78]">Return</span> : null}
+                      </span>
+                    </td>
                     <td className="px-3 py-2">{fmtDate(l.pickup_date)}, {pickupTimeLabel(l)}</td>
                     <td className="px-3 py-2">{l.pickup?.name ?? "Unknown"}</td>
                     <td className="px-3 py-2">{l.delivery?.name ?? "Unknown"}</td>

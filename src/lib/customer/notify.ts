@@ -3,6 +3,7 @@ import { sendEmail } from "@/lib/email";
 import { fmtSlot } from "@/lib/format";
 import { addLanePath, laneLabel, resolve } from "@/lib/admin/lane-reference";
 import { loadNumberSummary } from "./bulk";
+import { staffLabel } from "@/lib/load-number";
 import type { LoadFormValues } from "./validate";
 
 // Emails every staff user about a new request. Never throws: the booking has already succeeded.
@@ -14,6 +15,7 @@ export async function notifyStaffOfRequest(args: {
   moffett: boolean;
   values: LoadFormValues;
   customerName: string | null;
+  returnOfLoadId?: string; // R43: a return load names its original (staff label and its carrier go in the email)
 }): Promise<void> {
   try {
     const admin = createAdminClient();
@@ -29,9 +31,11 @@ export async function notifyStaffOfRequest(args: {
     const many = args.loads.length > 1;
     const numbers = args.loads.map((l) => l.loadNumber);
     const laneLines = await laneReferenceLines(admin, args, site);
+    const returnLine = args.returnOfLoadId ? await returnOfLine(admin, args.returnOfLoadId) : null;
     const lines = [
-      `${many ? `${args.loads.length} new loads were` : "A new load was"} requested${args.customerName ? ` by ${args.customerName}` : ""}.`,
+      `${many ? `${args.loads.length} new loads were` : returnLine ? "A new return load was" : "A new load was"} requested${args.customerName ? ` by ${args.customerName}` : ""}.`,
       "",
+      ...(returnLine ? [returnLine] : []),
       ...(many
         ? [`Loads (${args.loads.length} trucks, same details, one request ref each):`, ...args.loads.map((l) => `Request ${l.loadNumber}: ${site}/admin/loads/${l.id}`)]
         : [`Request ref: ${numbers[0]}`]),
@@ -53,10 +57,22 @@ export async function notifyStaffOfRequest(args: {
     if (!many) lines.push("", `Open in the portal: ${site}/admin/loads/${args.loads[0].id}`);
     const subject = many
       ? `New loads requested (Request ${loadNumberSummary(numbers)}, ${numbers.length} trucks)`
-      : `New load requested (Request ${numbers[0]})`;
+      : returnLine ? `New return load requested (Request ${numbers[0]})` : `New load requested (Request ${numbers[0]})`;
     await sendEmail(to, subject, lines.join("\n"));
   } catch {
     // swallow: notification failure must not fail the booking
+  }
+}
+
+// STAFF EMAIL ONLY. "Return of <staff label>, original carrier: <name or Not assigned>", read with the service role.
+async function returnOfLine(admin: ReturnType<typeof createAdminClient>, originalId: string): Promise<string> {
+  try {
+    const { data } = await admin.from("loads").select("load_number,its_load_number,carrier:carriers(name)").eq("id", originalId).maybeSingle();
+    const o = data as { load_number: string; its_load_number: string | null; carrier: { name: string } | null } | null;
+    if (!o) return "Return of a load that no longer exists, original carrier: Not assigned";
+    return `Return of ${staffLabel(o)}, original carrier: ${o.carrier?.name ?? "Not assigned"}`;
+  } catch {
+    return "Return of a load (lookup failed), original carrier: unknown";
   }
 }
 

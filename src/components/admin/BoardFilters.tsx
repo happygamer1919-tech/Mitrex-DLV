@@ -16,7 +16,8 @@ const field = "min-h-[44px] w-full rounded-[12px] border border-line bg-white px
 
 function Pill({ href, active, children, testid }: { href: string; active: boolean; children: React.ReactNode; testid: string }) {
   return (
-    <Link href={href} data-testid={testid} aria-pressed={active}
+    // A link may not carry aria-pressed (axe aria-allowed-attr); aria-current marks the active quick filter instead.
+    <Link href={href} data-testid={testid} aria-current={active ? "true" : undefined}
       className={`inline-flex min-h-[44px] items-center rounded-full border px-4 text-[14px] font-medium ${active ? "border-ink bg-mint" : "border-line bg-white"}`}>
       {children}
     </Link>

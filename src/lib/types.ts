@@ -42,6 +42,7 @@ export type Load = {
   status: LoadStatus; carrier_id: string | null; eta: string | null;
   booked_at: string | null; delivered_at: string | null; cancelled_at: string | null;
   created_at: string; updated_at: string;
+  return_of_load_id?: string | null; // R43: the load this one returns from (0019)
 };
 
 export type LoadEvent = {

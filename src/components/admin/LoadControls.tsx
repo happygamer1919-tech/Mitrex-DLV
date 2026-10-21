@@ -14,11 +14,17 @@ export function AssignCarrierForm({
   loadId, carrierId, carriers,
 }: { loadId: string; carrierId: string | null; carriers: { id: string; name: string; is_active: boolean }[] }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(assignCarrier, {});
+  // The saved carrier can change from elsewhere on the page ("Use the same carrier" on a return load): keep the
+  // uncontrolled select in step with the server value.
+  const selectRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (selectRef.current) selectRef.current.value = carrierId ?? "";
+  }, [carrierId]);
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="load_id" value={loadId} />
       <Field label="Carrier">
-        <Select name="carrier_id" defaultValue={carrierId ?? ""}>
+        <Select ref={selectRef} name="carrier_id" defaultValue={carrierId ?? ""}>
           <option value="">No carrier</option>
           {carriers.map((c) => (
             <option key={c.id} value={c.id} disabled={!c.is_active && c.id !== carrierId}>

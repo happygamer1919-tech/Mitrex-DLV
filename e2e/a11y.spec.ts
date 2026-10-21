@@ -453,6 +453,35 @@ test("rate requests: /rates (empty form, refused form, open, quoted and cancelle
   }
 });
 
+test("return loads: the return form (notice, existing return, validation errors), a return load page and the staff return page", async ({ browser }) => {
+  // Mitrex to Howden, delivered; its return goes Howden to Mitrex (seeded by the service role for the later states).
+  const orig = await insertLoad({ po: uniq("A11Y-RTO"), status: "delivered" });
+  const o = (await adminClient().from("loads").select("pickup_location_id,delivery_location_id").eq("id", orig.id).single()).data!;
+  await session(browser, "maria", async (page) => {
+    await page.goto(`/book?return=${orig.id}`);
+    await scan(page, "/book?return= (return form)", { path: /^\/book$/, h1: /Book a return/, text: new RegExp(`^Return of ${orig.loadNumber}\\. The truck reloads at `) });
+    await page.getByRole("button", { name: "Request return" }).click();
+    await expect(page.locator('[role="alert"]').first()).toBeVisible();
+    await scan(page, "/book?return= (validation errors)", { path: /^\/book$/, h1: /Book a return/ });
+  });
+  const ret = await insertLoad({
+    po: uniq("A11Y-RTR"), status: "requested", returnOf: orig.id,
+    pickupLocationId: o.delivery_location_id as string, deliveryLocationId: o.pickup_location_id as string,
+  });
+  await session(browser, "maria", async (page) => {
+    await page.goto(`/book?return=${orig.id}`);
+    await scan(page, "/book?return= (a return already requested)", { path: /^\/book$/, h1: /Book a return/, text: /^A return was already requested for this load: / });
+    await page.goto(`/loads/${ret.id}`);
+    await scan(page, "/loads/[id] (a return load)", { path: new RegExp(`^/loads/${ret.id}$`), h1: /Number pending/, text: `Return of ${orig.loadNumber}` });
+    await page.goto(`/loads/${orig.id}`);
+    await scan(page, "/loads/[id] (an original with a return, Return button)", { path: new RegExp(`^/loads/${orig.id}$`), h1: new RegExp(orig.loadNumber), text: "Return loads:" });
+  });
+  await session(browser, "admin", async (page) => {
+    await page.goto(`/admin/loads/${ret.id}`);
+    await scan(page, "/admin/loads/[id] (a return load, Use the same carrier)", { path: new RegExp(`^/admin/loads/${ret.id}$`), h1: new RegExp(ret.requestRef), text: "Use the same carrier" });
+  });
+});
+
 test("carrier driver pages and modals", async ({ browser }) => {
   const booked = await insertLoad({ po: uniq("A11Y-DB"), status: "booked" });
   const loading = await insertLoad({ po: uniq("A11Y-DL"), status: "loading" });

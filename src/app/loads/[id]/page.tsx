@@ -11,7 +11,10 @@ import { LOAD_SELECT, type LoadWithRefs } from "@/lib/customer/queries";
 import { fmtDateTime, fmtSlot, telHref } from "@/lib/format";
 import { nameIsStreet } from "@/lib/address";
 import { createClient } from "@/lib/supabase/server";
-import { STATUS_LABEL, type Location, type LoadDocument, type LoadEvent } from "@/lib/types";
+import { canReturn } from "@/lib/customer/returnLoad";
+import { STATUS_LABEL, type LoadStatus, type Location, type LoadDocument, type LoadEvent } from "@/lib/types";
+
+type Linked = { id: string; load_number: string; its_load_number: string | null; status: LoadStatus };
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +52,17 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
   if (!data) notFound();
   const l = data as unknown as LoadWithRefs;
 
-  const [{ data: evData }, { data: docData }] = await Promise.all([
+  const [{ data: evData }, { data: docData }, { data: origData }, { data: retData }] = await Promise.all([
     supabase.from("load_events").select("*").eq("load_id", id).order("created_at", { ascending: true }).order("id", { ascending: true }),
     supabase.from("load_documents").select("*").eq("load_id", id).order("created_at", { ascending: true }),
+    // R43: the link both ways (RLS: only the customer's own loads come back)
+    l.return_of_load_id
+      ? supabase.from("loads").select("id,load_number,its_load_number,status").eq("id", l.return_of_load_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase.from("loads").select("id,load_number,its_load_number,status").eq("return_of_load_id", id).order("created_at", { ascending: true }),
   ]);
+  const original = origData as Linked | null;
+  const returns = (retData ?? []) as Linked[];
   const events = (evData ?? []) as LoadEvent[];
   const docs = (docData ?? []) as LoadDocument[];
 
@@ -97,9 +107,34 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
           Delivered{l.delivered_at ? ` on ${fmtDateTime(l.delivered_at)}` : ""}
         </p>
       ) : null}
-      {l.status === "delivered" ? (
-        <div className="mb-4">
-          <LinkButton href={`/book?from=${l.id}`} variant="primary" big>Request again</LinkButton>
+      {l.status === "delivered" || canReturn(l.status) ? (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          {l.status === "delivered" ? <LinkButton href={`/book?from=${l.id}`} variant="primary" big>Request again</LinkButton> : null}
+          {canReturn(l.status) ? (
+            <Link href={`/book?return=${l.id}`} data-testid="return-button" className={btnClass("ghost")}>Return</Link>
+          ) : null}
+        </div>
+      ) : null}
+      {original || returns.length > 0 ? (
+        <div data-testid="return-links" className="mb-4 rounded-[16px] border border-line bg-card p-4 text-[15px]">
+          {original ? (
+            <p data-testid="return-of">
+              <Link href={`/loads/${original.id}`} className="inline-flex min-h-[44px] items-center font-bold underline">Return of {customerLabel(original)}</Link>
+            </p>
+          ) : null}
+          {returns.length > 0 ? (
+            <div data-testid="return-loads">
+              <p className="font-bold">Return loads:</p>
+              <ul className="mt-1 space-y-1">
+                {returns.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-2">
+                    <Link href={`/loads/${r.id}`} className="inline-flex min-h-[44px] items-center underline">{customerLabel(r)}</Link>
+                    <StatusChip status={r.status} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       ) : null}
       {l.status === "cancelled" ? (

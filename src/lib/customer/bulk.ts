@@ -37,7 +37,7 @@ export function truckNotes(index: number, total: number, userNotes: string | nul
 }
 
 export type NewLoadRow = ReturnType<typeof toLoadRow> & {
-  customer_id: string; created_by: string; status: "requested";
+  customer_id: string; created_by: string; status: "requested"; return_of_load_id?: string;
 };
 
 // One row per truck, identical values. customer_id and created_by come from the session profile, never the client.

@@ -3,7 +3,8 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 import { LoadNumber } from "@/components/LoadNumber";
 import { customerLabel } from "@/lib/load-number";
 import { Shell } from "@/components/Shell";
-import { Card, LinkButton, Notice, StatusChip } from "@/components/ui";
+import { Card, LinkButton, Notice, StatusChip, btnClass } from "@/components/ui";
+import { canReturn } from "@/lib/customer/returnLoad";
 import { requireCustomer } from "@/lib/auth";
 import { LOAD_SELECT, type LoadWithRefs } from "@/lib/customer/queries";
 import { fmtDateTime, fmtSlot } from "@/lib/format";
@@ -97,9 +98,12 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
               {l.eta ? <p className="text-[15px] font-medium">ETA {fmtDateTime(l.eta)}</p> : null}
               {l.carrier ? <p className="text-[15px] text-muted">Carrier: {l.carrier.name}</p> : null}
             </Link>
-            {l.status === "delivered" ? (
-              <div className="px-4 pb-4">
-                <LinkButton href={`/book?from=${l.id}`} variant="dark">Request again</LinkButton>
+            {l.status === "delivered" || canReturn(l.status) ? (
+              <div className="flex flex-wrap gap-2 px-4 pb-4">
+                {l.status === "delivered" ? <LinkButton href={`/book?from=${l.id}`} variant="dark">Request again</LinkButton> : null}
+                {canReturn(l.status) ? (
+                  <Link href={`/book?return=${l.id}`} data-testid="return-button" className={btnClass("ghost")}>Return</Link>
+                ) : null}
               </div>
             ) : null}
           </li>

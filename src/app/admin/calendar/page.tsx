@@ -9,7 +9,7 @@ import { todayEastern } from "@/lib/format";
 import {
   WEEKDAYS, addDays, addMonths, dayLabel, endOfMonth, isValidDay, monthLabel, startOfMonth, startOfWeek,
 } from "@/lib/admin/cal";
-import { BOARD_SELECT, pickupTimeLabel, routeOf, type BoardLoad } from "@/lib/admin/queries";
+import { BOARD_SELECT, isReturn, pickupTimeLabel, routeOf, type BoardLoad } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,7 @@ function Item({ l }: { l: BoardLoad }) {
     <Link href={`/admin/loads/${l.id}`} className="block rounded-[12px] border border-line bg-white p-2 hover:border-ink">
       <div className="flex flex-wrap items-center justify-between gap-1">
         <span className="text-[13px] font-bold"><LoadNumber l={l} audience="staff" /></span>
+        {isReturn(l) ? <span data-testid="board-return-badge" className="rounded-full bg-[#E4DCF5] px-2 py-0.5 text-[12px] font-bold text-[#3B2A78]">Return</span> : null}
         <StatusChip status={l.status} />
       </div>
       <p className="mt-1 text-[13px] text-muted">{pickupTimeLabel(l)}</p>

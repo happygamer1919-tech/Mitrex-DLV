@@ -98,6 +98,7 @@ export type SeedStatus = "requested" | "booked" | "at_pickup" | "loading" | "enr
 export async function insertLoad(opts: {
   po: string; status?: SeedStatus; carrier?: boolean; pickupDate?: string; eta?: string | null; notes?: string;
   pickupLocationId?: string; deliveryLocationId?: string; its?: string | null; size?: 26 | 36 | 53; photo?: boolean;
+  returnOf?: string; // R43: seed a return load of this original (service role: unrestricted)
 }): Promise<{ id: string; loadNumber: string; requestRef: string; itsNumber: string | null }> {
   const db = adminClient();
   const status = opts.status ?? "booked";
@@ -120,6 +121,7 @@ export async function insertLoad(opts: {
     delivery_contact_name: "Dee", delivery_contact_phone: "416-555-0102",
     po_number: opts.po, notes: opts.notes ?? null, status, its_load_number: its,
     carrier_id: withCarrier ? car!.id : null, eta,
+    ...(opts.returnOf ? { return_of_load_id: opts.returnOf } : {}),
     ...(status === "cancelled" ? { cancelled_at: new Date().toISOString() } : {}),
     ...(status === "delivered" ? { delivered_at: new Date().toISOString() } : {}),
   }).select("id,load_number,its_load_number").single();

@@ -34,6 +34,15 @@ When DLV books a load, every person in your company who uses the portal gets ONE
 4. Choose the dates and times, change anything else if needed, and tap **Request load**. You can also set several trucks at the bottom.
 5. Cancelled loads cannot be requested again.
 
+## Book a return
+Use this when the site asks the same truck to take the empty frames back, to Mitrex (or the shipper the load came from) or to a scrapyard.
+1. Open the load (or find it in **Loads**). A **Return** button shows once the truck is **At delivery** or the load is **Delivered**.
+2. Tap **Return**. The booking form opens turned around: the truck reloads at the site where it delivered (shown, it cannot be changed), with the site contact from the first load already filled in.
+3. **Delivery location** starts on the place the load came from, marked "(original shipper)", with the contact from the first load. To send the frames somewhere else, for example a scrapyard, choose it in the list: its saved contact fills in.
+4. Truck size, Moffett, weight, pieces, PO number and notes are copied. Change anything you need.
+5. Choose the new dates and times and tap **Request return**. A return is always one truck.
+6. The new load says "Return of <first load>" with a link back, and the first load lists it under "Return loads". If you open Return again on the same load, a note says a return was already requested; you can still book another one if the site needs a second truck.
+
 ## Who was the contact last time
 Under each contact name and phone, the form shows "Last contact at <place>: <name>, <phone> (load number, date)", where the load number is the ITS number, or "Request MTX-0005" for a load that has none. It is the contact on your most recent load to or from that place.
 - **Use last contact** fills in that name and phone.
