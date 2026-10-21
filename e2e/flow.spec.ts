@@ -155,9 +155,10 @@ test("Maria sees status and ETA", async ({ browser }) => {
   await expect(note).toHaveCount(1);
   await expect(note).toContainText(/^Delivered on /);
   await expect(page.getByText("Contact DLV to change this load")).toHaveCount(0);
-  await expect(page.getByText(/^ETA$/).first()).toBeVisible();
+  // DLV-043 CUST-04: the load keeps its last ETA, but a delivered load shows the delivered date, not the ETA (R46).
   const eta = (await adminClient().from("loads").select("eta").eq("id", loadId).single()).data?.eta;
   expect(eta).toBeTruthy();
+  await expect(page.getByText(/^ETA$/)).toHaveCount(0);
   await expect(page.getByText(CARRIER_A).first()).toBeVisible();
   await ctx.close();
 });
