@@ -10,6 +10,10 @@ import { freshEmail } from "./support/rates";
 import { CARRIER_A } from "./support/users";
 import { parseWeight, validateLoad, EMPTY_LOAD_FORM, type LoadFormValues } from "../src/lib/customer/validate";
 import { bookedMessageFromQuery } from "../src/lib/admin/booked-message";
+import { GENERIC, LOCATION_GONE, RETURN_GONE, plainDbError } from "../src/lib/customer/db-messages";
+import { MAIL_API } from "./support/env";
+import { assertLocalUrl } from "./support/guard";
+import { DUPLICATE_NAME } from "../src/lib/customer/location-validate";
 
 // DLV-043 sanity sweep: one test (or more) per fixed defect. Every database claim is read back through the service role.
 // Network failures are simulated in the browser only (page.route, setOffline), never against a non-local host.
@@ -549,4 +553,155 @@ test("SEC-06: the emailed sign in link carries the page the user came from", asy
   expect(target.pathname).toBe("/auth/callback");
   expect(target.searchParams.get("next")).toBe("/loads?view=completed");
   await ctx.close();
+});
+
+// ============================================================================================================
+// Review pass (DLV-043 adversarial review): defects found in the sweep's own fixes and in the same families
+// ============================================================================================================
+
+// CAR-08 follow-up: the camera dialogs hold hidden file inputs (hidden, tabindex -1). The hand-made Tab loop counted
+// them, so Tab moved focus onto an input that cannot take it and focus stayed stuck on the control before it.
+test("CAR-08: Tab and Shift+Tab move focus on every press in the driver's photo dialog (hidden file inputs are skipped)", async ({ browser }) => {
+  const l = await seed({ po: uniq("CR08P"), status: "loading" });
+  const { ctx, page } = await as(browser, "carrierA");
+  await page.goto(`/my-loads/${l.id}`);
+  await page.getByTestId("take-photo").click(); // "Take loaded photo", or "Take another photo" when the seed has one
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  // Wait for the camera to settle (live on Chromium's fake camera, unavailable on WebKit): its buttons are final then.
+  await expect(dialog.getByTestId("camera")).toHaveAttribute("data-phase", /^(live|unavailable)$/);
+  if ((await dialog.getByTestId("camera").getAttribute("data-phase")) === "live") {
+    await expect(dialog.getByTestId("camera-take")).toBeEnabled();
+  }
+  await expect(dialog.locator("input[type=file][hidden]").first()).toBeAttached();
+  const here = () => page.evaluate(() => {
+    const a = document.activeElement as HTMLElement | null;
+    return { inside: Boolean(a?.closest('[role="dialog"]')), id: a ? `${a.tagName}|${a.dataset.testid ?? ""}|${a.textContent ?? ""}` : "" };
+  });
+  const visible = await dialog.locator("button:not([disabled]), input:not([disabled]):not([hidden]), [href]").count();
+  expect(visible).toBeGreaterThan(1);
+  for (const key of ["Tab", "Shift+Tab"]) {
+    let before = (await here()).id;
+    const seen = new Set<string>();
+    for (let i = 0; i < visible + 2; i++) {
+      await page.keyboard.press(key);
+      const now = await here();
+      expect(now.inside, `focus stays in the dialog after ${key} ${i + 1}`).toBe(true);
+      expect(now.id, `${key} ${i + 1} moves focus (it stayed on ${before})`).not.toBe(before);
+      expect(now.id.startsWith("INPUT|"), `${key} ${i + 1} never lands on a hidden file input`).toBe(false);
+      seen.add(now.id);
+      before = now.id;
+    }
+    expect(seen.size, `${key} reaches every control`).toBe(visible);
+  }
+  await ctx.close();
+});
+
+// CUST-06 follow-up: a refused return (the original load changed meanwhile) is not "one of the locations".
+test("CUST-06: database refusals map to the right plain sentence (pure)", () => {
+  expect(plainDbError("pickup location cannot ship")).toBe(LOCATION_GONE);
+  expect(plainDbError("delivery location cannot receive")).toBe(LOCATION_GONE);
+  expect(plainDbError("return load: the original load must be at delivery or delivered")).toBe(RETURN_GONE);
+  expect(plainDbError("return load: the original load was not found")).toBe(RETURN_GONE);
+  expect(plainDbError("return load: the pickup must be the delivery location of the original load")).toBe(RETURN_GONE);
+  expect(plainDbError("new row violates row-level security policy")).toBe(GENERIC);
+  expect(plainDbError(undefined)).toBe(GENERIC);
+});
+
+// FORM-RESET-01 follow-up: the same React reset wiped what staff typed in the location, user and carrier forms.
+test("FORM-RESET-01: a refused new location keeps every field staff typed", async ({ browser }) => {
+  const taken = await makeLocation({ prefix: "E2E-RV-LOC" });
+  try {
+    const { ctx, page } = await as(browser, "admin");
+    await page.goto("/admin/locations");
+    await page.getByRole("button", { name: "New location" }).click();
+    const form = page.locator("form").filter({ has: page.getByLabel("Address line") });
+    await form.getByLabel("Name", { exact: true }).fill(taken.name);
+    await form.getByLabel("Address line").fill("12 Review Road");
+    await form.getByLabel("City", { exact: true }).fill("Keptville");
+    await form.getByLabel("Postal code").fill("K1K 1K1");
+    await form.getByLabel("Default contact name").fill("Kept Contact");
+    await form.getByRole("button", { name: "Create location" }).click();
+    await expect(form.getByText(DUPLICATE_NAME)).toBeVisible();
+    await expect(form.getByLabel("Name", { exact: true })).toHaveValue(taken.name);
+    await expect(form.getByLabel("Address line")).toHaveValue("12 Review Road");
+    await expect(form.getByLabel("City", { exact: true })).toHaveValue("Keptville");
+    await expect(form.getByLabel("Postal code")).toHaveValue("K1K 1K1");
+    await expect(form.getByLabel("Default contact name")).toHaveValue("Kept Contact");
+    expect((await db().from("locations").select("id").eq("name", taken.name)).data).toHaveLength(1);
+    await ctx.close();
+  } finally {
+    await retireLocations([taken.id]);
+  }
+});
+
+test("FORM-RESET-01: a refused new user keeps the email, name, role and company; a refused carrier name and rename stay as typed", async ({ browser }) => {
+  const { ctx, page } = await as(browser, "admin");
+  await page.goto("/admin/users");
+  const form = page.locator("form").filter({ has: page.getByLabel("Full name") });
+  await form.getByLabel("Email").fill("maria@e2e.test");
+  await form.getByLabel("Full name").fill("Kept Name");
+  await form.getByLabel("Role").selectOption({ label: "Customer" });
+  await form.locator('select[name="customer_id"]').selectOption({ label: "Mitrex" });
+  await form.getByRole("button", { name: "Add user" }).click();
+  await expect(page.getByText("This email cannot be added. Use a different email address.")).toBeVisible();
+  await expect(form.getByLabel("Email")).toHaveValue("maria@e2e.test");
+  await expect(form.getByLabel("Full name")).toHaveValue("Kept Name");
+  await expect(form.getByLabel("Role")).toHaveValue("customer");
+  await expect(form.locator('select[name="customer_id"] option:checked')).toHaveText("Mitrex");
+
+  await page.goto("/admin/carriers");
+  await page.getByLabel("New carrier name").fill(CARRIER_A);
+  await page.getByRole("button", { name: "Add carrier" }).click();
+  await expect(page.getByText(`A carrier named "${CARRIER_A}" already exists.`)).toBeVisible();
+  await expect(page.getByLabel("New carrier name")).toHaveValue(CARRIER_A);
+
+  const row = page.locator("li").filter({ has: page.getByText(CARRIER_A, { exact: true }) });
+  await row.getByRole("button", { name: "Rename" }).click();
+  await row.getByLabel("carrier name").fill("E2E Carrier B");
+  await row.getByRole("button", { name: "Save" }).click();
+  await expect(row.getByText('A carrier named "E2E Carrier B" already exists.')).toBeVisible();
+  await expect(row.getByLabel("carrier name")).toHaveValue("E2E Carrier B");
+  expect((await db().from("carriers").select("id").eq("name", CARRIER_A)).data).toHaveLength(1);
+  await ctx.close();
+});
+
+// SEC-06 follow-up: the request carries ?next=, but only the real link proves the auth server accepts that redirect.
+// The local allow-list names localhost:3000/auth/callback only (no query, another port): the link is accepted because
+// its host is the Site URL host, the same as production (Site URL https://portal.dlvlogistics.com).
+test("SEC-06: following the emailed link signs in and lands on the page the user came from", async ({ browser }) => {
+  const email = freshEmail("sec06-link");
+  const made = await db().auth.admin.createUser({ email, email_confirm: true });
+  expect(made.error).toBeNull();
+  const uid = made.data.user!.id;
+  const { data: mitrex } = await db().from("customers").select("id").eq("name", "Mitrex").single();
+  const prof = await db().from("profiles").insert({ id: uid, email, role: "customer", customer_id: mitrex!.id, is_active: true });
+  expect(prof.error).toBeNull();
+  try {
+    const { ctx, page } = await signInPage(browser, `/login?next=${encodeURIComponent("/loads?view=completed")}`);
+    const sentAt = Date.now();
+    await page.getByTestId("login-email").fill(email);
+    await page.getByTestId("login-send").click();
+    await expect(page.getByTestId("login-code")).toBeVisible();
+    assertLocalUrl(MAIL_API, "mail api");
+    let link = "";
+    await expect.poll(async () => {
+      const res = await fetch(`${MAIL_API}/search?query=${encodeURIComponent("to:" + email)}&limit=5`);
+      const body = (await res.json()) as { messages?: { ID: string; Created: string }[] };
+      for (const m of body.messages ?? []) {
+        if (new Date(m.Created).getTime() < sentAt - 2000) continue;
+        const full = (await (await fetch(`${MAIL_API}/message/${m.ID}`)).json()) as { HTML?: string };
+        const href = /href="([^"]*\/auth\/v1\/verify[^"]*)"/.exec(full.HTML ?? "")?.[1];
+        if (href) link = href.replace(/&amp;/g, "&");
+      }
+      return link;
+    }, { timeout: 30_000 }).not.toBe("");
+    assertLocalUrl(link, "emailed link");
+    await page.goto(link);
+    await page.waitForURL((u) => u.pathname === "/loads", { timeout: 20_000 });
+    expect(new URL(page.url()).searchParams.get("view")).toBe("completed");
+    await ctx.close();
+  } finally {
+    await db().auth.admin.deleteUser(uid);
+  }
 });
