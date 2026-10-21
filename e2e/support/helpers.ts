@@ -31,9 +31,9 @@ export async function as(browser: Browser, who: Who, viewport?: Viewport, extra?
 }
 
 // A fresh, signed-out context for the engine (login scenarios).
-export async function anon(browser: Browser): Promise<{ ctx: BrowserContext; page: Page }> {
+export async function anon(browser: Browser, extra?: BrowserContextOptions): Promise<{ ctx: BrowserContext; page: Page }> {
   const { options } = engineOptions(browser);
-  const ctx = await browser.newContext({ ...options, baseURL: BASE_URL });
+  const ctx = await browser.newContext({ ...options, baseURL: BASE_URL, ...(extra ?? {}) });
   return { ctx, page: await ctx.newPage() };
 }
 
