@@ -9,17 +9,12 @@ import { buildTruckRows, exceedsRecentCap, insertTruckLoads, MAX_LOADS_PER_WINDO
 import { notifyStaffOfRequest } from "./notify";
 import { canReturn, parseReturnParam, returnLocationError, validateReturnQuantity } from "./returnLoad";
 import { toLoadRow, validateLoad, type ActionResult, type LoadFormValues } from "./validate";
+import { plainDbError } from "./db-messages";
 
 type Sb = Awaited<ReturnType<typeof createClient>>;
 
 const GENERIC = "Something went wrong. Please try again.";
 
-// DLV-043 CUST-06: Maria never reads a raw database sentence. A location rule the database refused (a location turned
-// off or changed meanwhile) gets one plain line; anything else the generic one.
-const LOCATION_GONE = "One of the locations is no longer available. Choose another.";
-function plainDbError(message: string | undefined): string {
-  return /location cannot (ship|receive)|return load:/i.test(message ?? "") ? LOCATION_GONE : GENERIC;
-}
 
 // Default 30 loads per 10 minutes per customer user. LOAD_RATE_CAP overrides it (the e2e server raises it, because
 // the specs seed many loads as Maria through the service role).
