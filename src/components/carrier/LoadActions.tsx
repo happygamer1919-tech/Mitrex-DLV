@@ -54,7 +54,10 @@ function Modal({ title, onClose, busy, children }: { title: string; onClose: () 
         return;
       }
       if (e.key !== "Tab" || !dialog.current) return;
-      const items = [...dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      // Only what can really take focus: the hidden file inputs of the camera (hidden, tabindex -1) and anything not
+      // rendered would swallow the move and leave focus stuck on the control before them.
+      const items = [...dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE)]
+        .filter((el) => el.tabIndex >= 0 && !el.hidden && el.getClientRects().length > 0);
       e.preventDefault();
       if (items.length === 0) return;
       // Focus is moved by hand, so the loop holds in every browser (Safari skips buttons when Tab is pressed by default).
