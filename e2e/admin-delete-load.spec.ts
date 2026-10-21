@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
-import { adminClient, anon, as, insertLoad, PNG_1X1, uniq, type SeedStatus } from "./support/helpers";
+import { adminClient, anon, as, insertLoad, PNG_1X1, uniq, type SeedStatus, openMoreActions, openBand } from "./support/helpers";
 import { BASE_URL, localEnv } from "./support/env";
 import { assertLocalUrl } from "./support/guard";
 import { loginViaUi } from "./support/login";
@@ -315,6 +315,7 @@ test("a csr sees no Danger zone at all, and a forged delete call is refused with
   await loginViaUi(page, email);
   await page.goto(`/admin/loads/${l.id}`);
   await expect(page.locator("h1").first()).toContainText(l.loadNumber);
+  await openMoreActions(page); // R46: Override status sits under More actions
   await expect(page.getByRole("heading", { name: "Override status" })).toBeVisible(); // the staff page, as a csr
   await expect(page.getByTestId("danger-zone")).toHaveCount(0);
   await expect(page.getByText("Danger zone")).toHaveCount(0);
@@ -391,6 +392,7 @@ test("deleting a load makes Maria's list, a carrier's list and the board drop it
   await maria.page.goto("/loads");
   await carrier.page.goto("/my-loads");
   await board.page.goto("/admin");
+  await openBand(board.page, "booked"); // R46: an open band shows 12 cards, then "Show all"
   const links = [
     [maria.page, `a[href="/loads/${l.id}"]`], [carrier.page, `a[href="/my-loads/${l.id}"]`], [board.page, `a[href="/admin/loads/${l.id}"]`],
   ] as const;
@@ -419,6 +421,7 @@ test("deleting one truck of a multi-truck booking leaves the other trucks, with 
   expect(await loadExists(b.id)).toBe(false);
   expect(await count("load_documents", b.id)).toBe(0);
   expect(await fileExists(b.paths[0])).toBe(false);
+  await openBand(page, "booked"); // R46: an open band shows 12 cards, then "Show all"
   for (const t of [a, c]) {
     expect(await loadExists(t.id), `truck ${t.loadNumber} still exists`).toBe(true);
     expect(await count("load_events", t.id)).toBeGreaterThan(0);

@@ -6,6 +6,7 @@ import { Card, LinkButton, Notice, StatusChip } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { AssignCarrierForm, BookLoadForm, EditItsForm, EtaForm, RemovePhotoButton, StaffUpload, StatusOverrideForm } from "@/components/admin/LoadControls";
 import { ItsCopyCard } from "@/components/admin/ItsCopyCard";
+import { Disclosure } from "@/components/Disclosure";
 import { laneLabel, resolve, type LaneReference } from "@/lib/admin/lane-reference";
 import { DeleteLoadCard } from "@/components/admin/DeleteLoadCard";
 import { LoadNumber } from "@/components/LoadNumber";
@@ -24,6 +25,8 @@ import { canStaffEdit, canStaffReturn, offersCarrierEmail } from "@/lib/admin/st
 import { routeOf } from "@/lib/admin/queries";
 
 export const dynamic = "force-dynamic";
+
+const TIMELINE_LATEST = 3; // R46: events shown before "Show all <n> events"
 
 const DOC_NAME: Record<DocKind, string> = { bol: "BOL", pod: "POD", pickup_photo: "Pickup photo", delivery_photo: "Delivery photo" };
 
@@ -118,6 +121,20 @@ export default async function AdminLoadPage({ params, searchParams }: {
       const { data: s } = await supabase.storage.from("documents").createSignedUrl(d.storage_path, 300);
       return { d, url: s?.signedUrl ?? null };
     }),
+  );
+
+  const eventItem = (e: LoadEvent) => (
+    <li key={e.id} data-testid="timeline-event" className="border-l-4 border-neon pl-3">
+      <p className="text-[15px] font-medium">
+        {e.from_status && e.from_status !== e.to_status
+          ? `${STATUS_LABEL[e.from_status]} to ${STATUS_LABEL[e.to_status]}`
+          : e.from_status ? `${STATUS_LABEL[e.to_status]} (update)` : STATUS_LABEL[e.to_status]}
+      </p>
+      {e.note ? <p className="break-words text-[15px]">{e.note}</p> : null}
+      <p className="text-[13px] text-muted">
+        {fmtDateTime(e.created_at)}{e.actor_id ? `, ${actors.get(e.actor_id) ?? "Unknown user"}` : ""}
+      </p>
+    </li>
   );
 
   const status = load.status as keyof typeof STATUS_LABEL;
@@ -226,21 +243,21 @@ export default async function AdminLoadPage({ params, searchParams }: {
             {events.length === 0 ? (
               <p className="text-[15px] text-muted">No events yet.</p>
             ) : (
-              <ol className="space-y-3">
-                {events.map((e) => (
-                  <li key={e.id} className="border-l-4 border-neon pl-3">
-                    <p className="text-[15px] font-medium">
-                      {e.from_status && e.from_status !== e.to_status
-                        ? `${STATUS_LABEL[e.from_status]} to ${STATUS_LABEL[e.to_status]}`
-                        : e.from_status ? `${STATUS_LABEL[e.to_status]} (update)` : STATUS_LABEL[e.to_status]}
-                    </p>
-                    {e.note ? <p className="break-words text-[15px]">{e.note}</p> : null}
-                    <p className="text-[13px] text-muted">
-                      {fmtDateTime(e.created_at)}{e.actor_id ? `, ${actors.get(e.actor_id) ?? "Unknown user"}` : ""}
-                    </p>
-                  </li>
-                ))}
-              </ol>
+              // R46: the latest 3 events; the older ones (still in time order) open with "Show all <n> events".
+              <>
+                {events.length > TIMELINE_LATEST ? (
+                  <Disclosure
+                    testid="timeline-older"
+                    className="mb-3"
+                    summaryClassName="px-1 text-[15px] font-medium underline"
+                    summary={`Show all ${events.length} events`}
+                    openLabel="Show the latest 3 only"
+                  >
+                    <ol className="mt-2 space-y-3">{events.slice(0, -TIMELINE_LATEST).map(eventItem)}</ol>
+                  </Disclosure>
+                ) : null}
+                <ol data-testid="timeline-latest" className="space-y-3">{events.slice(-TIMELINE_LATEST).map(eventItem)}</ol>
+              </>
             )}
           </Card>
         </div>
@@ -333,12 +350,15 @@ export default async function AdminLoadPage({ params, searchParams }: {
               </ul>
             )}
             {status !== "cancelled" ? (
-              <div className="space-y-6">
-                <StaffUpload loadId={load.id} kind="bol" />
-                <StaffUpload loadId={load.id} kind="pod" />
-                <StaffUpload loadId={load.id} kind="pickup_photo" />
-                <StaffUpload loadId={load.id} kind="delivery_photo" />
-              </div>
+              // R46: the four upload areas sit behind one expander; the file list above stays visible.
+              <Disclosure testid="upload-files" summaryClassName="px-1 text-[15px] font-bold" summary="Upload files" openLabel="Hide upload areas">
+                <div className="mt-3 space-y-6">
+                  <StaffUpload loadId={load.id} kind="bol" />
+                  <StaffUpload loadId={load.id} kind="pod" />
+                  <StaffUpload loadId={load.id} kind="pickup_photo" />
+                  <StaffUpload loadId={load.id} kind="delivery_photo" />
+                </div>
+              </Disclosure>
             ) : null}
           </Card>
 
@@ -349,26 +369,32 @@ export default async function AdminLoadPage({ params, searchParams }: {
             </Card>
           ) : null}
 
+          {/* R46: Override status and Cancel load under one "More actions" expander (the Danger zone below stays as it is). */}
           <Card>
-            <h2 className="mb-1 text-[20px] font-bold">Override status</h2>
-            <p className="mb-3 text-[13px] text-muted">Use for corrections. A note is required and goes in the timeline. Moving past a missing pickup or delivery photo is allowed for staff and is recorded in the timeline.</p>
-            <StatusOverrideForm loadId={load.id} current={status} itsNumber={load.its_load_number} />
+            <Disclosure testid="more-actions" summaryClassName="text-[20px] font-bold" summary={<h2 className="text-[20px] font-bold">More actions</h2>}>
+              <div className="mt-3 space-y-6">
+                <section aria-labelledby="override-h">
+                  <h3 id="override-h" className="mb-1 text-[18px] font-bold">Override status</h3>
+                  <p className="mb-3 text-[13px] text-muted">Use for corrections. A note is required and goes in the timeline. Moving past a missing pickup or delivery photo is allowed for staff and is recorded in the timeline.</p>
+                  <StatusOverrideForm loadId={load.id} current={status} itsNumber={load.its_load_number} />
+                </section>
+                {!closed ? (
+                  <section aria-labelledby="cancel-h" className="border-t border-line pt-4">
+                    <h3 id="cancel-h" className="mb-3 text-[18px] font-bold">Cancel load</h3>
+                    <ActionForm
+                      action={cancelLoad}
+                      fields={{ load_id: load.id }}
+                      label="Cancel load"
+                      variant="danger"
+                      confirm={`Cancel ${staffLabel(load)}? The customer and carrier will see it as cancelled.`}
+                      confirmLabel="Yes, cancel load"
+                      pendingLabel="Cancelling..."
+                    />
+                  </section>
+                ) : null}
+              </div>
+            </Disclosure>
           </Card>
-
-          {!closed ? (
-            <Card>
-              <h2 className="mb-3 text-[20px] font-bold">Cancel load</h2>
-              <ActionForm
-                action={cancelLoad}
-                fields={{ load_id: load.id }}
-                label="Cancel load"
-                variant="danger"
-                confirm={`Cancel ${staffLabel(load)}? The customer and carrier will see it as cancelled.`}
-                confirmLabel="Yes, cancel load"
-                pendingLabel="Cancelling..."
-              />
-            </Card>
-          ) : null}
         </div>
       </div>
 

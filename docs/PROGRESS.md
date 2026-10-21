@@ -41,3 +41,4 @@
 | Return loads: a Return button recreates a load the other way round, linked to the original (migration 0019, apply pack 9) | #38 | open, migration 0019 not applied |
 | Staff edit every detail of a load at any status except cancelled, Details edited audit (migration 0020, apply pack 10), optional carrier email and resend, staff created return, lane scenario edit (DLV-039) | #39 | open, migration 0020 not applied |
 | Maria adds and edits locations herself, staff see who added and edited (migration 0021, apply pack 11, DLV-041) | #40 | open, migration 0021 not applied |
+| Compact views everywhere (collapsible bands and groups, Show all, Show older, compact cards and rows, folded load page sections), Maria's search, filters, sort and CSV export (DLV-040, no migration) | #41 | open, stacked on #40 |

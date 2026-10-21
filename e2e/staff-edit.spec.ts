@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
-import { adminClient, anon, as, gotoSteady, isoDate, uniq, uniqIts } from "./support/helpers";
+import { adminClient, anon, as, gotoSteady, isoDate, uniq, uniqIts, openMoreActions } from "./support/helpers";
 import { makeLocation, retireLocations, type TestLocation } from "./support/book";
 import { sentEmails, setMockStatus, type SentEmail } from "./support/mail-mock";
 import { loginViaUi } from "./support/login";
@@ -529,6 +529,7 @@ test("a cancelled load has no Edit details button, its edit route goes back to t
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.waitForURL(/\?saved=1$/);
   await gotoSteady(page, `/admin/loads/${cxl.id}`);
+  await openMoreActions(page); // R46: Override status sits under More actions
   await expect(page.getByRole("heading", { name: "Override status" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Edit details" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Create return" })).toHaveCount(0);

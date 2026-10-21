@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  adminClient, as, insertLoad, jpegSize, loadRow, makeNoisePng, readDownload, uniq, podChooseFile } from "./support/helpers";
+import { adminClient, as, insertLoad, jpegSize, loadRow, makeNoisePng, readDownload, uniq, podChooseFile, openUploads } from "./support/helpers";
 
 test("staff uploads a BOL, Maria downloads the same bytes, BOL pending disappears", async ({ browser }) => {
   const po = uniq("BOL");
@@ -9,6 +8,7 @@ test("staff uploads a BOL, Maria downloads the same bytes, BOL pending disappear
 
   const staff = await as(browser, "admin");
   await staff.page.goto(`/admin/loads/${id}`);
+  await openUploads(staff.page); // R46: the upload areas sit under Upload files
   await expect(staff.page.getByText("BOL pending")).toHaveCount(1);
   await staff.page.getByTestId("upload-bol").getByTestId("dropzone-input").setInputFiles({ name: `bol-${po}.pdf`, mimeType: "application/pdf", buffer: pdf });
   await staff.page.getByRole("button", { name: "Upload BOL" }).click();

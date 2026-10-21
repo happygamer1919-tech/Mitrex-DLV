@@ -92,7 +92,7 @@ test("staff and customer: POD pending on the board and the load page, then gone;
   const po = uniq("PENDPOD");
   const { id, loadNumber } = await insertLoad({ po, status: "delivered" });
   const staff = await as(browser, "admin");
-  await staff.page.goto("/admin");
+  await staff.page.goto(`/admin?q=${po}`); // R46: Delivered is collapsed by default; the board search opens its band
   const boardCard = staff.page.locator(`a[href="/admin/loads/${id}"]`);
   await expect(boardCard).toContainText("POD pending");
   await staff.page.goto(`/admin/loads/${id}`);
@@ -123,7 +123,7 @@ test("staff and customer: POD pending on the board and the load page, then gone;
 
   await staff.page.reload();
   await expect(staff.page.getByTestId("pod-pending")).toHaveCount(0);
-  await staff.page.goto("/admin");
+  await staff.page.goto(`/admin?q=${po}`); // R46: Delivered is collapsed by default; the board search opens its band
   await expect(staff.page.locator(`a[href="/admin/loads/${id}"]`)).toBeVisible();
   await expect(staff.page.locator(`a[href="/admin/loads/${id}"]`)).not.toContainText("POD pending");
   expect((await adminClient().from("loads").select("load_number,its_load_number").eq("id", id).single()).data).toMatchObject({ load_number: expect.stringMatching(/^MTX-/), its_load_number: loadNumber }); // the shown number of a seeded delivered load is its ITS number

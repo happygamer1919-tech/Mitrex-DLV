@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { adminClient, as, gotoSteady, insertLoad, isoDate, parseCsv, uniq, uniqIts } from "./support/helpers";
+import { adminClient, as, gotoSteady, insertLoad, isoDate, parseCsv, uniq, uniqIts, openUploads, openMoreActions } from "./support/helpers";
 import { fillBooking, makeLocation, retireLocations } from "./support/book";
 import { BASE_URL } from "./support/env";
 import { sentEmails, setMockStatus, MAIL_MOCK_URL, type SentEmail } from "./support/mail-mock";
@@ -87,6 +87,9 @@ async function staffPage(browser: Browser, id: string) {
   const s = await as(browser, "admin");
   await gotoSteady(s.page, `/admin/loads/${id}`);
   await expect(s.page.getByRole("heading", { name: "Carrier and booking" })).toBeVisible();
+  // R46: the upload areas and the status override are folded; these tests use both.
+  await openUploads(s.page);
+  await openMoreActions(s.page);
   return s;
 }
 

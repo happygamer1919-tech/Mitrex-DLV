@@ -300,3 +300,21 @@ export function easternLocal(iso: string): string {
   const g = (t: string) => p.find((x) => x.type === t)!.value;
   return `${g("year")}-${g("month")}-${g("day")}T${g("hour")}:${g("minute")}`;
 }
+
+// R46 compact views: open a native disclosure (details) by its data-testid, once. Specs that work with something now
+// folded away (the staff upload areas, More actions, a band's Show all, the older timeline events) open it first.
+export async function openFold(page: Page, testid: string): Promise<void> {
+  const d = page.getByTestId(testid).first();
+  if (await d.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  await d.locator(":scope > summary").click();
+  await d.evaluate((el) => new Promise<void>((r) => { if ((el as HTMLDetailsElement).open) r(); else el.addEventListener("toggle", () => r(), { once: true }); }));
+}
+// The staff load page: the four upload areas sit behind "Upload files".
+export const openUploads = (page: Page) => openFold(page, "upload-files");
+// The staff load page: Override status and Cancel load sit behind "More actions".
+export const openMoreActions = (page: Page) => openFold(page, "more-actions");
+// The staff board: open a status band and its "Show all" (an open band shows its first 12 cards only).
+export async function openBand(page: Page, status: SeedStatus): Promise<void> {
+  await openFold(page, `band-toggle-${status}`);
+  if (await page.getByTestId(`band-all-${status}`).count()) await openFold(page, `band-all-${status}`);
+}

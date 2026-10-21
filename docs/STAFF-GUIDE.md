@@ -31,6 +31,16 @@ Carriers must take a photo of the loaded freight before they can tap Leave for d
 ## On the board
 Requested loads show a small line "Copy ITS 1269" so you can see the number without opening the load. Loads with no reference show "No ITS reference".
 
+## Compact board and load pages
+- Each status is a band you can fold: tap its title (for example "Delivered 214") to open or close it. Delivered and Cancelled start closed, the others open.
+- An open band shows its first 12 loads. Tap **Show all** for the rest.
+- Delivered and Cancelled hold the pickups of the last 30 days. Tap **Show older (50 more)** to add older loads, 50 at a time.
+- Each load is one line: number, route, pickup date and time, carrier (or Not assigned) and the badges (BOL pending, POD pending, Copy ITS, Return). Tap the line to open the load, or tap **Details** for the contacts, size and Moffett, PO, notes and ETA.
+- A search or filter looks through every delivered and cancelled load, not only the last 30 days, and opens the bands that have a match.
+- One list view shows 50 rows, then **Show more**.
+- On a load page the Timeline shows the latest 3 events; tap **Show all ... events** for the rest. The uploads are under **Upload files** (the files themselves stay visible above). **Override status** and **Cancel load** are under **More actions**. Delete forever (admins) is unchanged at the bottom.
+- Other lists fold too: on **Locations** tap **Edit** to see the contact, notes, who added it and the edit form; on **Lanes** each pickup is a closed group until you search or filter; on **Rate requests** Quoted and Cancelled are closed; on **Location requests** the reviewed ones; on **Users** the deactivated users.
+
 ## Find loads on the board (filters and sorting)
 - Tap a quick pill: Today, Tomorrow, Next 7 days, Not assigned, Needs BOL, Needs ITS number. Tap it again to switch it off.
 - Tap Filters for search (ITS number, request number, PO, place or carrier), status, carrier, shipper (pickup), receiver (delivery), size and custom dates, then Sort by and Order.

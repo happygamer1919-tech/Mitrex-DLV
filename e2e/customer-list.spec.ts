@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminClient, as, insertLoad, uniq } from "./support/helpers";
+import { adminClient, as, insertLoad, uniq, openMoreActions } from "./support/helpers";
 
 // R22 /loads status filter and the load timeline (built from load_events) on /loads/[id].
 
@@ -51,6 +51,7 @@ test("the load page timeline lists the status changes with their notes", async (
 
   const staff = await as(browser, "admin");
   await staff.page.goto(`/admin/loads/${id}`);
+  await openMoreActions(staff.page); // R46: the override sits under More actions
   await staff.page.getByLabel("New status").selectOption({ label: "At pickup" });
   await staff.page.getByLabel("Note (required)").fill(note);
   await staff.page.getByRole("button", { name: "Override status" }).click();

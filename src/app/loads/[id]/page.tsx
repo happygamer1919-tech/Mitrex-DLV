@@ -6,6 +6,7 @@ import { customerLabel } from "@/lib/load-number";
 import { Shell } from "@/components/Shell";
 import { Card, LinkButton, StatusChip, btnClass } from "@/components/ui";
 import { CancelLoad } from "@/components/customer/CancelLoad";
+import { Disclosure } from "@/components/Disclosure";
 import { requireCustomer } from "@/lib/auth";
 import { LOAD_SELECT, type LoadWithRefs } from "@/lib/customer/queries";
 import { fmtDateTime, fmtSlot, telHref } from "@/lib/format";
@@ -17,6 +18,9 @@ import { STATUS_LABEL, type LoadStatus, type Location, type LoadDocument, type L
 type Linked = { id: string; load_number: string; its_load_number: string | null; status: LoadStatus };
 
 export const dynamic = "force-dynamic";
+
+const TIMELINE_LATEST = 3; // R46: events shown before "Show all <n> events"
+const PHOTOS_SHOWN = 4; // R46: thumbnails shown before "Show all <n> photos"
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -81,6 +85,34 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
   const photos = signed
     .filter((s) => s.doc.kind === "pickup_photo" || s.doc.kind === "delivery_photo")
     .sort((a, b) => a.doc.created_at.localeCompare(b.doc.created_at));
+
+  const photoItem = (s: (typeof photos)[number]) => (
+    <li key={s.doc.id} data-testid="photo-item" data-kind={s.doc.kind} className="space-y-1">
+      {s.url ? (
+        <a href={s.url} target="_blank" rel="noopener noreferrer" aria-label={`Open the ${s.doc.kind === "pickup_photo" ? "loaded" : "delivery"} photo full size`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={s.url} alt={s.doc.kind === "pickup_photo" ? "Loaded freight at pickup" : "Freight at delivery"} className="aspect-[4/3] w-full rounded-[12px] bg-black object-cover" />
+        </a>
+      ) : (
+        <p className="flex aspect-[4/3] items-center justify-center rounded-[12px] bg-mint text-[13px] text-muted">Unavailable right now</p>
+      )}
+      <p className="text-[14px] font-bold">{s.doc.kind === "pickup_photo" ? "Loaded at pickup" : "Delivered"}</p>
+      <p className="text-[13px] text-muted" data-testid="photo-time">{fmtDateTime(s.doc.created_at)}</p>
+    </li>
+  );
+  const eventItem = (e: LoadEvent) => (
+    <li key={e.id} data-testid="timeline-event" className="relative">
+      <span aria-hidden className="absolute -left-[23px] top-1.5 h-3 w-3 rounded-full bg-neon ring-2 ring-ink" />
+      <p className="text-[16px] font-bold">
+        {e.from_status === e.to_status ? `${STATUS_LABEL[e.to_status]}, update` : STATUS_LABEL[e.to_status]}
+      </p>
+      {e.from_status && e.from_status !== e.to_status ? (
+        <p className="text-[13px] text-muted">from {STATUS_LABEL[e.from_status]}</p>
+      ) : null}
+      {e.note ? <p className="text-[15px] break-words">{e.note}</p> : null}
+      <p className="text-[13px] text-muted">{fmtDateTime(e.created_at)}</p>
+    </li>
+  );
 
   const editable = l.status === "requested";
   // The "contact DLV" message applies only while dispatch owns the load (booked through at delivery).
@@ -207,22 +239,20 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
                   : "The photo of the loaded freight appears here once the load leaves for delivery. The delivery photo appears once it is delivered."}
               </p>
             ) : (
-              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="photo-list">
-                {photos.map((s) => (
-                  <li key={s.doc.id} data-testid="photo-item" data-kind={s.doc.kind} className="space-y-1">
-                    {s.url ? (
-                      <a href={s.url} target="_blank" rel="noopener noreferrer" aria-label={`Open the ${s.doc.kind === "pickup_photo" ? "loaded" : "delivery"} photo full size`}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={s.url} alt={s.doc.kind === "pickup_photo" ? "Loaded freight at pickup" : "Freight at delivery"} className="aspect-[4/3] w-full rounded-[12px] bg-black object-cover" />
-                      </a>
-                    ) : (
-                      <p className="flex aspect-[4/3] items-center justify-center rounded-[12px] bg-mint text-[13px] text-muted">Unavailable right now</p>
-                    )}
-                    <p className="text-[14px] font-bold">{s.doc.kind === "pickup_photo" ? "Loaded at pickup" : "Delivered"}</p>
-                    <p className="text-[13px] text-muted" data-testid="photo-time">{fmtDateTime(s.doc.created_at)}</p>
-                  </li>
-                ))}
-              </ul>
+              // R46: up to 4 thumbnails; the rest open with "Show all <n> photos".
+              <>
+                <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="photo-list">
+                  {photos.slice(0, PHOTOS_SHOWN).map(photoItem)}
+                </ul>
+                {photos.length > PHOTOS_SHOWN ? (
+                  <Disclosure testid="photos-more" className="mt-3" summaryClassName="px-1 text-[15px] font-medium underline"
+                    summary={`Show all ${photos.length} photos`} openLabel={`Show the first ${PHOTOS_SHOWN} only`}>
+                    <ul className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="photo-list-more">
+                      {photos.slice(PHOTOS_SHOWN).map(photoItem)}
+                    </ul>
+                  </Disclosure>
+                ) : null}
+              </>
             )}
           </Card>
         </div>
@@ -232,21 +262,16 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
           {events.length === 0 ? (
             <p className="text-[15px] text-muted">No events yet.</p>
           ) : (
-            <ol className="space-y-4 border-l-2 border-line pl-4">
-              {events.map((e) => (
-                <li key={e.id} className="relative">
-                  <span aria-hidden className="absolute -left-[23px] top-1.5 h-3 w-3 rounded-full bg-neon ring-2 ring-ink" />
-                  <p className="text-[16px] font-bold">
-                    {e.from_status === e.to_status ? `${STATUS_LABEL[e.to_status]}, update` : STATUS_LABEL[e.to_status]}
-                  </p>
-                  {e.from_status && e.from_status !== e.to_status ? (
-                    <p className="text-[13px] text-muted">from {STATUS_LABEL[e.from_status]}</p>
-                  ) : null}
-                  {e.note ? <p className="text-[15px] break-words">{e.note}</p> : null}
-                  <p className="text-[13px] text-muted">{fmtDateTime(e.created_at)}</p>
-                </li>
-              ))}
-            </ol>
+            // R46: the latest 3 events; the older ones (still in time order) open with "Show all <n> events".
+            <>
+              {events.length > TIMELINE_LATEST ? (
+                <Disclosure testid="timeline-older" className="mb-3" summaryClassName="px-1 text-[15px] font-medium underline"
+                  summary={`Show all ${events.length} events`} openLabel="Show the latest 3 only">
+                  <ol className="mt-2 space-y-4 border-l-2 border-line pl-4">{events.slice(0, -TIMELINE_LATEST).map(eventItem)}</ol>
+                </Disclosure>
+              ) : null}
+              <ol data-testid="timeline-latest" className="space-y-4 border-l-2 border-line pl-4">{events.slice(-TIMELINE_LATEST).map(eventItem)}</ol>
+            </>
           )}
         </Card>
       </div>

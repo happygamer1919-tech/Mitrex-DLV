@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
-import { addLoadPhoto, adminClient, as, insertLoad, isoDate, jpegSize, loadRow, photoRows, PNG_1X1, uniq, type SeedStatus } from "./support/helpers";
+import { addLoadPhoto, adminClient, as, insertLoad, isoDate, jpegSize, loadRow, photoRows, PNG_1X1, uniq, type SeedStatus, openUploads, openMoreActions } from "./support/helpers";
 import { makeUser, userClient } from "./support/rates";
 
 // DLV-032 (R41): forced photos at the loaded step and at delivery, taken in the in-app camera, with the server time.
@@ -380,6 +380,7 @@ test("the database hides photos from another customer and from a customer before
 // ---------------------------------------------------------------------------------------------------------------
 
 async function staffOverride(page: Page, to: "Enroute" | "Delivered", note: string) {
+  await openMoreActions(page); // R46: the override sits under More actions
   await page.getByLabel("New status").selectOption({ label: to });
   if (to === "Enroute") await page.getByLabel("ETA (Eastern time, ET)").fill(`${isoDate(3)}T10:00`);
   await page.getByLabel("Note (required)").fill(note);
@@ -411,6 +412,7 @@ test("staff upload a pickup photo on behalf of the carrier: it shows with its ti
   const { ctx, page } = await as(browser, "admin");
   await openFresh(page, `/admin/loads/${id}`);
   await expect(page.locator("h1").first()).toContainText(loadNumber);
+  await openUploads(page); // R46: the upload areas sit under Upload files
   const zone = page.getByTestId("upload-pickup_photo");
   await zone.getByTestId("dropzone-input").setInputFiles({ name: "front.png", mimeType: "image/png", buffer: PNG_1X1 });
   await page.getByRole("button", { name: "Upload Pickup photo" }).click();

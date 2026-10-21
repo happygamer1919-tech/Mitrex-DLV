@@ -3,6 +3,7 @@ import { useActionState, useEffect, useMemo, useState, useTransition } from "rea
 import { Button, Card, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { DropZone } from "@/components/DropZone";
+import { Disclosure } from "@/components/Disclosure";
 import { createLane, deleteLane, importLanes, updateLane } from "@/lib/admin/lane-actions";
 import { MAX_IMPORT_ROWS, validateLaneImport } from "@/lib/admin/lane-csv";
 import type { ActionState } from "@/lib/admin/state";
@@ -265,6 +266,8 @@ export function LaneManager({ lanes, locations, prefill }: { lanes: LaneRow[]; l
     return { total: shown.length, groups: [...map.entries()] };
   }, [lanes, q, pickup, delivery, size]);
 
+  const narrowed = q.trim() !== "" || pickup !== "all" || delivery !== "all" || size !== "all";
+
   return (
     <div className="space-y-4">
       <Card>
@@ -310,14 +313,21 @@ export function LaneManager({ lanes, locations, prefill }: { lanes: LaneRow[]; l
       {groups.groups.length === 0 ? (
         <Card><p className="text-[15px] text-muted">{lanes.length === 0 ? "No lanes yet. Add the first one." : "No lanes match this filter."}</p></Card>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3">
+          {/* R46: one collapsible group per pickup with its count; all collapsed unless a search or filter is on. */}
           {groups.groups.map(([name, list]) => (
-            <section key={name} aria-label={`Pickup ${name}`}>
-              <h2 className="mb-2 flex items-center gap-2 text-[18px] font-bold">
-                <span>{name}</span>
-                <span className="rounded-full bg-white px-2.5 py-0.5 text-[14px] text-muted">{list.length}</span>
-              </h2>
-              <ul className="space-y-3">{list.map((l) => <Row key={l.id} lane={l} locations={locations} />)}</ul>
+            <section key={name} aria-label={`Pickup ${name}`} data-testid="lane-group">
+              <Disclosure
+                open={narrowed}
+                summary={
+                  <h2 className="flex items-center gap-2 text-[18px] font-bold">
+                    <span className="break-words">{name}</span>
+                    <span data-testid="lane-group-count" className="rounded-full bg-white px-2.5 py-0.5 text-[14px] text-muted">{list.length}</span>
+                  </h2>
+                }
+              >
+                <ul className="mt-2 space-y-3">{list.map((l) => <Row key={l.id} lane={l} locations={locations} />)}</ul>
+              </Disclosure>
             </section>
           ))}
         </div>

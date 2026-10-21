@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { adminClient, as, insertLoad, PNG_1X1, uniq } from "./support/helpers";
+import { adminClient, as, insertLoad, PNG_1X1, uniq, openUploads } from "./support/helpers";
 import { checkFile, extOf, formatBytes } from "../src/lib/client/file-check";
 
 // Card 1 of DLV-021: the upload drop area (src/components/DropZone.tsx) on the staff load page.
@@ -26,6 +26,7 @@ test("clicking the drop area opens the file chooser", async ({ browser }) => {
   const { id } = await insertLoad({ po: uniq("DZCLICK"), status: "booked" });
   const { ctx, page } = await as(browser, "admin");
   await page.goto(`/admin/loads/${id}`);
+  await openUploads(page); // R46: the upload areas sit under Upload files
   const zone = bolZone(page);
   await expect(zone).toContainText("Drop the file here, or tap to choose");
   await expect(zone).toContainText("Choose file");
@@ -47,6 +48,7 @@ test("keyboard: Enter and Space on the drop area open the file chooser", async (
   const { id } = await insertLoad({ po: uniq("DZKEY"), status: "booked" });
   const { ctx, page } = await as(browser, "admin");
   await page.goto(`/admin/loads/${id}`);
+  await openUploads(page); // R46: the upload areas sit under Upload files
   const zone = bolZone(page);
   await expect(zone).toHaveAttribute("role", "button");
   await expect(zone).toHaveAttribute("aria-label", /Bill of lading/);
@@ -65,6 +67,7 @@ test("drag and drop uploads a BOL and it shows in the Documents list; a drop out
   const pdf = pdfBytes(po);
   const { ctx, page } = await as(browser, "admin");
   await page.goto(`/admin/loads/${id}`);
+  await openUploads(page); // R46: the upload areas sit under Upload files
   const url = page.url();
 
   // Drag over highlights the zone.
@@ -113,6 +116,7 @@ test("a wrong extension and a 16 MB file are refused with a message and store no
   const { id } = await insertLoad({ po: uniq("DZBAD"), status: "booked" });
   const { ctx, page } = await as(browser, "admin");
   await page.goto(`/admin/loads/${id}`);
+  await openUploads(page); // R46: the upload areas sit under Upload files
   const zone = bolZone(page);
   const err = page.getByTestId("upload-bol").getByTestId("dropzone-error");
 
@@ -148,6 +152,7 @@ test("staff uploads a POD on behalf of the carrier by drag and drop; POD pending
   const { id } = await insertLoad({ po, status: "delivered" });
   const { ctx, page } = await as(browser, "admin");
   await page.goto(`/admin/loads/${id}`);
+  await openUploads(page); // R46: the upload areas sit under Upload files
   await expect(page.getByTestId("pod-pending")).toHaveText("POD pending");
   const zone = page.getByTestId("upload-pod").getByTestId("dropzone");
   await dropFile(page, zone, { name: `pod-${po}.pdf`, type: "application/pdf", bytes: [...pdfBytes(po)] });
@@ -187,6 +192,7 @@ test("a double click on Upload and a double drop store one BOL; a failed upload 
   let fail = true;
   await page.route("**/*", (r) => (fail && r.request().method() === "POST" && r.request().url().includes("/storage/v1/object/documents/") ? r.abort("failed") : r.fallback()));
   await page.goto(`/admin/loads/${id}`);
+  await openUploads(page); // R46: the upload areas sit under Upload files
   const zone = bolZone(page);
   const bytes = [...pdfBytes(po)];
   // Double drop of the same file: still one chosen file.

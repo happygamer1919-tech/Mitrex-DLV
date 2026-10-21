@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { addLoadPhoto, adminClient, anon, as, insertLoad, isoDate, PNG_1X1, uniq, uniqIts, podChooseFile } from "./support/helpers";
+import { addLoadPhoto, adminClient, anon, as, insertLoad, isoDate, PNG_1X1, uniq, uniqIts, podChooseFile, openUploads, openFold } from "./support/helpers";
 import { makeLocation, retireLocations } from "./support/book";
 import { RATE_MARK, seedRate } from "./support/rates";
 import type { Who } from "./support/users";
@@ -134,6 +134,9 @@ test("contrast measured from rendered colors", async ({ browser }) => {
   await session(browser, "maria", async (page) => {
     await page.goto("/loads");
     await expect(page.locator("h1")).toHaveText(/My loads/);
+    // R46: Delivered and Cancelled start collapsed; open them so their chips render.
+    await openFold(page, "group-toggle-delivered");
+    await openFold(page, "group-toggle-cancelled");
     for (const st of Object.keys(seeded)) {
       const chip = page.locator(`xpath=//*[normalize-space(text())="${seeded[st]}"]/ancestor::*[.//span[contains(@class,"rounded-full")]][1]//span[contains(@class,"rounded-full") and normalize-space(.)="${label[st]}"]`).first();
       await expect(chip, `chip for ${st} is on the page`).toBeVisible();
@@ -320,7 +323,8 @@ test("staff pages", async ({ browser }) => {
   const l = await insertLoad({ po: uniq("A11Y-ADM"), status: "booked", pickupDate: isoDate(0) });
   await session(browser, "admin", async (page) => {
     for (const [path, label, h1, pathRe, text] of [
-      ["/admin", "/admin", /Load board/, /^\/admin$/, l.loadNumber],
+      // R46: the board shows 12 cards per band, so the load is found with the board search (the default board is scanned in the R46 test).
+      [`/admin?q=${l.loadNumber}`, "/admin (search)", /Load board/, /^\/admin$/, l.loadNumber],
       ["/admin/calendar?view=week", "/admin/calendar (week)", /Calendar/, /^\/admin\/calendar$/, l.loadNumber],
       ["/admin/calendar?view=month", "/admin/calendar (month)", /Calendar/, /^\/admin\/calendar$/, l.loadNumber],
       [`/admin/loads/${l.id}`, "/admin/loads/[id]", new RegExp(l.loadNumber), new RegExp(`^/admin/loads/${l.id}$`), "Booked"],
@@ -406,6 +410,8 @@ test("lane references: /admin/lanes states (list, prefilled add form, refused ad
     await session(browser, "admin", async (page) => {
       const lanes = { path: /^\/admin\/lanes$/, h1: /Lanes/ };
       await page.goto("/admin/lanes");
+      // R46: lane groups start collapsed; open the first one so a row is on screen.
+      await page.getByTestId("lane-group").first().locator("details > summary").click();
       await scan(page, "/admin/lanes (list)", { ...lanes, text: /Last updated by/ });
       await page.goto(`/admin/lanes?pickup=${a.id}&delivery=${b.id}&size=36`);
       await scan(page, "/admin/lanes (add form, prefilled from a load)", { ...lanes, text: "Prefilled from the load. Enter the ITS load to copy." });
@@ -460,6 +466,9 @@ test("rate requests: /rates (empty form, refused form, open, quoted and cancelle
     await session(browser, "admin", async (page) => {
       const list = { path: /^\/admin\/rates$/, h1: /^Rate requests$/ };
       await page.goto("/admin/rates");
+      // R46: Quoted and Cancelled start collapsed; open them so every kind of row is scanned.
+      await openFold(page, "rates-quoted-toggle");
+      await openFold(page, "rates-cancelled-toggle");
       await scan(page, "/admin/rates (open, quoted, cancelled)", { ...list, text: quoted.ref });
       for (const [name, r, text] of [["open", open, "Enter the rate"], ["quoted", quoted, "Current rate"], ["cancelled", cancelled, /The customer cancelled this request/]] as const) {
         await page.goto(`/admin/rates/${r.id}`);
@@ -658,6 +667,10 @@ test("drop area states: staff BOL and POD zones, carrier POD card, chosen file a
   await session(browser, "admin", async (page) => {
     await page.goto(`/admin/loads/${delivered.id}`);
     await expect(page.getByTestId("pod-pending")).toBeVisible();
+    // R46: the drop areas sit under Upload files. Opened without a mouse click: a click leaves WebKit in pointer
+    // modality, and the focus ring measured below is the KEYBOARD ring.
+    await page.getByTestId("upload-files").evaluate((el) => { (el as HTMLDetailsElement).open = true; });
+    await expect(page.getByTestId("upload-bol")).toBeVisible();
     await scan(page, "/admin/loads/[id] (delivered, POD pending, two drop areas)", staffMarker);
     const bol = page.getByTestId("upload-bol");
     expectVisibleRing("drop area", await focusRing(page, bol.getByTestId("dropzone")));
@@ -729,6 +742,79 @@ test("load photos: the carrier photo step and camera dialog (denied camera, revi
   await session(browser, "admin", async (p) => {
     await p.goto(`/admin/loads/${delivered.id}`);
     await expect(p.locator('[data-testid="doc-row"][data-kind="pickup_photo"]')).toHaveCount(1);
+    await openUploads(p); // R46: the photo upload areas sit under Upload files
     await scan(p, "/admin/loads/[id] (photos in the Documents list, upload areas for photos)", { path: new RegExp(`^/admin/loads/${delivered.id}$`), h1: new RegExp(delivered.loadNumber), text: "Delivery photo" });
   });
+});
+
+test("R46: compact views, every fold closed and open", async ({ browser }) => {
+  const booked = await insertLoad({ po: uniq("A11Y-CV-B"), status: "booked" });
+  const delivered = await insertLoad({ po: uniq("A11Y-CV-D"), status: "delivered" });
+  for (let i = 0; i < 3; i++) { await addLoadPhoto(delivered.id, "pickup_photo"); await addLoadPhoto(delivered.id, "delivery_photo"); }
+  const db = adminClient();
+  for (let i = 0; i < 3; i++) await db.from("load_events").insert({ load_id: delivered.id, from_status: "delivered", to_status: "delivered", note: `A11y event ${i}` });
+  const open = openFold; // opens a fold once (never closes an open one)
+  try {
+    await session(browser, "admin", async (page) => {
+      await page.goto("/admin");
+      await scan(page, "/admin (bands, Delivered and Cancelled closed)", { path: /^\/admin$/, h1: /Load board/ });
+      await open(page, "band-toggle-delivered");
+      await open(page, "band-toggle-cancelled");
+      await page.goto(`/admin?q=${encodeURIComponent(booked.loadNumber)}`);
+      await page.locator(`[data-testid="board-card"][data-load-id="${booked.id}"]`).getByTestId("card-details").locator("summary").click();
+      await scan(page, "/admin (search, card Details open)", { path: /^\/admin$/, h1: /Load board/, text: "Hide details" });
+      await page.goto("/admin?dold=1");
+      await open(page, "band-toggle-booked");
+      await scan(page, "/admin (Show older, Delivered open)", { path: /^\/admin$/, h1: /Load board/ });
+      await page.goto("/admin?view=list");
+      await scan(page, "/admin (One list)", { path: /^\/admin$/, h1: /Load board/ });
+      await page.goto(`/admin/loads/${delivered.id}`);
+      await scan(page, "/admin/loads/[id] (folds closed)", { path: new RegExp(`^/admin/loads/${delivered.id}$`), h1: new RegExp(delivered.loadNumber), text: /Show all \d+ events/ });
+      for (const t of ["timeline-older", "upload-files", "more-actions"]) await open(page, t);
+      await scan(page, "/admin/loads/[id] (timeline, uploads and More actions open)", { path: new RegExp(`^/admin/loads/${delivered.id}$`), h1: new RegExp(delivered.loadNumber), text: "Override status" });
+      await page.goto("/admin/locations");
+      await page.getByRole("button", { name: "Edit" }).first().click();
+      await scan(page, "/admin/locations (a row expanded to the edit form)", { path: /^\/admin\/locations$/, h1: /Locations/, text: "Save changes" });
+      await page.goto("/admin/lanes");
+      await scan(page, "/admin/lanes (groups closed)", { path: /^\/admin\/lanes$/, h1: /Lanes/ });
+      await page.getByTestId("lane-group").first().locator("details > summary").click();
+      await scan(page, "/admin/lanes (a group open)", { path: /^\/admin\/lanes$/, h1: /Lanes/ });
+      await page.goto("/admin/rates");
+      await open(page, "rates-quoted-toggle");
+      await open(page, "rates-cancelled-toggle");
+      await scan(page, "/admin/rates (Quoted and Cancelled open)", { path: /^\/admin\/rates$/, h1: /Rate requests/ });
+      await page.goto("/admin/requests");
+      await open(page, "requests-done-toggle");
+      await scan(page, "/admin/requests (reviewed open)", { path: /^\/admin\/requests$/, h1: /Location requests/ });
+      await page.goto("/admin/users");
+      if (await page.getByTestId("users-inactive").count()) await open(page, "users-inactive");
+      await scan(page, "/admin/users (deactivated open)", { path: /^\/admin\/users$/, h1: /Users/ });
+    });
+    await session(browser, "maria", async (page) => {
+      await page.goto("/loads");
+      await scan(page, "/loads (groups, Delivered and Cancelled closed)", { path: /^\/loads$/, h1: /My loads/ });
+      await open(page, "group-toggle-delivered");
+      await open(page, "group-toggle-cancelled");
+      await page.getByTestId("board-filters").locator("details > summary").click();
+      await scan(page, "/loads (groups and Filters open)", { path: /^\/loads$/, h1: /My loads/, text: delivered.loadNumber });
+      await page.goto(`/loads?q=${encodeURIComponent(booked.loadNumber)}&sort=created&dir=desc`);
+      await scan(page, "/loads (search, chips, sort)", { path: /^\/loads$/, h1: /My loads/, text: booked.loadNumber });
+      await page.goto("/loads/export");
+      await scan(page, "/loads/export", { path: /^\/loads\/export$/, h1: /Export my loads/ });
+      await page.goto(`/loads/${delivered.id}`);
+      await scan(page, "/loads/[id] (4 photos, latest 3 events)", { path: new RegExp(`^/loads/${delivered.id}$`), h1: new RegExp(delivered.loadNumber), text: "Show all 6 photos" });
+      await open(page, "photos-more");
+      await open(page, "timeline-older");
+      await scan(page, "/loads/[id] (all photos and events open)", { path: new RegExp(`^/loads/${delivered.id}$`), h1: new RegExp(delivered.loadNumber), text: "Show the first 4 only" });
+    });
+    await session(browser, "carrierA", async (page) => {
+      await page.goto("/my-loads");
+      await scan(page, "/my-loads (finished closed)", { path: /^\/my-loads$/, h1: /My loads/, driver: true });
+      await open(page, "carrier-done-toggle");
+      await expect(page.getByTestId("carrier-done-window")).toBeVisible();
+      await scan(page, "/my-loads (finished open)", { path: /^\/my-loads$/, h1: /My loads/, driver: true });
+    });
+  } finally {
+    await db.from("loads").update({ status: "cancelled" }).eq("id", booked.id);
+  }
 });

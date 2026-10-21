@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { adminClient, as, easternLocal, gotoSteady, insertLoad, isoDate, loadRow, PNG_1X1, uniq, type SeedStatus } from "./support/helpers";
+import { adminClient, as, easternLocal, gotoSteady, insertLoad, isoDate, loadRow, PNG_1X1, uniq, type SeedStatus, openUploads, openMoreActions } from "./support/helpers";
 
 // R24 staff board (one status band per row, load cards in a grid) and calendar (week and month by pickup date), R25 BOL pending
 // badge and the status override with a required note. Authoritative state is read through the service role.
@@ -29,6 +29,10 @@ const COLUMNS: { status: SeedStatus; label: string }[] = [
   { status: "delivered", label: "Delivered" }, { status: "cancelled", label: "Cancelled" },
 ];
 
+// R46: the board shows the last 30 days of finished loads unless a filter is on; a pickup date filter reaches the
+// seeded loads in every band, finished ones included.
+const boardOn = (d: string) => `/admin?when=custom&from=${d}&to=${d}`;
+
 const cardIn = (page: Page, label: string, id: string) =>
   page.locator(`section[aria-label="${label}"]`).locator(`a[href="/admin/loads/${id}"]`);
 
@@ -39,7 +43,7 @@ test("the board puts each load in its status column and nowhere else", async ({ 
     made.push({ ...r, status: c.status, label: c.label });
   }
   const { ctx, page } = await as(browser, "admin");
-  await page.goto("/admin");
+  await page.goto(boardOn(OLD())); // R46: narrowed to the seeded pickup date (finished bands hold 30 days unless filtered)
   for (const c of COLUMNS) await expect(page.locator(`section[aria-label="${c.label}"]`)).toHaveCount(1);
 
   for (const m of made) {
@@ -53,7 +57,7 @@ test("the board puts each load in its status column and nowhere else", async ({ 
   // Column counts include the loads above.
   for (const c of COLUMNS) {
     const badge = page.locator(`section[aria-label="${c.label}"] h2 span`).nth(1);
-    expect(Number(await badge.innerText())).toBeGreaterThanOrEqual(1);
+    expect(parseInt(await badge.innerText(), 10)).toBeGreaterThanOrEqual(1); // "n of m" while filtered
   }
   await ctx.close();
 });
@@ -65,7 +69,7 @@ test("BOL pending shows on a booked load without a BOL and goes away once a BOL 
   const delivered = await seed({ po: uniq("BOL-DEL"), status: "delivered", pickupDate: OLD() });
   const { ctx, page } = await as(browser, "admin");
 
-  await page.goto("/admin");
+  await page.goto(boardOn(OLD())); // R46: narrowed to the seeded pickup date (finished bands hold 30 days unless filtered)
   await expect(cardIn(page, "Booked", noBol.id)).toContainText("BOL pending");
   await expect(cardIn(page, "At pickup", pickup.id)).toContainText("BOL pending");
   // Not expected before booking, nor after delivery.
@@ -74,6 +78,7 @@ test("BOL pending shows on a booked load without a BOL and goes away once a BOL 
   await expect(cardIn(page, "Delivered", delivered.id)).not.toContainText("BOL pending");
 
   await page.goto(`/admin/loads/${noBol.id}`);
+  await openUploads(page); // R46: the upload areas sit under Upload files
   await expect(page.getByText("BOL pending", { exact: true })).toBeVisible();
   await page.getByTestId("upload-bol").getByTestId("dropzone-input").setInputFiles({ name: "bol.png", mimeType: "image/png", buffer: PNG_1X1 });
   await page.getByRole("button", { name: "Upload BOL" }).click();
@@ -82,7 +87,7 @@ test("BOL pending shows on a booked load without a BOL and goes away once a BOL 
   expect(docs.data).toEqual([{ kind: "bol" }]);
   await expect(page.getByText("BOL pending", { exact: true })).toHaveCount(0);
 
-  await page.goto("/admin");
+  await page.goto(boardOn(OLD())); // R46: narrowed to the seeded pickup date (finished bands hold 30 days unless filtered)
   await expect(cardIn(page, "Booked", noBol.id)).toHaveCount(1);
   await expect(cardIn(page, "Booked", noBol.id)).not.toContainText("BOL pending");
   // The other booked-stage load still has the badge, so the card text check above is not vacuous.
@@ -98,6 +103,7 @@ test("a status override needs a note: refused without one (database unchanged), 
 
   const { ctx, page } = await as(browser, "admin");
   await page.goto(`/admin/loads/${id}`);
+  await openMoreActions(page); // R46: the override sits under More actions
   const status = page.getByLabel("New status");
   const note = page.getByLabel("Note (required)");
   const go = page.getByRole("button", { name: "Override status" });

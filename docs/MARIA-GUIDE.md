@@ -67,12 +67,26 @@ Edit the fields freely. Tick "Save as default for this location" to keep the new
 
 Pages update by themselves.
 
+## Find a load in your list
+Your **Loads** list has three groups. Tap a group title to open or close it.
+- **Active**: everything not delivered or cancelled. It is open.
+- **Delivered**: closed at first. It holds the loads delivered in the last 30 days, newest first. Tap **Show older (25 more)** for older ones (also when it says "No deliveries in the last 30 days.").
+- **Cancelled**: closed at first, newest first, **Show older** for more.
+- **Request again** and **Return** sit right on the row, no need to open anything.
+- Tap **Filters** to search (load number, request number, PO, pickup or delivery place, carrier), or to choose a status, shipper, receiver, truck size or pickup date (Today, Tomorrow, Next 7 days or your own dates). Tap **Apply**.
+- **Sort by** pickup time (the normal order), date requested, date delivered, shipper or receiver, and choose up or down.
+- Each filter shows as a chip under the box: tap a chip to remove it, or **Clear all**. A search looks through all your loads, also the old delivered ones.
+- The quick buttons **Today**, **Tomorrow** and **Next 7 days** filter by pickup date in one tap.
+
+## Download your loads (CSV)
+On **Loads** tap **Export CSV**. Choose the dates (by pickup date or by the date you requested the load) and, if you want, some statuses. Tap **Download CSV**. The file opens in Excel and holds only your loads.
+
 ## Find ETA, BOL and POD
 Open the load from the **Loads** list.
 - **ETA**: under "Load details" once the truck is enroute, and on the list.
 - **BOL**: under **Documents**, button **Download BOL**. It appears after DLV uploads it, and it is attached to the booking email.
 - **POD**: under **Documents**, button **View POD**, once it is uploaded. A load can be delivered before the POD photo arrives: the page then says **POD not uploaded yet.** and the button appears by itself (within about 15 seconds) when it is added.
-- The **Timeline** shows every status change.
+- The **Timeline** shows the latest 3 changes. Tap **Show all ... events** to see every status change.
 
 ## Photos of your load
 The driver takes two photos with the app's own camera: the freight loaded on the truck, and the freight at delivery. The time on each photo is set by DLV, not by the driver's phone.
@@ -80,6 +94,7 @@ The driver takes two photos with the app's own camera: the freight loaded on the
 - The photo of the loaded freight appears once the truck has left for delivery (**Enroute** or later).
 - The delivery photo appears once the load is **Delivered**.
 - Tap a photo to open it full size. Each photo shows the date and time (Eastern time).
+- The card shows up to 4 photos. When there are more, tap **Show all ... photos**.
 - Before that the card tells you when the photos will appear. The page updates by itself.
 - You only see the photos of your own loads. You cannot add or remove photos; ask DLV if one is missing.
 

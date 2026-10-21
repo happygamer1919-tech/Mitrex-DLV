@@ -1,5 +1,6 @@
 import { Shell } from "@/components/Shell";
 import { Card, Notice, PageTitle } from "@/components/ui";
+import { Disclosure } from "@/components/Disclosure";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -97,28 +98,42 @@ export default async function RequestsPage() {
         </div>
       )}
 
-      <h2 className="mb-3 mt-8 text-[20px] font-bold">Recently reviewed</h2>
-      {done.length === 0 ? (
-        <Card><p className="text-[15px] text-muted">Nothing reviewed yet.</p></Card>
-      ) : (
-        <Card>
-          <ul className="divide-y divide-line">
-            {done.map((r) => (
-              <li key={r.id} className="py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full px-3 py-1 text-[13px] font-medium ${r.status === "approved" ? "bg-[#CFF5DE]" : "bg-[#F7D9D9] text-[#7A1F1F]"}`}>
-                    {r.status === "approved" ? "Approved" : "Rejected"}
-                  </span>
-                  <span className="text-[15px] font-bold">{show(r.payload.name ?? (r.location_id ? locNames.get(r.location_id) : null))}</span>
-                  <span className="text-[13px] text-muted">
-                    {r.kind === "new" ? "New" : "Change"}, {emails.get(r.requested_by) ?? "Unknown user"}, {fmtDateTime(r.created_at)}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+      {/* R46: decided requests are collapsed; one tap opens them. */}
+      <section aria-label="Recently reviewed" data-testid="requests-done" className="mt-8">
+        <Disclosure
+          testid="requests-done-toggle"
+          summary={
+            <h2 className="flex items-center gap-2 text-[20px] font-bold">
+              <span>Recently reviewed</span>
+              <span data-testid="requests-done-count" className="rounded-full bg-white px-2.5 py-0.5 text-[14px] font-medium text-muted">{done.length}</span>
+            </h2>
+          }
+        >
+          <div className="mt-3">
+            {done.length === 0 ? (
+            <Card><p className="text-[15px] text-muted">Nothing reviewed yet.</p></Card>
+          ) : (
+            <Card>
+              <ul className="divide-y divide-line">
+                {done.map((r) => (
+                  <li key={r.id} className="py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-3 py-1 text-[13px] font-medium ${r.status === "approved" ? "bg-[#CFF5DE]" : "bg-[#F7D9D9] text-[#7A1F1F]"}`}>
+                        {r.status === "approved" ? "Approved" : "Rejected"}
+                      </span>
+                      <span className="text-[15px] font-bold">{show(r.payload.name ?? (r.location_id ? locNames.get(r.location_id) : null))}</span>
+                      <span className="text-[13px] text-muted">
+                        {r.kind === "new" ? "New" : "Change"}, {emails.get(r.requested_by) ?? "Unknown user"}, {fmtDateTime(r.created_at)}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          </div>
+        </Disclosure>
+      </section>
     </Shell>
   );
 }

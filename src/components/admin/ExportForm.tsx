@@ -3,7 +3,8 @@ import { useState } from "react";
 import { Button, Card, Field, Input, Notice } from "@/components/ui";
 import { STATUS_LABEL, type LoadStatus } from "@/lib/types";
 
-export function ExportForm({ defaultFrom, defaultTo }: { defaultFrom: string; defaultTo: string }) {
+// The CSV export form (R27 staff, R46 Maria): `action` is the CSV route it sends the GET to.
+export function ExportForm({ defaultFrom, defaultTo, action = "/admin/export/csv" }: { defaultFrom: string; defaultTo: string; action?: string }) {
   const [error, setError] = useState("");
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -17,7 +18,7 @@ export function ExportForm({ defaultFrom, defaultTo }: { defaultFrom: string; de
 
   return (
     <Card>
-      <form method="get" action="/admin/export/csv" onSubmit={onSubmit} className="space-y-4">
+      <form method="get" action={action} onSubmit={onSubmit} className="space-y-4">
         <fieldset>
           <legend className="mb-1 text-[13px] font-medium text-muted">Filter dates by</legend>
           <label className="flex min-h-[44px] items-center gap-3 text-[15px]">

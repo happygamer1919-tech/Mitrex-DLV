@@ -1,5 +1,6 @@
 import { Shell } from "@/components/Shell";
 import { Card, Notice, PageTitle } from "@/components/ui";
+import { Disclosure } from "@/components/Disclosure";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { InviteForm } from "@/components/admin/InviteForm";
 import { NameManager } from "@/components/admin/NameManager";
@@ -33,22 +34,11 @@ export default async function UsersPage() {
   const carriers = (carriersRes.data ?? []) as { id: string; name: string; is_active: boolean }[];
   const error = usersRes.error ?? customersRes.error ?? carriersRes.error;
   const cName = new Map(customers.map((c) => [c.id, c.name]));
+  const activeUsers = users.filter((u) => u.is_active);
+  const inactiveUsers = users.filter((u) => !u.is_active);
   const kName = new Map(carriers.map((c) => [c.id, c.name]));
 
-  return (
-    <Shell profile={me}>
-      <PageTitle>Users</PageTitle>
-      {error ? <div className="mb-4"><Notice tone="error">Could not load users: {error.message}</Notice></div> : null}
-      <div className="space-y-6">
-        <InviteForm customers={customers} carriers={carriers} />
-
-        <Card>
-          <h2 className="mb-3 text-[20px] font-bold">All users ({users.length})</h2>
-          {users.length === 0 ? (
-            <p className="text-[15px] text-muted">No users yet.</p>
-          ) : (
-            <ul className="divide-y divide-line">
-              {users.map((u) => (
+  const userRow = (u: UserRow) => (
                 <li key={u.id} className="flex flex-wrap items-center gap-3 py-3">
                   <div className="min-w-0 flex-1">
                     <p className="break-words text-[16px] font-bold">{u.full_name || u.email}</p>
@@ -85,8 +75,33 @@ export default async function UsersPage() {
                     </div>
                   )}
                 </li>
-              ))}
-            </ul>
+  );
+
+  return (
+    <Shell profile={me}>
+      <PageTitle>Users</PageTitle>
+      {error ? <div className="mb-4"><Notice tone="error">Could not load users: {error.message}</Notice></div> : null}
+      <div className="space-y-6">
+        <InviteForm customers={customers} carriers={carriers} />
+
+        <Card>
+          <h2 className="mb-3 text-[20px] font-bold">All users ({users.length})</h2>
+          {users.length === 0 ? (
+            <p className="text-[15px] text-muted">No users yet.</p>
+          ) : (
+            <>
+              <ul data-testid="users-active" className="divide-y divide-line">{activeUsers.map(userRow)}</ul>
+              {/* R46: deactivated users are collapsed under their own count; one tap opens them. */}
+              {inactiveUsers.length > 0 ? (
+                <Disclosure
+                  testid="users-inactive"
+                  className="mt-3 border-t border-line pt-3"
+                  summary={<span className="text-[16px] font-bold">Deactivated users ({inactiveUsers.length})</span>}
+                >
+                  <ul className="divide-y divide-line">{inactiveUsers.map(userRow)}</ul>
+                </Disclosure>
+              ) : null}
+            </>
           )}
         </Card>
 

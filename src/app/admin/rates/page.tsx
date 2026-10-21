@@ -2,6 +2,7 @@ import Link from "next/link";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { Shell } from "@/components/Shell";
 import { Notice, PageTitle } from "@/components/ui";
+import { Disclosure } from "@/components/Disclosure";
 import { RateStatusBadge } from "@/components/rates/RateStatusBadge";
 import { requireStaff } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/format";
@@ -12,13 +13,21 @@ export const dynamic = "force-dynamic";
 
 type Row = RateRequest & { customer: { name: string } | null };
 
-function Section({ title, testid, rows }: { title: string; testid: string; rows: Row[] }) {
+// R46: each status is a collapsible section with its count; Quoted and Cancelled start collapsed.
+function Section({ title, testid, rows, open }: { title: string; testid: string; rows: Row[]; open: boolean }) {
   return (
     <section aria-label={title} data-testid={testid} className="mb-6">
-      <h2 className="mb-2 flex items-center gap-2 text-[18px] font-bold">
-        <span>{title}</span>
-        <span data-testid={`${testid}-count`} className="rounded-full bg-white px-2.5 py-0.5 text-[14px] text-muted">{rows.length}</span>
-      </h2>
+      <Disclosure
+        open={open}
+        testid={`${testid}-toggle`}
+        summary={
+          <h2 className="flex items-center gap-2 text-[18px] font-bold">
+            <span>{title}</span>
+            <span data-testid={`${testid}-count`} className="rounded-full bg-white px-2.5 py-0.5 text-[14px] text-muted">{rows.length}</span>
+          </h2>
+        }
+      >
+      <div className="mt-2">
       {rows.length === 0 ? (
         <p className="rounded-[16px] border border-dashed border-line px-3 py-3 text-[13px] text-muted">No requests</p>
       ) : (
@@ -40,6 +49,8 @@ function Section({ title, testid, rows }: { title: string; testid: string; rows:
           ))}
         </ul>
       )}
+      </div>
+      </Disclosure>
     </section>
   );
 }
@@ -59,9 +70,9 @@ export default async function AdminRatesPage() {
         A customer asked for a rate on a lane that is not in the system. Open a request, enter the rate, and the customer is emailed that it is in the app. A rate request is not a load.
       </p>
       {error ? <div className="mb-4"><Notice tone="error">Could not load rate requests: {error.message}</Notice></div> : null}
-      <Section title="Open" testid="rates-open" rows={by("open")} />
-      <Section title="Quoted" testid="rates-quoted" rows={by("quoted")} />
-      <Section title="Cancelled" testid="rates-cancelled" rows={by("cancelled")} />
+      <Section title="Open" testid="rates-open" rows={by("open")} open />
+      <Section title="Quoted" testid="rates-quoted" rows={by("quoted")} open={false} />
+      <Section title="Cancelled" testid="rates-cancelled" rows={by("cancelled")} open={false} />
     </Shell>
   );
 }
