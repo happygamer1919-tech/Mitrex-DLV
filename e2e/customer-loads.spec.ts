@@ -78,7 +78,8 @@ test("customer cannot cancel a booked load: no button, and the action is refused
   await expect(page.getByRole("button", { name: "Yes, cancel this load" })).toBeVisible();
   await forceStatus(id, "booked");
   await page.getByRole("button", { name: "Yes, cancel this load" }).click();
-  await expect(page.getByText("customers may only cancel their own requested loads")).toBeVisible();
+  await expect(page.getByText("This load was already booked by DLV and can no longer be cancelled here. Contact DLV.")).toBeVisible();
+  await expect(page.getByText("customers may only cancel", { exact: false })).toHaveCount(0); // DLV-043 CUST-06: never the raw database sentence
   const row = await loadRow(id);
   expect(row.status).toBe("booked");
   expect(row.cancelled_at).toBeNull();

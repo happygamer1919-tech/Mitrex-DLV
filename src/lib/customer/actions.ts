@@ -14,6 +14,13 @@ type Sb = Awaited<ReturnType<typeof createClient>>;
 
 const GENERIC = "Something went wrong. Please try again.";
 
+// DLV-043 CUST-06: Maria never reads a raw database sentence. A location rule the database refused (a location turned
+// off or changed meanwhile) gets one plain line; anything else the generic one.
+const LOCATION_GONE = "One of the locations is no longer available. Choose another.";
+function plainDbError(message: string | undefined): string {
+  return /location cannot (ship|receive)|return load:/i.test(message ?? "") ? LOCATION_GONE : GENERIC;
+}
+
 // Default 30 loads per 10 minutes per customer user. LOAD_RATE_CAP overrides it (the e2e server raises it, because
 // the specs seed many loads as Maria through the service role).
 function recentCap(): number {
@@ -95,7 +102,7 @@ export async function createLoad(values: LoadFormValues, quantity: unknown = 1):
 
   const rows = buildTruckRows(values, loc.moffett, n, profile.customer_id!, profile.id);
   const made = await insertTruckLoads(sb, rows); // one statement: all or nothing
-  if ("error" in made) return { error: made.error || GENERIC };
+  if ("error" in made) return { error: plainDbError(made.error) };
   const loads = made.loads;
 
   await saveDefaults(sb, values);
@@ -145,7 +152,7 @@ export async function createReturnLoad(originalId: unknown, values: LoadFormValu
   const rows = buildTruckRows(values, loc.moffett, 1, profile.customer_id, profile.id)
     .map((r) => ({ ...r, return_of_load_id: original.id }));
   const made = await insertTruckLoads(sb, rows);
-  if ("error" in made) return { error: made.error || GENERIC };
+  if ("error" in made) return { error: plainDbError(made.error) };
   const load = made.loads[0];
 
   await saveDefaults(sb, values);
@@ -189,7 +196,7 @@ export async function updateLoad(loadId: string, values: LoadFormValues): Promis
     .eq("id", loadId)
     .eq("status", "requested")
     .select("id");
-  if (error) return { error: error.message };
+  if (error) return { error: plainDbError(error.message) };
   if (!data || data.length === 0) {
     return { error: "This load can no longer be edited. Contact DLV to change this load." };
   }
@@ -205,7 +212,16 @@ export async function cancelLoad(loadId: string): Promise<ActionResult> {
   const { error } = await sb.rpc("set_load_status", {
     p_load: loadId, p_status: "cancelled", p_eta: null, p_note: "Cancelled by customer",
   });
-  if (error) return { error: error.message };
+  if (error) {
+    // The database lets a customer cancel only while the load is requested (42501 otherwise). Say why in plain words.
+    // No revalidate here: it would re-render the page at once and take this message away with the Cancel panel; the
+    // live refresh shows the new status a moment later.
+    const { data: cur } = await sb.from("loads").select("status").eq("id", loadId).maybeSingle();
+    const st = (cur as { status: string } | null)?.status;
+    if (st === "cancelled") return { error: "This load is already cancelled." };
+    if (st && st !== "requested") return { error: "This load was already booked by DLV and can no longer be cancelled here. Contact DLV." };
+    return { error: GENERIC };
+  }
   revalidatePath("/loads");
   revalidatePath(`/loads/${loadId}`);
   return { ok: true };

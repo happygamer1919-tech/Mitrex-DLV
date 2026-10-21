@@ -45,7 +45,8 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
       const { data: prev } = await supabase.from("loads").select("load_number,its_load_number")
         .eq("return_of_load_id", l.id).neq("status", "cancelled").order("created_at", { ascending: false }).limit(1);
       const existing = ((prev ?? []) as { load_number: string; its_load_number: string | null }[])[0];
-      initial = returnValues(l);
+      // The locations list holds active rows only: an inactive original shipper is not offered (CUST-03).
+      initial = returnValues(l, { shipperOk: locations.some((x) => x.id === l.pickup_location_id) });
       returnOf = {
         originalId: l.id,
         originalLabel: customerLabel(l),

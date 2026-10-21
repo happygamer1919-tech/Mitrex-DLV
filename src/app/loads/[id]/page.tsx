@@ -200,7 +200,8 @@ export default async function LoadDetailPage({ params }: { params: Promise<{ id:
               {l.po_number ? <Row label="PO number">{l.po_number}</Row> : null}
               {l.notes ? <Row label="Notes"><span className="whitespace-pre-wrap">{l.notes}</span></Row> : null}
               {l.carrier ? <Row label="Carrier">{l.carrier.name}</Row> : null}
-              {l.eta ? <Row label="ETA">{fmtDateTime(l.eta)}</Row> : null}
+              {/* DLV-043 CUST-04: the ETA only while the truck is on its way (a delivered load keeps its last ETA). */}
+              {l.eta && (l.status === "enroute" || l.status === "at_delivery") ? <Row label="ETA">{fmtDateTime(l.eta)}</Row> : null}
               <Row label="Requested">{fmtDateTime(l.created_at)}</Row>
             </dl>
           </Card>
