@@ -11,16 +11,9 @@ import { validateIts } from "@/lib/load-number";
 import type { ActionState } from "@/lib/admin/state";
 import { bookedQuery } from "@/lib/admin/booked-message";
 import { failure, goToLogin, guardAction, withTimeout } from "@/lib/client/action-guard";
-
-// DLV-043 FORM-RESET-01: the staff forms submit through onSubmit, never the form action prop. React resets a form after
-// an action prop ran, so a refused save wiped what staff had typed. A refusal now keeps everything as typed.
-function submitWith(action: (fd: FormData) => void, start: (fn: () => void) => void) {
-  return (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    start(() => action(fd));
-  };
-}
+// DLV-043 FORM-RESET-01: the staff forms submit through onSubmit, never the form action prop, so a refusal keeps
+// everything staff typed.
+import { submitWithoutReset as submitWith } from "@/lib/client/submit-form";
 
 export function AssignCarrierForm({
   loadId, carrierId, carriers,
