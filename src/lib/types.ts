@@ -23,6 +23,8 @@ export type Location = {
   postal_code: string | null; can_ship: boolean; can_receive: boolean; requires_moffett: boolean;
   default_contact_name: string | null; default_contact_phone: string | null;
   is_active: boolean; needs_review: boolean; notes: string | null;
+  // 0021 (R45): who added and who last edited the location, from the session (optional until 0021 is applied)
+  created_at?: string; updated_at?: string; created_by?: string | null; updated_by?: string | null;
 };
 
 export type Carrier = { id: string; name: string; is_active: boolean };

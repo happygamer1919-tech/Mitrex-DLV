@@ -1,28 +1,33 @@
 import { expect, test, type Browser } from "@playwright/test";
 import { adminClient, as, uniq } from "./support/helpers";
 
+// R10 and R26: location requests Maria sent BEFORE DLV-041 still reach staff. Since DLV-041 (R45) she adds and edits
+// locations herself, so her page no longer has the request forms; such a request is seeded here as she would have sent
+// it. Her page lists it read only ("Waiting for DLV") until staff answer, and staff approval on /admin/requests still
+// creates or changes the location.
+
 type NewLoc = { name: string; city: string; ship: boolean; receive: boolean };
 
-// Maria requests a new location through the form; returns the request id (read from the DB).
-async function requestNew(browser: Browser, loc: NewLoc): Promise<string> {
-  const { ctx, page } = await as(browser, "maria");
-  await page.goto("/locations");
-  const form = page.locator("form").filter({ has: page.getByLabel("Location name", { exact: true }) });
-  await form.getByLabel("Location name", { exact: true }).fill(loc.name);
-  await form.getByLabel("Street address", { exact: true }).fill("1 Test Road");
-  await form.getByLabel("City", { exact: true }).fill(loc.city);
-  const ship = form.getByLabel("Can ship (pickup)");
-  const receive = form.getByLabel("Can receive (delivery)");
-  if ((await ship.isChecked()) !== loc.ship) await ship.setChecked(loc.ship);
-  if ((await receive.isChecked()) !== loc.receive) await receive.setChecked(loc.receive);
-  await form.getByRole("button", { name: "Send request" }).click();
-  await expect(page.getByText("Request sent. DLV will review it.").first()).toBeVisible();
-  await ctx.close();
-  const { data, error } = await adminClient().from("location_requests").select("id,status,kind").eq("payload->>name", loc.name);
+async function mariaId(): Promise<string> {
+  const { data } = await adminClient().from("profiles").select("id").eq("email", "maria@e2e.test").single();
+  return data!.id as string;
+}
+
+// A pending request exactly as the old form stored it.
+async function seedRequest(kind: "new" | "change", payload: Record<string, unknown>, locationId: string | null = null): Promise<string> {
+  const { data, error } = await adminClient().from("location_requests").insert({
+    kind, location_id: locationId, payload, requested_by: await mariaId(), status: "pending",
+  }).select("id").single();
   expect(error).toBeNull();
-  expect(data?.length).toBe(1);
-  expect(data![0]).toMatchObject({ status: "pending", kind: "new" });
-  return data![0].id as string;
+  return data!.id as string;
+}
+
+function newPayload(loc: NewLoc) {
+  return {
+    name: loc.name, address_line: "1 Test Road", city: loc.city, province: "ON", postal_code: "",
+    can_ship: loc.ship, can_receive: loc.receive, requires_moffett: false,
+    default_contact_name: "", default_contact_phone: "", notes: "",
+  };
 }
 
 async function staffApprove(browser: Browser, requestId: string) {
@@ -41,11 +46,18 @@ test("new location request: approved, then offered in /book only where it can sh
   const recv: NewLoc = { name: uniq("E2E-RECV"), city: "Recvville", ship: false, receive: true };
   const shipper: NewLoc = { name: uniq("E2E-SHIP"), city: "Shipton", ship: true, receive: false };
 
-  const recvReq = await requestNew(browser, recv);
-  const shipReq = await requestNew(browser, shipper);
+  const recvReq = await seedRequest("new", newPayload(recv));
+  const shipReq = await seedRequest("new", newPayload(shipper));
 
-  // Not offered before approval.
+  // Not offered before approval; Maria sees both requests read only, waiting for DLV, with no request form.
   const before = await as(browser, "maria");
+  await before.page.goto("/locations");
+  const waiting = before.page.locator('section[aria-label="Requests waiting for DLV"]');
+  await expect(waiting.getByText(`New location: ${recv.name}`)).toBeVisible();
+  await expect(waiting.getByText(`New location: ${shipper.name}`)).toBeVisible();
+  await expect(waiting.locator("li").filter({ hasText: recv.name }).getByText("Waiting for DLV")).toBeVisible();
+  await expect(waiting.locator("button, input, select, textarea")).toHaveCount(0);
+  await expect(before.page.getByRole("button", { name: "Send request" })).toHaveCount(0);
   await before.page.goto("/book");
   await expect(before.page.getByLabel("Delivery location").locator("option", { hasText: recv.name })).toHaveCount(0);
   await before.ctx.close();
@@ -60,6 +72,9 @@ test("new location request: approved, then offered in /book only where it can sh
   expect(byName[shipper.name]).toMatchObject({ can_ship: true, can_receive: false, is_active: true });
 
   const { ctx, page } = await as(browser, "maria");
+  await page.goto("/locations");
+  // Answered requests leave the waiting list.
+  await expect(page.getByText(`New location: ${recv.name}`)).toHaveCount(0);
   await page.goto("/book");
   const pickup = page.getByLabel("Pickup location");
   const delivery = page.getByLabel("Delivery location");
@@ -82,24 +97,16 @@ test("address change request: approval applies the payload to the location", asy
   const locId = ins.data!.id as string;
 
   const newAddress = `${Date.now() % 100000} New Avenue`;
+  const reqId = await seedRequest("change", { address_line: newAddress, city: "Newtown", postal_code: "B2B 2B2" }, locId);
+
   const { ctx, page } = await as(browser, "maria");
   await page.goto("/locations");
-  const form = page.locator("form").filter({ has: page.getByLabel("New street address", { exact: true }) });
-  await form.locator("select").selectOption({ label: name });
-  await form.getByLabel("New street address", { exact: true }).fill(newAddress);
-  await form.getByLabel("New city", { exact: true }).fill("Newtown");
-  await form.getByLabel("New postal code", { exact: true }).fill("B2B 2B2");
-  await form.getByRole("button", { name: "Send request" }).click();
-  await expect(page.getByText("Request sent. DLV will review it.").first()).toBeVisible();
+  await expect(page.locator('section[aria-label="Requests waiting for DLV"]').getByText(`Change for ${name} (address, city, postal code)`)).toBeVisible();
   await ctx.close();
-
-  const req = await db.from("location_requests").select("id,status,kind").eq("location_id", locId);
-  expect(req.data?.length).toBe(1);
-  expect(req.data![0]).toMatchObject({ kind: "change", status: "pending" });
   // Unchanged until staff approves.
   expect((await db.from("locations").select("city").eq("id", locId).single()).data?.city).toBe("Oldtown");
 
-  await staffApprove(browser, req.data![0].id as string);
+  await staffApprove(browser, reqId);
 
   const row = (await db.from("locations").select("name,address_line,city,province,postal_code").eq("id", locId).single()).data;
   expect(row).toEqual({ name, address_line: newAddress, city: "Newtown", province: "ON", postal_code: "B2B 2B2" });
@@ -108,5 +115,6 @@ test("address change request: approval applies the payload to the location", asy
   await after.page.goto("/locations");
   await expect(after.page.getByText(`${newAddress}, Newtown, ON B2B 2B2`)).toBeVisible();
   await expect(after.page.getByText(oldAddress)).toHaveCount(0);
+  await expect(after.page.getByText(`Change for ${name}`)).toHaveCount(0);
   await after.ctx.close();
 });

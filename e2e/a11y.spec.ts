@@ -271,6 +271,29 @@ test("customer pages and states", async ({ browser }) => {
     await scan(page, "/loads/[id]/edit", { path: new RegExp(`^/loads/${requested.id}/edit$`), h1: new RegExp(`Edit Request ${requested.requestRef}`) });
     await page.goto("/locations");
     await scan(page, "/locations", { path: /^\/locations$/, h1: /Locations/ });
+    // R45: the edit form open with an error, the add form with errors, and an old request waiting for DLV.
+    const editLoc = await makeLocation({ prefix: "E2E-A11Y-LOC", contactName: "Edit Name", contactPhone: "416-555-0111" });
+    const { data: me } = await adminClient().from("profiles").select("id").eq("email", "maria@e2e.test").single();
+    const oldReq = await adminClient().from("location_requests").insert({
+      kind: "new", payload: { name: uniq("E2E-A11Y-REQ"), address_line: "1 A St", city: "Toronto" }, requested_by: me!.id, status: "pending",
+    }).select("id").single();
+    try {
+      await page.goto("/locations");
+      await expect(page.getByText("Waiting for DLV").first()).toBeVisible();
+      const editCard = page.locator('section[aria-label="Locations"] > *').filter({ has: page.getByRole("heading", { name: editLoc.name, exact: true }) });
+      await editCard.getByRole("button", { name: `Edit ${editLoc.name}` }).click();
+      const editForm = editCard.getByRole("form", { name: `Edit ${editLoc.name}` });
+      await editForm.getByLabel("Location name", { exact: true }).fill("");
+      await editForm.getByRole("button", { name: "Save changes" }).click();
+      await expect(editForm.getByText("Enter a location name.")).toBeVisible();
+      await scan(page, "/locations (edit form with an error, request waiting)", { path: /^\/locations$/, h1: /Locations/, text: "Enter a location name." });
+      await page.getByRole("form", { name: "Add location" }).getByRole("button", { name: "Add location" }).click();
+      await expect(page.getByRole("form", { name: "Add location" }).getByText("Enter the street address.")).toBeVisible();
+      await scan(page, "/locations (add form errors)", { path: /^\/locations$/, h1: /Locations/, text: "Enter the street address." });
+    } finally {
+      await retireLocations([editLoc.id]);
+      if (oldReq.data) await adminClient().from("location_requests").update({ status: "rejected" }).eq("id", oldReq.data.id);
+    }
 
     // Request again: the Completed filter, the copied form with its notice, and the last contact hint states.
     await page.goto("/loads?view=completed");

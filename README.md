@@ -10,7 +10,7 @@ Stack: Next.js (App Router, TypeScript), Tailwind, Supabase (Postgres, magic-lin
 | --- | --- | --- |
 | staff_admin | everything | all staff work, plus carriers, customers, users |
 | staff_csr | everything operational | board, calendar, assign, BOL, book, override, locations, requests, CSV |
-| customer (Maria) | own loads | book, edit and cancel while Requested, edit location contacts, request locations |
+| customer (Maria) | own loads | book, edit and cancel while Requested, add locations and edit every detail of an active location (not switch off, flag or delete) |
 | carrier_owner | own carrier loads (booked and later) | status buttons, POD, ETA, manage drivers |
 | carrier_driver | same as owner | status buttons, POD, ETA |
 

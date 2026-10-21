@@ -300,8 +300,9 @@ select rlstest.back();
 -- 6. locations and requests ------------------------------------------------
 select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
 select rlstest.rows('control: customer edits default contact', $q$update public.locations set default_contact_name = 'Zed' where name = 'Howden'$q$, 1);
-select rlstest.err('customer cannot edit an address', $q$update public.locations set address_line = 'x' where name = 'Howden'$q$, 'only default contact');
-select rlstest.err('customer cannot create a location', $q$insert into public.locations (name, address_line, city, province) values ('N','a','b','ON')$q$, 'row-level security');
+-- 0021 (DLV-041): the address is now the customer's to edit and she may create locations; section 21 has the full set.
+select rlstest.err('customer cannot deactivate a location', $q$update public.locations set is_active = false where name = 'Howden'$q$, 'customer can change only');
+select rlstest.err('customer cannot create a location that neither ships nor receives', $q$insert into public.locations (name, address_line, city, province) values ('N','a','b','ON')$q$, 'ship, receive or both');
 select rlstest.ok('control: customer files a location request', $q$insert into public.location_requests (kind, payload, requested_by) values ('new', '{"name":"New Site","address_line":"1 A St","city":"Toronto"}', '00000000-0000-0000-0000-0000000000c1')$q$);
 select rlstest.err('customer cannot approve a request', $q$select public.approve_location_request((select id from public.location_requests limit 1))$q$, 'staff only');
 select rlstest.back();
@@ -871,7 +872,7 @@ end $t$;
 -- a customer's allowed edit (default contact) still passes the locations guard
 select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
 select rlstest.rows('control: customer contact edit still allowed with updated_at present', $q$update public.locations set default_contact_phone = '416-111-2222' where name = 'Howden'$q$, 1);
-select rlstest.err('customer still cannot edit an address (updated_at is not a loophole)', $q$update public.locations set address_line = 'y', updated_at = now() where name = 'Howden'$q$, 'only default contact');
+select rlstest.err('customer still cannot change needs_review (updated_at is not a loophole)', $q$update public.locations set needs_review = true, updated_at = now() where name = 'Howden'$q$, 'customer can change only');
 select rlstest.back();
 
 -- 11d. one load_events row per status change, for every writer --------------------------------------------
@@ -2981,6 +2982,265 @@ begin
     (select count(*) from pg_trigger where tgrelid = 'public.loads'::regclass and tgname = 'loads_detail_event') = 1
     and rlstest.edits('32000000-0000-0000-0000-0000000000e2') = 2
     and (rlstest.lastedit('32000000-0000-0000-0000-0000000000e2')).note = 'Details edited: Pieces: Not given to 12');
+end $t$;
+
+-- 21. Customer locations (0021, DLV-041): Maria adds and edits locations herself ---------------------------------------------
+-- Fixtures: an inactive customer user of Mitrex (c7) and a customer user that is deleted later (c8).
+insert into auth.users (id, aud, role, email) values
+  ('00000000-0000-0000-0000-0000000000c7', 'authenticated', 'authenticated', 'mariaold@t.test'),
+  ('00000000-0000-0000-0000-0000000000c8', 'authenticated', 'authenticated', 'gone@t.test');
+insert into public.profiles (id, email, role, customer_id, carrier_id, is_active) values
+  ('00000000-0000-0000-0000-0000000000c7', 'mariaold@t.test', 'customer', (select id from public.customers where name = 'Mitrex'), null, false),
+  ('00000000-0000-0000-0000-0000000000c8', 'gone@t.test', 'customer', (select id from public.customers where name = 'Mitrex'), null, true);
+create function rlstest.loc(p_name text) returns public.locations language sql security definer as $f$
+  select * from public.locations where name = p_name $f$;
+-- a load from Mitrex to p_dest as the CURRENT user, returning the stored moffett flag
+create function rlstest.load_to(p_dest text) returns text language plpgsql as $f$
+declare v boolean;
+begin
+  insert into public.loads (customer_id, created_by, pickup_location_id, delivery_location_id,
+    equipment_size, moffett, pickup_timing, pickup_date, pickup_time_start, delivery_timing, delivery_date,
+    delivery_time_start, pickup_contact_name, pickup_contact_phone, delivery_contact_name, delivery_contact_phone)
+  values ((select id from public.customers where name = 'Mitrex'), auth.uid(),
+    (select id from public.locations where name = 'Mitrex'), (select id from public.locations where name = p_dest),
+    26, false, 'appointment', current_date + 3, '08:00', 'appointment', current_date + 3, '14:00', 'A', '1', 'B', '2')
+  returning moffett into v;
+  return v::text;
+end $f$;
+grant execute on function rlstest.load_to(text) to authenticated;
+
+-- 21a. shape, triggers, functions, policies (as the table owner)
+do $t$
+begin
+  perform rlstest.chk('locations.created_at is timestamptz not null with a default',
+    exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'locations' and column_name = 'created_at'
+            and data_type = 'timestamp with time zone' and is_nullable = 'NO' and column_default is not null));
+  perform rlstest.chk('locations.created_by and updated_by are nullable uuid references to profiles, ON DELETE SET NULL',
+    (select count(*) from pg_constraint c
+      where c.conrelid = 'public.locations'::regclass and c.contype = 'f' and c.confrelid = 'public.profiles'::regclass
+        and c.confdeltype = 'n'
+        and (select array_agg(a.attname::text order by a.attname) from pg_attribute a where a.attrelid = c.conrelid and a.attnum = any (c.conkey))
+            in (array['created_by'], array['updated_by'])) = 2
+    and (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'locations'
+          and column_name in ('created_by', 'updated_by') and data_type = 'uuid' and is_nullable = 'YES') = 2);
+  perform rlstest.chk('existing rows got a created_at and no author (the seeded Howden)',
+    (rlstest.loc('Howden')).created_at is not null and (rlstest.loc('Howden')).created_by is null);
+  perform rlstest.chk('locations_before_insert is an enabled BEFORE INSERT row trigger calling dlv_locations_before_insert',
+    (select count(*) from pg_trigger t where t.tgrelid = 'public.locations'::regclass and t.tgname = 'locations_before_insert'
+       and not t.tgisinternal and t.tgenabled = 'O' and t.tgfoid = 'public.dlv_locations_before_insert()'::regprocedure
+       and (t.tgtype & 1) = 1 and (t.tgtype & 2) = 2 and (t.tgtype & 4) = 4 and (t.tgtype & 16) = 0) = 1);
+  perform rlstest.chk('locations_before_update is an enabled BEFORE UPDATE row trigger calling dlv_locations_before_update',
+    (select count(*) from pg_trigger t where t.tgrelid = 'public.locations'::regclass and t.tgname = 'locations_before_update'
+       and not t.tgisinternal and t.tgenabled = 'O' and t.tgfoid = 'public.dlv_locations_before_update()'::regprocedure
+       and (t.tgtype & 1) = 1 and (t.tgtype & 2) = 2 and (t.tgtype & 16) = 16 and (t.tgtype & 4) = 0) = 1);
+  perform rlstest.chk('the two location trigger functions are SECURITY DEFINER with an empty search_path',
+    (select count(*) from pg_proc where oid in ('public.dlv_locations_before_insert()'::regprocedure, 'public.dlv_locations_before_update()'::regprocedure)
+       and prosecdef and proconfig @> array['search_path=""']) = 2);
+  perform rlstest.chk('anon, authenticated and PUBLIC cannot execute the three 0021 functions (asserted, never called as anon)',
+    not has_function_privilege('anon', 'public.dlv_locations_before_insert()', 'execute')
+    and not has_function_privilege('authenticated', 'public.dlv_locations_before_insert()', 'execute')
+    and not has_function_privilege('anon', 'public.dlv_locations_before_update()', 'execute')
+    and not has_function_privilege('authenticated', 'public.dlv_locations_before_update()', 'execute')
+    and not has_function_privilege('anon', 'public.dlv_location_customer_rules(public.locations)', 'execute')
+    and not has_function_privilege('authenticated', 'public.dlv_location_customer_rules(public.locations)', 'execute')
+    and not exists (select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                    where p.oid in ('public.dlv_locations_before_insert()'::regprocedure, 'public.dlv_locations_before_update()'::regprocedure,
+                                    'public.dlv_location_customer_rules(public.locations)'::regprocedure)
+                      and a.grantee = 0));
+  perform rlstest.chk('locations policies: select, staff insert, customer insert, update, staff delete (5); the only DELETE policy is staff',
+    (select count(*) from pg_policies where schemaname = 'public' and tablename = 'locations') = 5
+    and (select count(*) from pg_policies where schemaname = 'public' and tablename = 'locations' and cmd in ('DELETE', 'ALL')) = 1
+    and exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'locations' and policyname = 'locations_staff_delete'
+                and cmd = 'DELETE' and qual like '%dlv_is_staff()%' and qual not like '%customer%'));
+  perform rlstest.chk('the unique name constraint stays',
+    exists (select 1 from pg_constraint where conrelid = 'public.locations'::regclass and contype = 'u'
+            and pg_get_constraintdef(oid) = 'UNIQUE (name)'));
+end $t$;
+
+-- 21b. Maria inserts: the flags and the author are forced, whatever she sends
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.rows('Maria adds a location directly (no request)',
+  $q$insert into public.locations (name, address_line, city, province, postal_code, can_ship, can_receive, requires_moffett,
+     default_contact_name, default_contact_phone, notes, is_active, needs_review, created_by, updated_by, created_at, updated_at)
+     values ('R21 Maria Site', '1 Maria Way', 'Toronto', 'ON', null, false, true, false, 'Ana', '416-555-0101', 'Gate 2',
+     false, true, '00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-0000000000a2', '2000-01-01', '2000-01-01')$q$, 1);
+select rlstest.rows('Maria adds a location and reads it back in the same statement (INSERT RETURNING)',
+  $q$insert into public.locations (name, address_line, city, province, can_ship, can_receive) values ('R21 Maria Returning', '2 Maria Way', 'Toronto', 'ON', true, false) returning id, is_active$q$, 1);
+select rlstest.err('Maria cannot add a second location with the same name', $q$insert into public.locations (name, address_line, city, province, can_ship) values ('R21 Maria Site', 'x', 'y', 'ON', true)$q$, 'duplicate key|locations_name_key');
+select rlstest.err('Maria cannot add a location with a blank name', $q$insert into public.locations (name, address_line, city, province, can_ship) values ('   ', 'x', 'y', 'ON', true)$q$, 'needs a name');
+select rlstest.err('Maria cannot add a location name of 121 characters', format($q$insert into public.locations (name, address_line, city, province, can_ship) values (%L, 'x', 'y', 'ON', true)$q$, repeat('n', 121)), 'at most 120');
+select rlstest.rows('control: a name of exactly 120 characters is accepted', format($q$insert into public.locations (name, address_line, city, province, can_ship) values (%L, 'x', 'y', 'ON', true)$q$, repeat('m', 120)), 1);
+select rlstest.err('Maria cannot add notes of 1001 characters', format($q$insert into public.locations (name, address_line, city, province, can_ship, notes) values ('R21 Long Notes', 'x', 'y', 'ON', true, %L)$q$, repeat('z', 1001)), 'at most 1000');
+select rlstest.rows('control: notes of exactly 1000 characters are accepted', format($q$insert into public.locations (name, address_line, city, province, can_ship, notes) values ('R21 Max Notes', 'x', 'y', 'ON', true, %L)$q$, repeat('z', 1000)), 1);
+select rlstest.err('Maria cannot add a location that neither ships nor receives', $q$insert into public.locations (name, address_line, city, province, can_ship, can_receive) values ('R21 Nothing', 'x', 'y', 'ON', false, false)$q$, 'ship, receive or both');
+select rlstest.back();
+do $t$
+declare r public.locations := rlstest.loc('R21 Maria Site');
+begin
+  perform rlstest.chk('guard: the location Maria added exists', r.id is not null);
+  perform rlstest.chk('Maria''s location is ACTIVE although she sent is_active false', r.is_active is true);
+  perform rlstest.chk('Maria''s location does NOT need review although she sent needs_review true', r.needs_review is false);
+  perform rlstest.chk('created_by is Maria although she sent the csr (not spoofable)', r.created_by = '00000000-0000-0000-0000-0000000000c1', coalesce(r.created_by::text, 'null'));
+  perform rlstest.chk('updated_by is empty on insert although she sent the csr', r.updated_by is null);
+  perform rlstest.chk('created_at and updated_at are the server time, not her 2000-01-01', r.created_at = now() and r.updated_at = now());
+  perform rlstest.chk('her business fields are stored as sent',
+    r.address_line = '1 Maria Way' and r.city = 'Toronto' and r.province = 'ON' and r.postal_code is null and not r.can_ship and r.can_receive
+    and not r.requires_moffett and r.default_contact_name = 'Ana' and r.default_contact_phone = '416-555-0101' and r.notes = 'Gate 2');
+end $t$;
+
+-- 21c. Maria edits every business field of an active location; nothing else
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.rows('Maria edits every business field of her location at once',
+  $q$update public.locations set name = 'R21 Maria Site Renamed', address_line = '9 New Road', city = 'Mississauga', province = 'ON',
+     postal_code = 'L5L 1A1', can_ship = true, can_receive = true, requires_moffett = true, default_contact_name = 'Bo',
+     default_contact_phone = '905-555-0199', notes = 'Back gate' where name = 'R21 Maria Site'$q$, 1);
+select rlstest.rows('Maria edits the address of a seeded location (Howden)', $q$update public.locations set address_line = '40 Howden Rd', postal_code = 'M1R 3E8' where name = 'Howden'$q$, 1);
+select rlstest.err('Maria cannot change is_active', $q$update public.locations set is_active = false where name = 'R21 Maria Site Renamed'$q$, 'customer can change only');
+select rlstest.err('Maria cannot change needs_review', $q$update public.locations set needs_review = true where name = 'R21 Maria Site Renamed'$q$, 'customer can change only');
+select rlstest.err('Maria cannot change the id', $q$update public.locations set id = gen_random_uuid() where name = 'R21 Maria Site Renamed'$q$, 'customer can change only');
+select rlstest.err('Maria cannot change created_at', $q$update public.locations set created_at = '2000-01-01' where name = 'R21 Maria Site Renamed'$q$, 'customer can change only');
+select rlstest.err('Maria cannot change created_by', $q$update public.locations set created_by = '00000000-0000-0000-0000-0000000000a2' where name = 'R21 Maria Site Renamed'$q$, 'customer can change only');
+select rlstest.err('Maria cannot set updated_by to someone else', $q$update public.locations set updated_by = '00000000-0000-0000-0000-0000000000a2' where name = 'Howden'$q$, 'customer can change only');
+select rlstest.err('Maria cannot clear created_by of her own location', $q$update public.locations set created_by = null where name = 'R21 Maria Site Renamed'$q$, 'customer can change only');
+select rlstest.err('a business field together with is_active is refused as a whole', $q$update public.locations set notes = 'sneaky', is_active = false where name = 'R21 Maria Site Renamed'$q$, 'customer can change only');
+select rlstest.err('Maria cannot turn both ship and receive off', $q$update public.locations set can_ship = false, can_receive = false where name = 'R21 Maria Site Renamed'$q$, 'ship, receive or both');
+select rlstest.err('Maria cannot rename to a name of 121 characters', format($q$update public.locations set name = %L where name = 'R21 Maria Site Renamed'$q$, repeat('n', 121)), 'at most 120');
+select rlstest.err('Maria cannot rename to an existing name', $q$update public.locations set name = 'Mitrex' where name = 'R21 Maria Site Renamed'$q$, 'duplicate key|locations_name_key');
+select rlstest.rows('Maria cannot delete a location (no policy: nothing is deleted)', $q$delete from public.locations where name = 'R21 Maria Site Renamed'$q$, 0, $q$select 1 from public.locations where name = 'R21 Maria Site Renamed'$q$);
+select rlstest.back();
+do $t$
+declare r public.locations := rlstest.loc('R21 Maria Site Renamed'); h public.locations := rlstest.loc('Howden');
+begin
+  perform rlstest.chk('every business field was saved',
+    r.address_line = '9 New Road' and r.city = 'Mississauga' and r.postal_code = 'L5L 1A1' and r.can_ship and r.can_receive
+    and r.requires_moffett and r.default_contact_name = 'Bo' and r.default_contact_phone = '905-555-0199' and r.notes = 'Back gate');
+  perform rlstest.chk('the refused statements changed nothing (still active, no review, notes not sneaky, still there)',
+    r.is_active and not r.needs_review and r.notes = 'Back gate');
+  perform rlstest.chk('after her edit: updated_by is Maria, created_by still Maria', r.updated_by = '00000000-0000-0000-0000-0000000000c1' and r.created_by = '00000000-0000-0000-0000-0000000000c1');
+  perform rlstest.chk('Howden: updated_by is Maria, created_by stays empty, the new address is stored',
+    h.updated_by = '00000000-0000-0000-0000-0000000000c1' and h.created_by is null and h.address_line = '40 Howden Rd');
+end $t$;
+
+-- the booking rules read the edited flags at once: Moffett forced, receive switched off refused
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+do $t$
+declare v text;
+begin
+  v := rlstest.load_to('R21 Maria Site Renamed');
+  perform rlstest.rec('a load to her location now requiring Moffett stores moffett true (sent false)', case when v = 'true' then 'OK' else 'FAIL' end, v);
+end $t$;
+select rlstest.rows('Maria switches receiving off on her location (ships only)', $q$update public.locations set can_receive = false, requires_moffett = false where name = 'R21 Maria Site Renamed'$q$, 1);
+select rlstest.err('a load delivering to it is refused at once', $q$select rlstest.load_to('R21 Maria Site Renamed')$q$, 'cannot receive');
+select rlstest.back();
+
+-- an inactive location: Maria neither sees nor changes it; an inactive customer user changes nothing
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.rows('control: staff deactivates the 120 character location', format($q$update public.locations set is_active = false where name = %L$q$, repeat('m', 120)), 1);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.rows('Maria cannot edit an inactive location', format($q$update public.locations set notes = 'x' where name = %L$q$, repeat('m', 120)), 0,
+  format($q$select 1 from public.locations where name = %L$q$, repeat('m', 120)));
+-- an UPDATE that reads no column skips the SELECT policy, so only the update policy keeps an inactive row out of reach
+select rlstest.ok('Maria runs one UPDATE without a WHERE clause (it reaches only active rows)', $q$update public.locations set default_contact_phone = '416-555-0000'$q$);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('guard: some active location took the blanket phone', exists (select 1 from public.locations where is_active and default_contact_phone = '416-555-0000'));
+  perform rlstest.chk('the inactive location was NOT changed by that UPDATE (update policy: active only)',
+    (select count(*) from public.locations where not is_active and default_contact_phone = '416-555-0000') = 0
+    and (select count(*) from public.locations where not is_active) > 0);
+end $t$;
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c7');
+select rlstest.err('an inactive customer user cannot add a location', $q$insert into public.locations (name, address_line, city, province, can_ship) values ('R21 Inactive', 'x', 'y', 'ON', true)$q$, 'row-level security');
+select rlstest.rows('an inactive customer user cannot edit a location', $q$update public.locations set notes = 'x' where name = 'Howden'$q$, 0, $q$select 1 from public.locations where name = 'Howden'$q$);
+select rlstest.back();
+
+-- 21d. carriers: no insert, no update, no delete (owner and driver)
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b1');
+select rlstest.cnt('guard: carrier A owner sees Howden (its booked load delivers there)', $q$select 1 from public.locations where name = 'Howden'$q$, 1);
+select rlstest.err('carrier owner cannot add a location', $q$insert into public.locations (name, address_line, city, province, can_ship) values ('R21 Carrier', 'x', 'y', 'ON', true)$q$, 'row-level security');
+select rlstest.rows('carrier owner cannot edit a location it sees', $q$update public.locations set notes = 'carrier' where name = 'Howden'$q$, 0, $q$select 1 from public.locations where name = 'Howden'$q$);
+select rlstest.rows('carrier owner cannot delete a location it sees', $q$delete from public.locations where name = 'Howden'$q$, 0, $q$select 1 from public.locations where name = 'Howden'$q$);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000b2');
+select rlstest.err('carrier driver cannot add a location', $q$insert into public.locations (name, address_line, city, province, can_ship) values ('R21 Driver', 'x', 'y', 'ON', true)$q$, 'row-level security');
+select rlstest.rows('carrier driver cannot edit a location it sees', $q$update public.locations set notes = 'driver' where name = 'Howden'$q$, 0, $q$select 1 from public.locations where name = 'Howden'$q$);
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('no carrier statement changed Howden', (rlstest.loc('Howden')).notes is distinct from 'carrier' and (rlstest.loc('Howden')).notes is distinct from 'driver'
+    and (rlstest.loc('Howden')).updated_by = '00000000-0000-0000-0000-0000000000c1');
+end $t$;
+
+-- 21e. staff: rights unchanged, but the author columns come from the session
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a2');
+select rlstest.rows('staff_csr adds an inactive location that needs review (staff may set both)',
+  $q$insert into public.locations (name, address_line, city, province, can_ship, can_receive, is_active, needs_review, created_by, updated_by, created_at)
+     values ('R21 Staff Site', '5 Staff St', 'Toronto', 'ON', false, false, false, true, '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000c1', '2000-01-01')$q$, 1);
+select rlstest.rows('staff_csr changes is_active and needs_review of Maria''s location', $q$update public.locations set needs_review = true, is_active = true where name = 'R21 Maria Site Renamed'$q$, 1);
+select rlstest.rows('staff_csr sends created_by, created_at and updated_by on an update (kept and stamped instead)',
+  $q$update public.locations set created_by = '00000000-0000-0000-0000-0000000000a2', created_at = '2000-01-01', updated_by = '00000000-0000-0000-0000-0000000000c1', notes = 'staff note' where name = 'R21 Maria Site Renamed'$q$, 1);
+select rlstest.rows('staff_csr deletes an unused location', $q$delete from public.locations where name = 'R21 Max Notes'$q$, 1);
+select rlstest.back();
+select rlstest.as_user('00000000-0000-0000-0000-0000000000a1');
+select rlstest.rows('staff_admin edits Maria''s location too', $q$update public.locations set needs_review = false where name = 'R21 Maria Site Renamed'$q$, 1);
+select rlstest.back();
+do $t$
+declare s public.locations := rlstest.loc('R21 Staff Site'); r public.locations := rlstest.loc('R21 Maria Site Renamed');
+begin
+  perform rlstest.chk('staff insert keeps is_active false, needs_review true and no flags (staff rights unchanged)',
+    s.id is not null and not s.is_active and s.needs_review and not s.can_ship and not s.can_receive);
+  perform rlstest.chk('staff insert: created_by is the csr (not the Maria it sent), updated_by empty, created_at the server time',
+    s.created_by = '00000000-0000-0000-0000-0000000000a2' and s.updated_by is null and s.created_at = now());
+  perform rlstest.chk('staff update: created_by stays Maria, created_at unchanged, updated_by is the LAST staff editor (staff_admin)',
+    r.created_by = '00000000-0000-0000-0000-0000000000c1' and r.created_at = now() and r.updated_by = '00000000-0000-0000-0000-0000000000a1'
+    and r.notes = 'staff note' and not r.needs_review);
+  perform rlstest.chk('the staff delete removed the row', (rlstest.loc('R21 Max Notes')).id is null);
+end $t$;
+
+-- 21f. the service role and owner tooling (no JWT) stay unrestricted, like today
+insert into public.locations (name, address_line, city, province, can_ship, created_by, created_at)
+  values ('R21 Owner Tooling', '1 Owner St', 'Toronto', 'ON', true, '00000000-0000-0000-0000-0000000000a1', '2001-02-03');
+update public.locations set is_active = false where name = 'R21 Owner Tooling';
+do $t$
+declare o public.locations := rlstest.loc('R21 Owner Tooling');
+begin
+  perform rlstest.chk('owner tooling keeps what it sends (created_by, created_at) and writes no updated_by',
+    o.created_by = '00000000-0000-0000-0000-0000000000a1' and o.created_at = '2001-02-03' and o.updated_by is null and not o.is_active);
+end $t$;
+
+-- 21g. deleting a profile clears its author columns, even when the delete runs inside a signed-in session
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c8');
+select rlstest.rows('control: the soon deleted customer user adds a location', $q$insert into public.locations (name, address_line, city, province, can_ship) values ('R21 Gone Author', '1 Gone St', 'Toronto', 'ON', true)$q$, 1);
+select rlstest.rows('control: and edits Howden (last editor)', $q$update public.locations set notes = 'gone note' where name = 'Howden'$q$, 1);
+select rlstest.back();
+do $t$
+begin
+  -- the table owner deletes the user while a staff JWT is set (the trigger sees a signed-in staff caller)
+  perform set_config('request.jwt.claims', json_build_object('sub', '00000000-0000-0000-0000-0000000000a2', 'role', 'authenticated')::text, true);
+  delete from auth.users where id = '00000000-0000-0000-0000-0000000000c8';
+  perform set_config('request.jwt.claims', '', true);
+  perform rlstest.chk('guard: the profile is gone', not exists (select 1 from public.profiles where id = '00000000-0000-0000-0000-0000000000c8'));
+  perform rlstest.chk('the location of a deleted author stays, with created_by cleared',
+    (rlstest.loc('R21 Gone Author')).id is not null and (rlstest.loc('R21 Gone Author')).created_by is null);
+  perform rlstest.chk('the last editor column of Howden was cleared or restamped, never left dangling',
+    (rlstest.loc('Howden')).updated_by is distinct from '00000000-0000-0000-0000-0000000000c8');
+end $t$;
+
+-- 21h. the migration is idempotent: apply the REAL file again, one trigger each, five policies, the rules still hold
+\i supabase/migrations/0021_customer_locations.sql
+select rlstest.as_user('00000000-0000-0000-0000-0000000000c1');
+select rlstest.rows('after a second apply Maria still adds a location', $q$insert into public.locations (name, address_line, city, province, can_ship, is_active, needs_review) values ('R21 Second Apply', '1 Again St', 'Toronto', 'ON', true, false, true)$q$, 1);
+select rlstest.err('after a second apply Maria still cannot change is_active', $q$update public.locations set is_active = false where name = 'R21 Second Apply'$q$, 'customer can change only');
+select rlstest.back();
+do $t$
+begin
+  perform rlstest.chk('0021 applied again: one insert trigger, one update guard trigger, five policies, flags still forced',
+    (select count(*) from pg_trigger where tgrelid = 'public.locations'::regclass and tgname = 'locations_before_insert') = 1
+    and (select count(*) from pg_trigger where tgrelid = 'public.locations'::regclass and tgname = 'locations_before_update') = 1
+    and (select count(*) from pg_policies where schemaname = 'public' and tablename = 'locations') = 5
+    and (rlstest.loc('R21 Second Apply')).is_active and not (rlstest.loc('R21 Second Apply')).needs_review
+    and (rlstest.loc('R21 Second Apply')).created_by = '00000000-0000-0000-0000-0000000000c1');
 end $t$;
 
 -- Summary ----------------------------------------------------------------
