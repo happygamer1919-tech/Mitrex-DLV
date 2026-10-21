@@ -2,13 +2,14 @@
 import { useActionState, useState } from "react";
 import { Button, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/admin/state";
+import { guardAction } from "@/lib/client/action-guard";
 import { quoteRateRequest } from "@/lib/rates/actions";
 import { NOTES_MAX } from "@/lib/rates/validate";
 
 // Staff only. Controlled fields, so a refused submit keeps what was typed. Prefilled with the existing rate when staff
 // correct one.
 export function RateQuoteForm({ id, existing }: { id: string; existing: { amount: string; currency: string; notes: string; validUntil: string } | null }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(quoteRateRequest, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(quoteRateRequest), {});
   const [amount, setAmount] = useState(existing?.amount ?? "");
   const [currency, setCurrency] = useState(existing?.currency ?? "CAD");
   const [notes, setNotes] = useState(existing?.notes ?? "");

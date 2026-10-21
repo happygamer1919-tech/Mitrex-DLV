@@ -1,8 +1,10 @@
 "use client";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { Button, Card, Field, Input, Notice, Select } from "@/components/ui";
 import { inviteUser } from "@/lib/admin/user-actions";
 import type { ActionState } from "@/lib/admin/state";
+import { guardAction } from "@/lib/client/action-guard";
+import { submitWithoutReset } from "@/lib/client/submit-form";
 
 const ROLE_LABEL: Record<string, string> = {
   staff_admin: "Staff admin",
@@ -15,12 +17,12 @@ const ROLE_LABEL: Record<string, string> = {
 export function InviteForm({
   customers, carriers,
 }: { customers: { id: string; name: string }[]; carriers: { id: string; name: string; is_active: boolean }[] }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(inviteUser, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(inviteUser), {});
   const [role, setRole] = useState("staff_csr");
   const [key, setKey] = useState(0);
-  const roleRef = useRef<HTMLSelectElement>(null);
-  // WebKit blanks a controlled select when React resets the form after an action; put the role back.
-  useEffect(() => { if (roleRef.current) roleRef.current.value = role; }, [state, role]);
+  const [, startSave] = useTransition();
+  // DLV-043: submitted through onSubmit, not the form action prop, so a refused invite (an email already used) keeps
+  // the email, the name, the role and the chosen company as typed. A success clears the form (new key).
   useEffect(() => { if (state.ok) { setKey((k) => k + 1); setRole("staff_csr"); } }, [state.ok]);
   const needsCustomer = role === "customer";
   const needsCarrier = role === "carrier_owner" || role === "carrier_driver";
@@ -28,12 +30,12 @@ export function InviteForm({
   return (
     <Card>
       <h2 className="mb-3 text-[20px] font-bold">Add a user</h2>
-      <form key={key} action={action} className="space-y-3">
+      <form key={key} onSubmit={submitWithoutReset(action, startSave)} className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Email"><Input name="email" type="email" required autoComplete="off" /></Field>
           <Field label="Full name"><Input name="full_name" required maxLength={120} /></Field>
           <Field label="Role">
-            <Select ref={roleRef} name="role" value={role} onChange={(e) => setRole(e.target.value)}>
+            <Select name="role" value={role} onChange={(e) => setRole(e.target.value)}>
               {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </Select>
           </Field>

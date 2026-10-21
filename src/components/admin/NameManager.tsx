@@ -1,17 +1,21 @@
 "use client";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { Button, Card, Field, Input, Notice } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
 import type { ActionState, AdminAction } from "@/lib/admin/state";
+import { guardAction } from "@/lib/client/action-guard";
+import { submitWithoutReset } from "@/lib/client/submit-form";
 
 type Item = { id: string; name: string; is_active?: boolean };
 
 function CreateForm({ action, noun }: { action: AdminAction; noun: string }) {
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(action, {});
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(guardAction(action), {});
+  const [, startSave] = useTransition();
   const [key, setKey] = useState(0);
   useEffect(() => { if (state.ok) setKey((k) => k + 1); }, [state.ok]);
+  // DLV-043: onSubmit, not the form action prop, so a refused name (already used) stays as typed; a success clears it.
   return (
-    <form key={key} action={formAction} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+    <form key={key} onSubmit={submitWithoutReset(formAction, startSave)} className="flex flex-col gap-3 sm:flex-row sm:items-end">
       <div className="flex-1">
         <Field label={`New ${noun} name`}>
           <Input name="name" required maxLength={120} />
@@ -30,7 +34,8 @@ function Row({
   item, noun, renameAction, toggleAction,
 }: { item: Item; noun: string; renameAction: AdminAction; toggleAction?: AdminAction }) {
   const [editing, setEditing] = useState(false);
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(renameAction, {});
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(guardAction(renameAction), {});
+  const [, startSave] = useTransition();
   useEffect(() => { if (state.ok) setEditing(false); }, [state.ok]);
   const inactive = item.is_active === false;
 
@@ -59,7 +64,7 @@ function Row({
         </div>
       </div>
       {editing ? (
-        <form action={formAction} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <form onSubmit={submitWithoutReset(formAction, startSave)} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
           <input type="hidden" name="id" value={item.id} />
           <div className="flex-1">
             <Field label={`${noun} name`}>

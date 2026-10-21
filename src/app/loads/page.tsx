@@ -51,7 +51,8 @@ function Row({ l }: { l: LoadWithRefs }) {
         {l.status === "delivered" && l.delivered_at ? (
           <span data-testid="delivered-date" className="text-[14px] font-medium">Delivered {fmtDateTime(l.delivered_at)}</span>
         ) : null}
-        {l.eta ? <span className="text-[14px] font-medium">ETA {fmtDateTime(l.eta)}</span> : null}
+        {/* DLV-043 CUST-04: the ETA only while the truck is on its way (a delivered load keeps its last ETA). */}
+        {l.eta && (l.status === "enroute" || l.status === "at_delivery") ? <span data-testid="row-eta" className="text-[14px] font-medium">ETA {fmtDateTime(l.eta)}</span> : null}
         <StatusChip status={l.status} />
       </Link>
       {l.status === "delivered" || canReturn(l.status) ? (
@@ -73,7 +74,9 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
   // shows the delivered loads only, newest delivery first.
   const f = parseFilters(sp, "customer");
   const filtered = isFiltered(f);
-  const completed = f.view === "completed";
+  // DLV-043 CUST-05: Completed with a status other than Delivered (a link or a hand-made URL) used to render no group and
+  // no message. The chosen status wins, so its group renders.
+  const completed = f.view === "completed" && !(f.status && f.status !== "delivered");
   const older = { delivered: parsePages(sp.dold), cancelled: parsePages(sp.cold) };
   const booked = Array.isArray(sp.booked) ? sp.booked[0] : sp.booked;
   const today = easternToday();
@@ -207,10 +210,12 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
         </div>
       ) : null}
       <nav aria-label="Filter by status" className="mb-3 flex gap-2 overflow-x-auto pb-1">
-        <Link href="/loads" className={chip(!f.status && !completed)}>All</Link>
-        <Link href="/loads?view=completed" className={chip(completed)}>Completed</Link>
+        {/* DLV-043 CUST-07: the active chip is announced, not only coloured. */}
+        <Link href="/loads" className={chip(!f.status && !completed)} aria-current={!f.status && !completed ? "page" : undefined}>All</Link>
+        <Link href="/loads?view=completed" className={chip(completed)} aria-current={completed ? "page" : undefined}>Completed</Link>
         {STATUSES.map((s) => (
-          <Link key={s} href={`/loads?status=${s}`} className={chip(f.status === s && !completed)}>{STATUS_LABEL[s]}</Link>
+          <Link key={s} href={`/loads?status=${s}`} className={chip(f.status === s && !completed)}
+            aria-current={f.status === s && !completed ? "page" : undefined}>{STATUS_LABEL[s]}</Link>
         ))}
       </nav>
       <LoadFilterControls scope="customer" base="/loads" f={f} shippers={shipperOpts} receivers={receiverOpts} />
@@ -238,6 +243,9 @@ export default async function LoadsPage({ searchParams }: { searchParams: Promis
             olderLink("delivered"),
           ) : null}
           {wantCancelled ? group("cancelled", "Cancelled", f.status === "cancelled" || (filtered ? groups.cancelled.length > 0 : older.cancelled > 0), null, olderLink("cancelled")) : null}
+          {!wantActive && !wantDelivered && !wantCancelled ? (
+            <p data-testid="loads-no-group" className="rounded-[16px] border border-dashed border-line px-3 py-3 text-[14px] text-muted">No loads match these filters.</p>
+          ) : null}
         </>
       ) : null}
     </Shell>

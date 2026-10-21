@@ -8,6 +8,7 @@ import { DATETIME_LOCAL, UUID, plainError, str } from "./errors";
 import { notifyCarrierAssigned, notifyCustomerBolUploaded, notifyCustomerBooked } from "./notify";
 import { ITS_FORMAT_MESSAGE, normaliseIts, validateIts } from "@/lib/load-number";
 import type { ActionState } from "./state";
+import { bookedMessage } from "./booked-message";
 
 function refresh(id: string) {
   revalidatePath(`/admin/loads/${id}`);
@@ -58,13 +59,24 @@ function itsError(error: { message?: string; code?: string }): string {
 
 // Staff books a load: ITS number first (set_its_load_number, event logged), then set_load_status('booked'),
 // then the emails (carrier assigned, booking confirmation to the customer). A mail failure never fails the action.
-export async function bookLoad(loadId: string, itsNumber: string): Promise<ActionState> {
+// DLV-043 STAFF-01: the load must still be a request. A stale page (the load was cancelled or booked meanwhile) is
+// refused BEFORE the number is written, so it can neither re-book a cancelled load nor overwrite the number of a
+// booked one. (The database still refuses a second booking; a guard that closes the last milliseconds of the race
+// would need an expected-status argument on set_load_status, logged as a possible later hardening.)
+export async function bookLoad(loadId: string, itsNumber: string): Promise<ActionState & { booked?: { its: string; sent: number; told: number } }> {
   await requireStaff();
   if (!UUID.test(loadId)) return { error: "Load not found." };
   const invalid = validateIts(itsNumber);
   if (invalid) return { error: invalid };
   const its = normaliseIts(itsNumber);
   const supabase = await createClient();
+  const { data: cur } = await supabase.from("loads").select("status").eq("id", loadId).maybeSingle();
+  if (!cur) return { error: "Load not found." };
+  if (cur.status !== "requested") {
+    // No revalidate: it would re-render the page at once and remove this card with its message; the live refresh shows
+    // the new status a moment later.
+    return { error: `This load is no longer a request (now ${STATUS_LABEL[cur.status as LoadStatus] ?? cur.status}). Reload the page.` };
+  }
   const set = await supabase.rpc("set_its_load_number", { p_load: loadId, p_number: its });
   if (set.error) return { error: itsError(set.error) };
   const { error } = await supabase.rpc("set_load_status", {
@@ -75,13 +87,7 @@ export async function bookLoad(loadId: string, itsNumber: string): Promise<Actio
   const told = await notifyCustomerBooked(loadId);
   refresh(loadId);
   revalidatePath("/loads");
-  const carrierMsg = sent > 0
-    ? `Email sent to ${sent} carrier ${sent === 1 ? "user" : "users"}.`
-    : "No carrier email was sent (the carrier has no users, or email is not configured).";
-  const customerMsg = told > 0
-    ? `Booking confirmation sent to ${told} customer ${told === 1 ? "user" : "users"}.`
-    : "No customer email was sent.";
-  return { ok: `Booked as ITS ${its}. ${carrierMsg} ${customerMsg}` };
+  return { ok: bookedMessage(its, sent, told), booked: { its, sent, told } };
 }
 
 // Correct the ITS number after booking (same function, event logged).

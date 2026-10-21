@@ -35,15 +35,18 @@ export type ReturnContext = {
 // Form values of a return: pickup = original delivery with the original DELIVERY contact, delivery = original pickup
 // with the original PICKUP contact. Equipment, Moffett, weight, pieces, PO and notes (without the "Truck i of N" line)
 // are copied, the timing type is kept, every date and time is empty.
-export function returnValues(l: Load): LoadFormValues {
+// DLV-043 CUST-03: when the original shipper is no longer offered (deactivated), the delivery and its contact start
+// empty, like request again does for a location that no longer qualifies; the select would otherwise show no match
+// while the form still held the id, and only the server refused it on submit.
+export function returnValues(l: Load, opts: { shipperOk: boolean } = { shipperOk: true }): LoadFormValues {
   return {
     ...EMPTY_LOAD_FORM,
     pickup_location_id: l.delivery_location_id,
     pickup_contact_name: l.delivery_contact_name,
     pickup_contact_phone: l.delivery_contact_phone,
-    delivery_location_id: l.pickup_location_id,
-    delivery_contact_name: l.pickup_contact_name,
-    delivery_contact_phone: l.pickup_contact_phone,
+    delivery_location_id: opts.shipperOk ? l.pickup_location_id : "",
+    delivery_contact_name: opts.shipperOk ? l.pickup_contact_name : "",
+    delivery_contact_phone: opts.shipperOk ? l.pickup_contact_phone : "",
     equipment_size: ["26", "36", "53"].includes(String(l.equipment_size)) ? String(l.equipment_size) : "",
     moffett: l.moffett,
     pickup_timing: l.pickup_timing,

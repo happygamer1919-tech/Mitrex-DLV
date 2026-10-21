@@ -4,14 +4,15 @@ import { useState } from "react";
 import { Button, Card, Field, Input, Notice } from "@/components/ui";
 import { addDriver, removeDriver } from "@/app/team/actions";
 
-export type Member = { id: string; email: string; full_name: string | null; role: string; isSelf: boolean };
+export type Member = { id: string; email: string; full_name: string | null; role: string; isSelf: boolean; active: boolean };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 function MemberRow({ m, onResult }: { m: Member; onResult: (r: { ok: boolean; text: string }) => void }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const removable = m.role === "carrier_driver" && !m.isSelf;
+  // DLV-043 CAR-10: a driver dispatch deactivated is shown as such, and the owner is offered no Remove for it.
+  const removable = m.role === "carrier_driver" && !m.isSelf && m.active;
 
   async function remove() {
     setBusy(true);
@@ -28,7 +29,7 @@ function MemberRow({ m, onResult }: { m: Member; onResult: (r: { ok: boolean; te
   }
 
   return (
-    <li className="py-3">
+    <li className="py-3" data-testid="team-member" data-active={m.active ? "true" : "false"}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="break-words text-[16px] font-bold">
@@ -37,6 +38,7 @@ function MemberRow({ m, onResult }: { m: Member; onResult: (r: { ok: boolean; te
           </div>
           {m.full_name ? <div className="break-all text-[15px] text-muted">{m.email}</div> : null}
           <div className="text-[13px] font-medium text-muted">{m.role === "carrier_owner" ? "Owner" : "Driver"}</div>
+          {!m.active ? <div data-testid="member-deactivated" className="text-[13px] font-bold text-[#7A1F1F]">Deactivated by dispatch</div> : null}
         </div>
         {removable && !confirming ? (
           <Button type="button" variant="danger" className="min-h-[48px]" onClick={() => setConfirming(true)}>

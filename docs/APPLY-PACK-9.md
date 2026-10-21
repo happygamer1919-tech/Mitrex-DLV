@@ -545,4 +545,13 @@ Method: `supabase db reset --last 1` took the local database to 0018 (read back 
 
 ## Production result
 
-To be filled in after the owner supervised session (blocks A, B, C against production, then the merge and the deploy).
+Owner approval (2026-10-20, verbatim): "yes, apply the migrations when ready". Run by the engineering assistant on 2026-10-20 (UTC). Before production, every block of this pack was rerun verbatim against a separate LOCAL rehearsal database (127.0.0.1:59322, migrations 0001 to 0018 plus production like rows: 1 staff_admin, 1 Mitrex customer, 1 carrier owner, 6 loads in six statuses) under `env -i` with no production value: pre-check OK, apply OK, apply again OK, post-check OK, rollback OK, post-check FAIL as designed, pre-check OK, apply OK, post-check OK. Production ran with `DLV_APPLY_DIR=<fresh dir> zsh -f -c 'set -o allexport; source ~/.zshenvmitrex; set +o allexport; zsh -f <block file>'` from a scratch folder whose `supabase` entry links to the PR head's supabase folder.
+
+| Step | Result |
+| --- | --- |
+| Files | 0019_return_loads.sql from PR #38 (head d310032) |
+| Block A pre-check | 15 PASS, PRECHECK_OK (loads 36, load_events 249, locations 20) |
+| Block B apply | APPLY_OK 2026-10-20T21:06:10Z |
+| Block C post-check | 44 PASS, 0 FAIL, POSTCHECK_OK |
+| Interruptions | The first pre-check attempt failed to connect (SSL error: unexpected eof, a pooler blip); the rerun connected and passed. Nothing was written by the failed attempt (read only block). |
+| Merge and deploy | #38 squash merged 2026-10-21 as a6c1f63; production deploy a6c1f63 success; /api/health {"ok":true}, /login 200. |

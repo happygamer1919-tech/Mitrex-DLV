@@ -406,4 +406,13 @@ Method: `supabase db reset --last 1` took the local database to 0019 (read back 
 
 ## Production result
 
-To be filled in after the owner supervised session (blocks A, B, C against production, then the merge and the deploy).
+Owner approval (2026-10-20, verbatim): "yes, apply the migrations when ready". Run by the engineering assistant on 2026-10-20 (UTC). Before production, every block of this pack was rerun verbatim against a separate LOCAL rehearsal database (127.0.0.1:59322, migrations 0001 to 0018 plus production like rows: 1 staff_admin, 1 Mitrex customer, 1 carrier owner, 6 loads in six statuses) under `env -i` with no production value: pre-check OK, apply OK, apply again OK, post-check OK, rollback OK, post-check FAIL as designed, pre-check OK, apply OK, post-check OK. Production ran with `DLV_APPLY_DIR=<fresh dir> zsh -f -c 'set -o allexport; source ~/.zshenvmitrex; set +o allexport; zsh -f <block file>'` from a scratch folder whose `supabase` entry links to the PR head's supabase folder.
+
+| Step | Result |
+| --- | --- |
+| Files | 0020_staff_edit_audit.sql from PR #39 (head 97120e1) |
+| Block A pre-check | 11 PASS, PRECHECK_OK |
+| Block B apply | APPLY_OK 2026-10-20T21:10:29Z |
+| Block C post-check | 39 PASS, 0 FAIL, POSTCHECK_OK |
+| Interruptions | The first post-check run was cut by the same pooler SSL blip after 34 PASS (read only); the rerun gave 39 PASS, POSTCHECK_OK. |
+| Merge and deploy | Branch updated with `git merge -s ours` of main after #38 (tree unchanged, no force push), base moved to main; #39 squash merged 2026-10-21 as 2552b6a; production deploy 2552b6a success; /api/health {"ok":true}, /login 200. |

@@ -334,13 +334,18 @@ test("a staff override out of Requested asks for the ITS number; the database re
   await page.getByRole("button", { name: "Override status" }).click();
   await expect(page.getByText(/must be digits/)).toBeVisible();
   expect((await row(l.id)).status).toBe("requested");
+  // DLV-043: the refusal keeps everything staff typed (it used to wipe the note and the number), so only the number
+  // needs fixing.
+  await expect(page.getByLabel("New status")).toHaveValue("loading");
+  await expect(page.getByLabel("Note (required)")).toHaveValue("jump");
+  await expect(page.getByTestId("override-its-input")).toHaveValue("x1");
 
   const its = uniqIts();
   await page.getByTestId("override-its-input").fill(its);
-  await page.getByLabel("Note (required)").fill("jump with the number"); // React resets the form after every action
   await page.getByRole("button", { name: "Override status" }).click();
   await waitStatus(l.id, "loading");
   expect((await row(l.id)).its_load_number).toBe(its);
+  expect((await events(l.id)).map((e) => e.note)).toContain("jump");
   await s.ctx.close();
 });
 

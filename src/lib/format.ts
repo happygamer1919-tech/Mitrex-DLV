@@ -71,8 +71,19 @@ export function todayEastern(): string {
   return isoToEasternLocal(new Date().toISOString()).slice(0, 10);
 }
 
+// DLV-043 CAR-04: phones are free text. Dial the FIRST number only: the text is cut at an extension word (ext, x, #)
+// or a separator between two numbers (/ , ; or). An extension in digits follows after a pause (","), which phones
+// dial once the call connects. The button keeps showing the full text.
+const PHONE_CUT = /(extension|ext\.?|x|#|\/|,|;|\bor\b)/i;
+const PHONE_EXT = /^\s*(?:extension|ext\.?|x|#)\s*(\d{1,6})\b/i;
 export function telHref(phone: string): string {
-  return "tel:" + phone.replace(/[^+\d]/g, "");
+  const raw = String(phone ?? "");
+  const cut = raw.search(PHONE_CUT);
+  const head = cut >= 0 ? raw.slice(0, cut) : raw;
+  const main = head.replace(/[^+\d]/g, "").replace(/(?!^)\+/g, "");
+  if (!main) return "tel:" + raw.replace(/[^+\d]/g, "");
+  const ext = cut >= 0 ? PHONE_EXT.exec(raw.slice(cut))?.[1] : undefined;
+  return "tel:" + main + (ext ? `,${ext}` : "");
 }
 
 // "Oct 4, 2026" for an ISO instant, as the Eastern calendar date.

@@ -9,11 +9,17 @@ import { removeLoadPhoto } from "@/lib/carrier/photo-actions";
 import { assignCarrier, bookLoad, notifyBolUploaded, overrideStatus, setEta, setItsNumber } from "@/lib/admin/load-actions";
 import { validateIts } from "@/lib/load-number";
 import type { ActionState } from "@/lib/admin/state";
+import { bookedQuery } from "@/lib/admin/booked-message";
+import { failure, goToLogin, guardAction, withTimeout } from "@/lib/client/action-guard";
+// DLV-043 FORM-RESET-01: the staff forms submit through onSubmit, never the form action prop, so a refusal keeps
+// everything staff typed.
+import { submitWithoutReset as submitWith } from "@/lib/client/submit-form";
 
 export function AssignCarrierForm({
   loadId, carrierId, carriers,
 }: { loadId: string; carrierId: string | null; carriers: { id: string; name: string; is_active: boolean }[] }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(assignCarrier, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(assignCarrier), {});
+  const [, startSave] = useTransition();
   // The saved carrier can change from elsewhere on the page ("Use the same carrier" on a return load): keep the
   // uncontrolled select in step with the server value.
   const selectRef = useRef<HTMLSelectElement>(null);
@@ -21,7 +27,7 @@ export function AssignCarrierForm({
     if (selectRef.current) selectRef.current.value = carrierId ?? "";
   }, [carrierId]);
   return (
-    <form action={action} className="space-y-3">
+    <form onSubmit={submitWith(action, startSave)} className="space-y-3">
       <input type="hidden" name="load_id" value={loadId} />
       <Field label="Carrier">
         <Select ref={selectRef} name="carrier_id" defaultValue={carrierId ?? ""}>
@@ -42,6 +48,7 @@ export function AssignCarrierForm({
 
 // Mark booked: needs a saved carrier AND the ITS load number (the database enforces the number too).
 export function BookLoadForm({ loadId, carrierSaved, itsNumber }: { loadId: string; carrierSaved: boolean; itsNumber: string | null }) {
+  const router = useRouter();
   const [its, setIts] = useState(itsNumber ?? "");
   const [pending, start] = useTransition();
   const [state, setState] = useState<ActionState>({});
@@ -55,16 +62,21 @@ export function BookLoadForm({ loadId, carrierSaved, itsNumber }: { loadId: stri
     setState({});
     start(async () => {
       try {
-        setState(await bookLoad(loadId, its));
-      } catch {
-        setState({ error: "Something went wrong. Please try again." });
+        const r = await withTimeout(bookLoad(loadId, its));
+        // STAFF-02: this card disappears once the load is booked, so the result line goes to the page's saved notice.
+        if (r.booked) router.replace(`/admin/loads/${loadId}?${bookedQuery(r.booked.its, r.booked.sent, r.booked.told)}`, { scroll: false });
+        setState(r);
+      } catch (e) {
+        const f = failure(e);
+        if (f.sessionExpired) { goToLogin(); return; }
+        setState({ error: f.message });
       }
     });
   }
   return (
     <div className="space-y-3" data-testid="book-card">
       <Field label="ITS load number (required to book)" hint="Enter the new load number from ITS.">
-        <Input name="its_load_number" inputMode="numeric" autoComplete="off" maxLength={30} value={its}
+        <Input name="its_load_number" autoComplete="off" maxLength={30} value={its}
           onChange={(e) => setIts(e.target.value)} data-testid="its-input" />
       </Field>
       <p className="text-[13px] text-muted">Booking emails every user of the assigned carrier and every active customer user, with the BOL if there is one.</p>
@@ -92,11 +104,13 @@ export function EditItsForm({ loadId, itsNumber }: { loadId: string; itsNumber: 
     setState({});
     start(async () => {
       try {
-        const r = await setItsNumber(loadId, its);
+        const r = await withTimeout(setItsNumber(loadId, its));
         setState(r);
         if (r.ok) setOpen(false);
-      } catch {
-        setState({ error: "Something went wrong. Please try again." });
+      } catch (e) {
+        const f = failure(e);
+        if (f.sessionExpired) { goToLogin(); return; }
+        setState({ error: f.message });
       }
     });
   }
@@ -112,7 +126,7 @@ export function EditItsForm({ loadId, itsNumber }: { loadId: string; itsNumber: 
       ) : (
         <div className="space-y-3">
           <Field label="ITS load number" hint="Enter the load number from ITS. The change is logged in the timeline.">
-            <Input inputMode="numeric" autoComplete="off" maxLength={30} value={its} onChange={(e) => setIts(e.target.value)} data-testid="its-edit-input" />
+            <Input autoComplete="off" maxLength={30} value={its} onChange={(e) => setIts(e.target.value)} data-testid="its-edit-input" />
           </Field>
           <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={save} disabled={pending || !its.trim()}>{pending ? "Saving..." : "Save ITS number"}</Button>
@@ -127,21 +141,25 @@ export function EditItsForm({ loadId, itsNumber }: { loadId: string; itsNumber: 
 }
 
 export function StatusOverrideForm({ loadId, current, itsNumber }: { loadId: string; current: LoadStatus; itsNumber: string | null }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(overrideStatus, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(overrideStatus), {});
+  const [, startSave] = useTransition();
   const [status, setStatus] = useState<LoadStatus | "">("");
-  const statusRef = useRef<HTMLSelectElement>(null);
-  // React resets the form after every action. WebKit then blanks a controlled select (its DOM value
-  // goes back to the disabled placeholder) while state still holds the choice, so a second submit is
-  // blocked by the browser's required check. Put the choice back after each result.
+  const formRef = useRef<HTMLFormElement>(null);
+  // Submitted through onSubmit, not the form action prop: React resets a form after an action prop ran, so a refused
+  // override (a bad ITS number, a blank note) wiped the note, the ETA and the ITS number staff had typed, and WebKit
+  // blanked the chosen status. A refusal now keeps everything as typed; only a saved override clears the form.
   useEffect(() => {
-    if (statusRef.current && status) statusRef.current.value = status;
-  }, [state, status]);
+    if (!state.ok) return;
+    formRef.current?.reset();
+    setStatus("");
+  }, [state]);
   const options = (Object.keys(STATUS_LABEL) as LoadStatus[]).filter((s) => s !== current);
   return (
-    <form action={action} className="space-y-3">
+    <form ref={formRef} className="space-y-3"
+      onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startSave(() => action(fd)); }}>
       <input type="hidden" name="load_id" value={loadId} />
       <Field label="New status">
-        <Select ref={statusRef} name="status" required value={status} onChange={(e) => setStatus(e.target.value as LoadStatus)}>
+        <Select name="status" required value={status} onChange={(e) => setStatus(e.target.value as LoadStatus)}>
           <option value="" disabled>Choose a status</option>
           {options.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
         </Select>
@@ -153,7 +171,7 @@ export function StatusOverrideForm({ loadId, current, itsNumber }: { loadId: str
       ) : null}
       {current === "requested" && status && status !== "cancelled" ? (
         <Field label="ITS load number (required to leave Requested)" hint="Enter the new load number from ITS.">
-          <Input name="its_load_number" inputMode="numeric" autoComplete="off" maxLength={30} required defaultValue={itsNumber ?? ""} data-testid="override-its-input" />
+          <Input name="its_load_number" autoComplete="off" maxLength={30} required defaultValue={itsNumber ?? ""} data-testid="override-its-input" />
         </Field>
       ) : null}
       <Field label="Note (required)" hint="Recorded in the timeline.">
@@ -169,9 +187,15 @@ export function StatusOverrideForm({ loadId, current, itsNumber }: { loadId: str
 }
 
 export function EtaForm({ loadId, etaLocal }: { loadId: string; etaLocal: string }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(setEta, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(setEta), {});
+  const [, startSave] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
+  // Only a saved ETA clears the note (and shows the saved ETA again); a refusal keeps both as typed.
+  useEffect(() => {
+    if (state.ok) formRef.current?.reset();
+  }, [state]);
   return (
-    <form action={action} className="space-y-3">
+    <form ref={formRef} onSubmit={submitWith(action, startSave)} className="space-y-3">
       <input type="hidden" name="load_id" value={loadId} />
       <Field label="ETA (Eastern time, ET)">
         <Input type="datetime-local" name="eta" required defaultValue={etaLocal} />

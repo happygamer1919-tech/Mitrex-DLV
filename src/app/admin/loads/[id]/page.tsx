@@ -23,6 +23,7 @@ import { assignCarrier, cancelLoad } from "@/lib/admin/load-actions";
 import { resendCarrierDetails } from "@/lib/admin/edit-actions";
 import { canStaffEdit, canStaffReturn, offersCarrierEmail } from "@/lib/admin/staff-edit";
 import { routeOf } from "@/lib/admin/queries";
+import { bookedMessageFromQuery } from "@/lib/admin/booked-message";
 
 export const dynamic = "force-dynamic";
 
@@ -68,12 +69,15 @@ const SAVED: Record<string, string> = {
 };
 
 export default async function AdminLoadPage({ params, searchParams }: {
-  params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string | string[] }>;
+  params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string | string[]; its?: string | string[]; c?: string | string[]; m?: string | string[] }>;
 }) {
   const profile = await requireStaff();
   const { id } = await params;
-  const { saved } = await searchParams;
-  const savedMsg = typeof saved === "string" && Object.hasOwn(SAVED, saved) ? SAVED[saved] : null;
+  const sp = await searchParams;
+  const { saved } = sp;
+  // DLV-043 STAFF-02: "Mark booked" lands here with ?saved=booked&its=&c=&m= (the booking card is gone once booked).
+  const savedMsg = saved === "booked" ? bookedMessageFromQuery(sp)
+    : typeof saved === "string" && Object.hasOwn(SAVED, saved) ? SAVED[saved] : null;
   if (!UUID.test(id)) notFound();
 
   const supabase = await createClient();

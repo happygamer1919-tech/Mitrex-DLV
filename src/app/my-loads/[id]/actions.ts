@@ -87,7 +87,16 @@ export async function updateEta(loadId: string, etaLocal: string): Promise<Actio
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("set_load_eta", { p_load: loadId, p_eta: eta, p_note: null });
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    // DLV-043 CAR-09: the load left enroute or at delivery meanwhile (delivered from another phone or by dispatch).
+    // Same answer as a stale step: refresh, never the raw database sentence.
+    const again = await supabase.from("loads").select("status").eq("id", loadId).maybeSingle();
+    if (again.data && again.data.status !== "enroute" && again.data.status !== "at_delivery") {
+      refresh(loadId);
+      return { ok: false, error: STALE_MESSAGE, code: "stale" };
+    }
+    return { ok: false, error: "The ETA could not be saved. Try again." };
+  }
   refresh(loadId);
   return { ok: true };
 }

@@ -242,7 +242,8 @@ export function LoadForm({ mode, loadId, locations, initial, today, lastContacts
     const saveKey = `save_${side}_default` as const;
     const locId = v[`${side}_location_id`];
     const loc = byId.get(locId);
-    const last = mode === "create" && !staff && locId ? lastContacts[side][locId] : undefined;
+    // A location that is not on offer (deactivated meanwhile) gets no hint: it would read "Last contact at : ...".
+    const last = mode === "create" && !staff && locId && loc ? lastContacts[side][locId] : undefined;
     const same = last ? v[nameKey].trim() === last.name && v[phoneKey].trim() === last.phone : false;
     const hasDefault = Boolean(loc?.default_contact_name || loc?.default_contact_phone);
     const when = last ? `${last.label}, ${fmtDateEt(last.createdAt)}` : "";

@@ -31,9 +31,9 @@ export async function as(browser: Browser, who: Who, viewport?: Viewport, extra?
 }
 
 // A fresh, signed-out context for the engine (login scenarios).
-export async function anon(browser: Browser): Promise<{ ctx: BrowserContext; page: Page }> {
+export async function anon(browser: Browser, extra?: BrowserContextOptions): Promise<{ ctx: BrowserContext; page: Page }> {
   const { options } = engineOptions(browser);
-  const ctx = await browser.newContext({ ...options, baseURL: BASE_URL });
+  const ctx = await browser.newContext({ ...options, baseURL: BASE_URL, ...(extra ?? {}) });
   return { ctx, page: await ctx.newPage() };
 }
 
@@ -122,6 +122,9 @@ export async function insertLoad(opts: {
     po_number: opts.po, notes: opts.notes ?? null, status, its_load_number: its,
     carrier_id: withCarrier ? car!.id : null, eta,
     ...(opts.returnOf ? { return_of_load_id: opts.returnOf } : {}),
+    // A load past requested was booked once (set_load_status stamps booked_at; this direct insert does it here). Since
+    // 0022 a cancelled load without booked_at is a request that was never booked, hidden from its carrier (CAR-01).
+    ...(status !== "requested" ? { booked_at: new Date().toISOString() } : {}),
     ...(status === "cancelled" ? { cancelled_at: new Date().toISOString() } : {}),
     ...(status === "delivered" ? { delivered_at: new Date().toISOString() } : {}),
   }).select("id,load_number,its_load_number").single();

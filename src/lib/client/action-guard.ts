@@ -1,3 +1,4 @@
+import { unstable_rethrow } from "next/navigation";
 import { loginPathFor } from "@/lib/safe-next";
 
 // Watchdog for every browser-side mutation. Default 25 s; NEXT_PUBLIC_ACTION_TIMEOUT_MS overrides it
@@ -47,4 +48,25 @@ export function failure(e: unknown): { message: string; sessionExpired: boolean 
 // Sends the user to sign in and back to the page they are on.
 export function goToLogin(): void {
   window.location.assign(loginPathFor(window.location.pathname + window.location.search));
+}
+
+// DLV-043 STAFF-03: wraps a server action used by useActionState. A rejected action (no session: the proxy answers
+// 401 SESSION_EXPIRED; offline; a dropped connection; the watchdog) used to escape to Next's full page "This page
+// couldn't load" and lost everything typed. Now an expired session goes to sign in and anything else becomes the
+// form's own inline error. A redirect from the action (Next's own control flow) is passed through untouched, and a
+// redirect that resolves without a result keeps the previous state.
+export function guardAction<S extends { error?: string }>(
+  action: (prev: S, fd: FormData) => Promise<S>,
+): (prev: S, fd: FormData) => Promise<S> {
+  return async (prev: S, fd: FormData): Promise<S> => {
+    try {
+      const r = await withTimeout(action(prev, fd));
+      return r ?? prev;
+    } catch (e) {
+      unstable_rethrow(e);
+      const f = failure(e);
+      if (f.sessionExpired) goToLogin();
+      return { error: f.message } as S;
+    }
+  };
 }

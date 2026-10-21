@@ -92,7 +92,11 @@ export function CameraCapture({ subject, onUse, onCancel, busy = false, error = 
       return;
     }
     try {
-      const stream = await md.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      // DLV-043 CAR-03: ask for a full HD picture. Without a size the browser opens the camera at 640x480 and every POD
+      // and freight photo was stored that small; take() still shrinks to at most 1600 px on the long side.
+      const stream = await md.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false,
+      });
       if (!alive.current || mine !== attempt.current) {
         stream.getTracks().forEach((t) => t.stop());
         return;

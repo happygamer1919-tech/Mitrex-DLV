@@ -32,6 +32,14 @@ export type ActionResult = { error?: string; fieldErrors?: FieldErrors; ok?: boo
 export const EQUIPMENT_SIZES = [26, 36, 53] as const;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// DLV-043 CUST-08: a weight typed the way the app shows it ("1,200" or "1 200") is a number. Only whole groups of
+// three digits count as separators, so "1,5" stays invalid instead of silently becoming 15.
+const GROUPED = /^\d{1,3}([, ]\d{3})+(\.\d+)?$/;
+export function parseWeight(raw: string): number {
+  const t = raw.trim();
+  return Number(GROUPED.test(t) ? t.replace(/[, ]/g, "") : t);
+}
 const TIME_RE = /^\d{2}:\d{2}$/;
 
 function checkSlot(
@@ -90,8 +98,17 @@ export function validateLoad(v: LoadFormValues, today: string = todayEastern(), 
   if (!e.pickup_date && !e.delivery_date && v.delivery_date < v.pickup_date) {
     e.delivery_date = "Delivery date cannot be before the pickup date.";
   }
+  // DLV-043 CUST-02: on the same day the delivery cannot end before the pickup starts. The latest delivery time is the
+  // window end (or the appointment); an overlapping window stays allowed (start is not compared with start).
+  if (!e.pickup_date && !e.delivery_date && v.delivery_date === v.pickup_date
+      && !e.pickup_time_start && !e.delivery_time_start && !e.delivery_time_end) {
+    const latest = v.delivery_timing === "window" ? v.delivery_time_end : v.delivery_time_start;
+    if (TIME_RE.test(latest) && latest < v.pickup_time_start) {
+      e.delivery_time_start = "Delivery time cannot be before the pickup time.";
+    }
+  }
   if (v.weight_lbs.trim()) {
-    const w = Number(v.weight_lbs);
+    const w = parseWeight(v.weight_lbs);
     if (!Number.isFinite(w) || w <= 0 || w > 1000000) e.weight_lbs = "Weight must be a number greater than 0.";
   }
   if (v.pieces.trim()) {
@@ -109,7 +126,7 @@ export function toLoadRow(v: LoadFormValues, moffett: boolean) {
     delivery_location_id: v.delivery_location_id,
     equipment_size: Number(v.equipment_size),
     moffett,
-    weight_lbs: v.weight_lbs.trim() ? Number(v.weight_lbs) : null,
+    weight_lbs: v.weight_lbs.trim() ? parseWeight(v.weight_lbs) : null,
     pieces: v.pieces.trim() ? Number(v.pieces) : null,
     po_number: v.po_number.trim() || null,
     notes: v.notes.trim() || null,

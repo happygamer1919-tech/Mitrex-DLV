@@ -11,7 +11,7 @@ export default async function TeamPage() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id,email,full_name,role,created_at")
+    .select("id,email,full_name,role,created_at,is_active")
     .eq("carrier_id", profile.carrier_id!)
     .order("created_at", { ascending: true });
 
@@ -22,6 +22,7 @@ export default async function TeamPage() {
       full_name: (m.full_name as string | null) ?? null,
       role: m.role as string,
       isSelf: m.id === profile.id,
+      active: m.is_active !== false,
     }))
     .sort((a, b) => Number(b.role === "carrier_owner") - Number(a.role === "carrier_owner"));
 

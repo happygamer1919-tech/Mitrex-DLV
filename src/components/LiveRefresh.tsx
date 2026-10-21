@@ -7,6 +7,17 @@ import { createClient } from "@/lib/supabase/client";
 // with a 15 second polling fallback. RLS limits which rows the user is sent, but only if the
 // websocket carries the user's JWT: without it Realtime evaluates RLS as anon and every event
 // arrives as "Error 401: Unauthorized" with an empty record. So the token is set before subscribing.
+// DLV-043 CAR-02: no refresh while the browser is offline. A failed refresh makes Next fall back to a full browser
+// navigation, and Chrome then showed its own offline page in place of the driver's load (an open POD, photo or ETA was
+// lost). One refresh runs when the connection comes back, and one when the page becomes visible again (CAR-07: the
+// signed links of a page left in the background expire).
+// The e2e specs may shorten the interval with window.__DLV_LIVE_MS (set before the page loads, 1000 ms at least).
+function pollMs(fallback: number): number {
+  const w = typeof window !== "undefined" ? (window as unknown as { __DLV_LIVE_MS?: unknown }).__DLV_LIVE_MS : undefined;
+  return typeof w === "number" && Number.isFinite(w) && w >= 1000 ? w : fallback;
+}
+const online = () => typeof navigator === "undefined" || navigator.onLine !== false;
+
 export function LiveRefresh({ intervalMs = 15000 }: { intervalMs?: number }) {
   const router = useRouter();
   useEffect(() => {
@@ -14,9 +25,10 @@ export function LiveRefresh({ intervalMs = 15000 }: { intervalMs?: number }) {
     let pending: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    const refreshNow = () => { if (online()) router.refresh(); };
     const refresh = () => {
       if (pending) return;
-      pending = setTimeout(() => { pending = null; router.refresh(); }, 300);
+      pending = setTimeout(() => { pending = null; refreshNow(); }, 300);
     };
 
     void (async () => {
@@ -35,11 +47,17 @@ export function LiveRefresh({ intervalMs = 15000 }: { intervalMs?: number }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.access_token) void supabase.realtime.setAuth(session.access_token);
     });
-    const timer = setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, intervalMs);
+    const timer = setInterval(() => { if (document.visibilityState === "visible") refreshNow(); }, pollMs(intervalMs));
+    const onOnline = () => refresh();
+    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       clearInterval(timer);
       if (pending) clearTimeout(pending);
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
       sub.subscription.unsubscribe();
       if (channel) void supabase.removeChannel(channel);
     };

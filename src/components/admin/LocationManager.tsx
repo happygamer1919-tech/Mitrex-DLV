@@ -1,11 +1,13 @@
 "use client";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { Button, Card, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { deleteLocation, saveLocation, setLocationActive } from "@/lib/admin/location-actions";
 import type { Location } from "@/lib/types";
 import { nameIsStreet } from "@/lib/address";
 import type { ActionState } from "@/lib/admin/state";
+import { guardAction } from "@/lib/client/action-guard";
+import { submitWithoutReset } from "@/lib/client/submit-form";
 import { fmtDateTime } from "@/lib/format";
 
 // R45: profile id to display name, for the "Added by" and "Last edited by" lines.
@@ -21,10 +23,12 @@ function Check({ name, label, defaultChecked }: { name: string; label: string; d
 }
 
 function LocationForm({ location, onDone, onCancel }: { location?: Location; onDone: () => void; onCancel: () => void }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(saveLocation, {});
+  const [state, action, pending] = useActionState<ActionState, FormData>(guardAction(saveLocation), {});
+  const [, startSave] = useTransition();
   useEffect(() => { if (state.ok) onDone(); }, [state.ok, onDone]);
+  // DLV-043: onSubmit, not the form action prop, so a refused save (a name already used) keeps every field as typed.
   return (
-    <form action={action} className="space-y-3">
+    <form onSubmit={submitWithoutReset(action, startSave)} className="space-y-3">
       {location ? <input type="hidden" name="id" value={location.id} /> : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name"><Input name="name" required maxLength={120} defaultValue={location?.name} /></Field>
